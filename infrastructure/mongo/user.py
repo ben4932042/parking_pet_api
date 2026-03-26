@@ -1,7 +1,6 @@
 from typing import Optional
 
 from bson import ObjectId
-from pydantic import ValidationError
 
 from domain.entities import PyObjectId
 from domain.entities.user import UserEntity
