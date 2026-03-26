@@ -1,14 +1,15 @@
-from fastapi import Depends, APIRouter, HTTPException
+from fastapi import Depends, APIRouter, HTTPException, BackgroundTasks
 from starlette import status
 
 from application.property import PropertyService
 from domain.entities import PyObjectId
 from interface.api.dependencies.property import get_property_service
-from interface.api.schemas.page import PaginationResponse
+from interface.api.schemas.page import Pagination
 from interface.api.schemas.property import (
     PropertyDetailResponse,
     PropertyNearbyRequest,
     PropertyKeywordRequest,
+    PropertyOverviewResponse,
 )
 
 router = APIRouter(prefix="/property")
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/property")
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
-    response_model=PaginationResponse,
+    response_model=Pagination[PropertyOverviewResponse],
 )
 async def search_properties_by_keyword(
     params: PropertyKeywordRequest = Depends(),
@@ -34,7 +35,7 @@ async def search_properties_by_keyword(
 @router.get(
     "/nearby",
     status_code=status.HTTP_200_OK,
-    response_model=PaginationResponse,
+    response_model=Pagination[PropertyOverviewResponse],
 )
 async def get_nearby_properties(
     params: PropertyNearbyRequest = Depends(),
@@ -53,3 +54,13 @@ async def get_detail(property_id: PyObjectId, service: PropertyService = Depends
     if not prop:
         raise HTTPException(status_code=404, detail={"error": {"code": "PROPERTY_NOT_FOUND", "message": "Property not found"}})
     return prop
+
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=None)
+async def create_property(
+        name: str,
+        service: PropertyService = Depends(get_property_service)):
+    #TODO: handle duplicate property event
+    await service.create_property(name)
+
+
+

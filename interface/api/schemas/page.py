@@ -5,7 +5,7 @@ from pydantic import BaseModel
 T = TypeVar("T")
 
 
-class PaginationResponse(BaseModel, Generic[T]):
+class Pagination(BaseModel, Generic[T]):
 
     total: int
     page: int

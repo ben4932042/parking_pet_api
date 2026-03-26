@@ -18,3 +18,6 @@ class IPropertyRepository(ABC):
     @abstractmethod
     async def toggle_favorite(self, user_id: str, property_id: PyObjectId, is_favorite: bool) -> bool:
         ...
+    @abstractmethod
+    async def create(self, new_property: PropertyEntity):
+        ...

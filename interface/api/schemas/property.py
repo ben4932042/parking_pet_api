@@ -18,8 +18,16 @@ class PropertyNearbyRequest(BaseModel):
     page: int = Field(default=1, ge=1)
     size: int = Field(default=20, ge=1, le=100)
 
+class PropertyOverviewResponse(BaseModel):
+    id: str
+    name: str
+    address: str
+    latitude: float
+    longitude: float
+    rating: float
 
-class PropertySchema(BaseModel):
+
+class PropertyDetailSchema(BaseModel):
     id: str
     name: str
     address: str
@@ -31,18 +39,6 @@ class PropertySchema(BaseModel):
     ai_summary: str
 
 
-class PropertyListResponse(BaseModel):
-    properties: List[PropertySchema]
-    total: int
-    page: int
-    size: int
-    pages: int
 
-    @computed_field
-    @property
-    def count(self) -> int:
-        return len(self.properties)
-
-
-class PropertyDetailResponse(PropertySchema):
+class PropertyDetailResponse(PropertyDetailSchema):
     model_config = {"from_attributes": True}

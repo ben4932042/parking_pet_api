@@ -20,10 +20,16 @@ class MongoSettings(BaseModel):
             return SecretStr(f"{self.protocol}://{self.username}:{self.password.get_secret_value()}@{self.host}:{self.port}")
 
 
+class GoogleSettings(BaseModel):
+    project_id: str = Field(description="Google Cloud Project ID")
+    location: str = Field(description="Google Cloud Location")
+    service_account_file: str = Field(description="Path to Google Cloud Credential File")
+    place_api_key: SecretStr = Field(description="Google Maps API Key")
 
 
 class Settings(BaseSettings):
     mongo: MongoSettings = MongoSettings()
+    google: GoogleSettings
 
     model_config = SettingsConfigDict(
         env_file=".env",
