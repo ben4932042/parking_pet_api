@@ -23,7 +23,7 @@ def get_app():
         allow_headers=["*"],
     )
 
-    app.include_router(v1_router)
+    app.include_router(v1_router, prefix="/api/v1", tags=["v1"])
 
     logger.info(f"Config: {settings.model_dump(exclude_none=True)}")
     return app
