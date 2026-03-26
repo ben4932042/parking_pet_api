@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from bson import ObjectId
 
@@ -46,22 +46,74 @@ class PropertyRepository(IPropertyRepository):
         }
 
         return PropertyEntity(**mapped_data)
+    async def get_by_keyword(
+        self,
+        q: str,
+        type: Optional[str],
+        page: int,
+        size: int,
+    ) -> Tuple[List[PropertyEntity], int]:
+        filters = {}
+        if type:
+            filters["types"] = {"$in": [type]}
 
-    async def get_nearby(self, lat: float, lng: float, radius: int, q: Optional[str], type: Optional[str], limit: int = 100) -> List[PropertyEntity]:
-        cursor = self.collection.find({
+        filters["$or"] = [
+            {"display_name": {"$regex": q, "$options": "i"}},
+            {"address": {"$regex": q, "$options": "i"}},
+        ]
+
+        count_filter = filters.copy()
+
+        total: int = await self.collection.count_documents(count_filter)
+
+        skip = max(0, (page - 1) * size)
+        cursor = self.collection.find(filters).skip(skip).limit(size)
+
+        docs = await cursor.to_list(length=size)
+
+        items = [self._map_doc_to_entity(doc) for doc in docs]
+        return items, total
+
+    async def get_nearby(
+        self,
+        lat: float,
+        lng: float,
+        radius: int,
+        type: Optional[str],
+        page: int,
+        size: int,
+    ) -> Tuple[List[PropertyEntity], int]:
+        filters = {}
+
+        if type:
+            filters["types"] = {"$in": [type]}
+
+
+        geo_filter = {
             "location": {
                 "$near": {
-                    "$geometry": {
-                        "type": "Point",
-                        "coordinates": [lng, lat]
-                    },
-                    "$maxDistance": radius
+                    "$geometry": {"type": "Point", "coordinates": [lng, lat]},
+                    "$maxDistance": radius,
                 }
             }
-        })
+        }
+        filters.update(geo_filter)
 
-        docs = await cursor.to_list(length=limit)
-        return [self._map_doc_to_entity(doc) for doc in docs]
+        count_filter = filters.copy()
+        if "location" in count_filter:
+            count_filter["location"] = {
+                "$geoWithin": {"$centerSphere": [[lng, lat], radius / 6378100]}
+            }
+
+        total: int = await self.collection.count_documents(count_filter)
+
+        skip = max(0, (page - 1) * size)
+        cursor = self.collection.find(filters).skip(skip).limit(size)
+
+        docs = await cursor.to_list(length=size)
+
+        items = [self._map_doc_to_entity(doc) for doc in docs]
+        return items, total
 
     async def get_property_by_id(self, property_id: PyObjectId) -> Optional[PropertyEntity]:
         doc = await self.collection.find_one({"_id": ObjectId(property_id)})

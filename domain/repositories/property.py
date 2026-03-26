@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from domain.entities import PyObjectId
 from domain.entities.property import PropertyEntity
@@ -7,7 +7,10 @@ from domain.entities.property import PropertyEntity
 
 class IPropertyRepository(ABC):
     @abstractmethod
-    async def get_nearby(self, lat: float, lng: float, radius: int, q: Optional[str], type: Optional[str]) -> List[PropertyEntity]:
+    async def get_by_keyword(self, q: str, type: Optional[str], page: int, size: int) -> Tuple[List[PropertyEntity], int]:
+        ...
+    @abstractmethod
+    async def get_nearby(self, lat: float, lng: float, radius: int, type: Optional[str], page: int, size: int) -> Tuple[List[PropertyEntity], int]:
         ...
     @abstractmethod
     async def get_property_by_id(self, property_id: PyObjectId) -> Optional[PropertyEntity]:

@@ -3,12 +3,20 @@ from typing import List, Optional
 from pydantic import BaseModel, computed_field, Field
 
 
+class PropertyKeywordRequest(BaseModel):
+    q: str
+    type: Optional[str] = Field(default=None)
+    page: int = Field(default=1, ge=1)
+    size: int = Field(default=20, ge=1, le=100)
+
+
 class PropertyNearbyRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius: int = Field(default=10000, description="Radius in meters")
-    q: Optional[str] = Field(default=None)
     type: Optional[str] = Field(default=None)
+    page: int = Field(default=1, ge=1)
+    size: int = Field(default=20, ge=1, le=100)
 
 
 class PropertySchema(BaseModel):
@@ -25,8 +33,16 @@ class PropertySchema(BaseModel):
 
 class PropertyListResponse(BaseModel):
     properties: List[PropertySchema]
+    total: int
+    page: int
+    size: int
+    pages: int
 
     @computed_field
     @property
     def count(self) -> int:
         return len(self.properties)
+
+
+class PropertyDetailResponse(PropertySchema):
+    model_config = {"from_attributes": True}
