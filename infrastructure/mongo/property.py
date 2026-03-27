@@ -93,6 +93,20 @@ class PropertyRepository(IPropertyRepository):
             return PropertyEntity(**doc)
         return None
 
+    async def get_properties_by_ids(self, property_ids: List[str]) -> List[PropertyEntity]:
+        if not property_ids:
+            return []
+
+        object_ids: List[ObjectId] = []
+        for property_id in property_ids:
+            if ObjectId.is_valid(property_id):
+                object_ids.append(ObjectId(property_id))
+
+        query_values = list(property_ids) + object_ids
+        docs = await self.collection.find({"_id": {"$in": query_values}}).to_list(length=len(query_values))
+        entity_map = {str(doc["_id"]): PropertyEntity(**doc) for doc in docs}
+        return [entity_map[property_id] for property_id in property_ids if property_id in entity_map]
+
     async def create(self, new_property: PropertyEntity):
         await self.collection.insert_one(new_property.model_dump())
 

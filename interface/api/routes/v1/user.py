@@ -1,10 +1,13 @@
 from fastapi import Depends, APIRouter
 from starlette import status
 
+from application.property import PropertyService
 from application.user import UserService
+from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import get_user_service, get_current_user
 
 from domain.entities import PyObjectId
+from interface.api.schemas.property import PropertyOverviewResponse
 from interface.api.schemas.user import (
     UserDetailResponse,
     FavoritePropertyResponse,
@@ -76,3 +79,15 @@ async def get_user_favorite_property_status(
         property_id=property_id,
         is_favorite=property_id in current_user.favorite_property_ids,
     )
+
+
+@router.get(
+    "/favorite",
+    status_code=status.HTTP_200_OK,
+    response_model=list[PropertyOverviewResponse],
+)
+async def get_user_favorite_properties(
+    current_user=Depends(get_current_user),
+    property_service: PropertyService = Depends(get_property_service),
+):
+    return await property_service.get_overviews_by_ids(current_user.favorite_property_ids)
