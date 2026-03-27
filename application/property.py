@@ -19,6 +19,8 @@ class PropertyService:
 
     async def get_details(self, property_id: PyObjectId) -> PropertySummary:
         output:PropertyEntity = await self.repo.get_property_by_id(property_id)
+        if output is None:
+            raise ValueError("Property not found")
         return PropertySummary(
             id=output.id,
             name=output.name,

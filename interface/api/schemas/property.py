@@ -40,7 +40,6 @@ class PropertyDetailSchema(BaseModel):
     rating: float
     tags: List[str]
     ai_summary: str
-    is_open: Optional[bool]
 
 
 
