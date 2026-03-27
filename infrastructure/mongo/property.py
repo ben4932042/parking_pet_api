@@ -1,6 +1,5 @@
 from typing import Optional, List, Tuple
 import logging
-from bson import ObjectId
 
 from domain.entities import PyObjectId
 from domain.entities.property import PropertyEntity
@@ -92,6 +91,11 @@ class PropertyRepository(IPropertyRepository):
         if doc:
             return PropertyEntity(**doc)
         return None
+
+    async def get_properties_by_ids(self, property_ids: List[PyObjectId]) -> List[PropertyEntity]:
+        docs = await self.collection.find({"_id": {"$in": property_ids}}).to_list(length=len(property_ids))
+        entity_map = {str(doc["_id"]): PropertyEntity(**doc) for doc in docs}
+        return [entity_map[property_id] for property_id in property_ids if property_id in entity_map]
 
     async def create(self, new_property: PropertyEntity):
         await self.collection.insert_one(new_property.model_dump())

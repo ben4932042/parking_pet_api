@@ -32,6 +32,10 @@ class PropertyOverviewResponse(BaseModel):
     is_open: Optional[bool]
 
 
+class PropertyOverviewByIdsRequest(BaseModel):
+    property_ids: List[str] = Field(min_length=1, max_length=100)
+
+
 class PropertyDetailSchema(BaseModel):
     id: str
     name: str

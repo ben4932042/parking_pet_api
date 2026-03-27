@@ -1,4 +1,4 @@
-from fastapi import Depends, APIRouter, HTTPException, BackgroundTasks
+from fastapi import Depends, APIRouter, HTTPException
 from starlette import status
 
 from application.property import PropertyService
@@ -9,6 +9,7 @@ from interface.api.schemas.property import (
     PropertyDetailResponse,
     PropertyNearbyRequest,
     PropertyKeywordRequest,
+    PropertyOverviewByIdsRequest,
     PropertyOverviewResponse,
 )
 
@@ -48,6 +49,14 @@ async def get_nearby_properties(
     return {"items": items, "total": total, "page": params.page, "size": params.size, "pages": pages}
 
 
+@router.post("/overview", response_model=list[PropertyOverviewResponse])
+async def get_property_overviews_by_ids(
+    params: PropertyOverviewByIdsRequest,
+    service: PropertyService = Depends(get_property_service),
+):
+    return await service.get_overviews_by_ids(params.property_ids)
+
+
 @router.get("/{property_id}", response_model=PropertyDetailResponse)
 async def get_detail(property_id: PyObjectId, service: PropertyService = Depends(get_property_service)):
     prop = await service.get_details(property_id=property_id)
@@ -61,6 +70,5 @@ async def create_property(
         service: PropertyService = Depends(get_property_service)):
     #TODO: handle duplicate property event
     await service.create_property(name)
-
 
 

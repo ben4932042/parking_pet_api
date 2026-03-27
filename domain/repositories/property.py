@@ -16,6 +16,9 @@ class IPropertyRepository(ABC):
     async def get_property_by_id(self, property_id: PyObjectId) -> Optional[PropertyEntity]:
         ...
     @abstractmethod
+    async def get_properties_by_ids(self, property_ids: List[PyObjectId]) -> List[PropertyEntity]:
+        ...
+    @abstractmethod
     async def toggle_favorite(self, user_id: str, property_id: PyObjectId, is_favorite: bool) -> bool:
         ...
     @abstractmethod

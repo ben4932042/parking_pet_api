@@ -34,6 +34,9 @@ class PropertyService:
             ai_analysis=output.ai_analysis,
         )
 
+    async def get_overviews_by_ids(self, property_ids: list[PyObjectId]) -> list[PropertyEntity]:
+        return await self.repo.get_properties_by_ids(property_ids)
+
     async def update_favorite(self, user_id: str, property_id: PyObjectId, is_favorite: bool):
         return await self.repo.toggle_favorite(user_id, property_id, is_favorite)
 
