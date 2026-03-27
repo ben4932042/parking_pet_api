@@ -108,7 +108,5 @@ class PropertyRepository(IPropertyRepository):
         return [entity_map[property_id] for property_id in property_ids if property_id in entity_map]
 
     async def create(self, new_property: PropertyEntity):
-        await self.collection.insert_one(new_property.model_dump())
+        await self.collection.insert_one(new_property.model_dump(by_alias=True))
 
-    async def toggle_favorite(self, user_id: str, property_id: PyObjectId, is_favorite: bool) -> bool:
-        print("Not implemented yet. =)")

@@ -16,12 +16,16 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
         self.collection = client.get_collection(collection_name)
     def create_property_by_name(
         self, property_name: str
-    ) -> PropertyEntity:
+    ) -> AnalysisSource:
 
         basic_info = search_basic_information_by_name(property_name)
         insight_info = get_place_details(basic_info)
-        information = AnalysisSource.from_parts(basic_info, insight_info)
-        return distill_property_insights(information)
+        return AnalysisSource.from_parts(basic_info, insight_info)
+
+    def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity:
+        return distill_property_insights(source)
+
+
     async def search_by_chat(self, query: str, size: int) -> PropertySearchResultEntity:
         result = await search_properties(query=query, size=size, collection=self.collection )
         return PropertySearchResultEntity(**result)

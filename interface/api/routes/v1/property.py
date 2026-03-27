@@ -56,7 +56,6 @@ async def get_detail(property_id: PyObjectId, service: PropertyService = Depends
 async def create_property(
         name: str,
         service: PropertyService = Depends(get_property_service)):
-    #TODO: handle duplicate property event
     await service.create_property(name)
 
 
