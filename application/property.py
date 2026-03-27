@@ -30,7 +30,6 @@ class PropertyService:
             types=[output.primary_type],
             rating=output.ai_analysis.ai_rating,
             tags=output.ai_analysis.highlights,
-            ai_summary=output.ai_analysis.ai_summary,
             regular_opening_hours=output.regular_opening_hours,
             ai_analysis=output.ai_analysis,
         )

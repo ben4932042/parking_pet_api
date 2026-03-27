@@ -41,7 +41,6 @@ class PropertyDetailSchema(BaseModel):
     types: List[str]
     rating: float
     tags: List[str]
-    ai_summary: str
     regular_opening_hours: List[OpeningPeriod]
     ai_analysis: AIAnalysis
 
