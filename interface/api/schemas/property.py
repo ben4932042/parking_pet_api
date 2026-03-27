@@ -18,6 +18,8 @@ class PropertyNearbyRequest(BaseModel):
     page: int = Field(default=1, ge=1)
     size: int = Field(default=20, ge=1, le=100)
 
+
+
 class PropertyOverviewResponse(BaseModel):
     id: str
     name: str
@@ -25,6 +27,7 @@ class PropertyOverviewResponse(BaseModel):
     latitude: float
     longitude: float
     rating: float
+    is_open: Optional[bool]
 
 
 class PropertyDetailSchema(BaseModel):
@@ -37,6 +40,7 @@ class PropertyDetailSchema(BaseModel):
     rating: float
     tags: List[str]
     ai_summary: str
+    is_open: Optional[bool]
 
 
 

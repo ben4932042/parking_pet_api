@@ -10,7 +10,7 @@ def get_db_client() -> MongoDBClient:
 
 def get_property_repository(client: MongoDBClient = Depends(get_db_client)) -> PropertyRepository:
     return PropertyRepository(
-        client=client, collection_name="property"
+        client=client, collection_name="property_v2"
     )
 
 def get_user_repository(client: MongoDBClient = Depends(get_db_client)) -> UserRepository:

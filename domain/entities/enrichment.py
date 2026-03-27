@@ -1,47 +1,95 @@
-from typing import List, Literal, Optional
-
 from pydantic import BaseModel, Field
+from typing import List, Optional, Dict
 
 
-class PointLocation(BaseModel):
-    type: Literal["Point"]
-    coordinates: List[float] = Field(
-        ...,
-        description="[lng, lat]"
-    )
-
-
-class Review(BaseModel):
-    author: str
-    rating: int
-    text: str
-    time: str
-
-
-class AIAnalysis(BaseModel):
-    suitable_for: List[str]
-    pros: List[str]
-    cons: List[str]
-    signature_items: List[str]
-    ai_summary: str
-
-
-class EnrichmentPropertyEntity(BaseModel):
-    search_name: str
+class PlaceCandidate(BaseModel):
+    id: str
+    origin_search_name: str
     display_name: str
     place_id: str
-
-    lat: float
-    lng: float
-    location: PointLocation
-
+    latitude: float
+    longitude: float
     address: str
-    rating: float
-    user_rating_count: int
-
-    price_level: Optional[str] = None
+    primary_type: Optional[str] = None
     types: List[str]
-    business_status: str
+    business_status: Optional[str] = None
+    phone_number: Optional[str] = None
+    website: Optional[str] = None
+    user_rating_count: int
+    payment_methods: Optional[Dict[str, bool]] = None
+    parking_options: Optional[Dict[str, bool]] = None
+    accessibility_options: Optional[Dict[str, bool]] = None
+    takeout: Optional[bool] = None
+    delivery: Optional[bool] = None
+    dine_in: Optional[bool] = None
 
+class Review(BaseModel):
+    author: Optional[str]
+    rating: Optional[float]
+    text: Optional[str]
+    time: Optional[str]
+
+class PlaceDetail(BaseModel):
+    id: str
+    rating: Optional[float] = None
+    user_rating_count: Optional[int] = None
+    price_level: Optional[str] = None
+    regular_opening_hours: Optional[List[Dict]] = None
+    allows_dogs: Optional[bool] = None
+    outdoor_seating: Optional[bool] = None
+    reservable: Optional[bool] = None
+    good_for_children: Optional[bool] = None
+    good_for_groups: Optional[bool] = None
+    serves_beer: Optional[bool] = None
+    serves_wine: Optional[bool] = None
     reviews: List[Review] = []
-    ai_analysis: Optional[AIAnalysis] = None
+
+class AnalysisSource(PlaceCandidate, PlaceDetail):
+    id: str = Field(alias="_id")
+    model_config = {
+        "populate_by_name": True,
+        "from_attributes": True
+    }
+    @classmethod
+    def from_parts(cls, basic: PlaceCandidate, insight: PlaceDetail) -> "AnalysisSource":
+        basic_dict = basic.model_dump()
+        insight_dict = insight.model_dump() if insight else {}
+
+        return cls(**{**basic_dict, **insight_dict})
+
+class PetRules(BaseModel):
+    leash_required: bool = Field(default=False, description="是否強制牽繩。若評論提到『需繫繩』或為『開放式餐飲空間』則為 True")
+    stroller_required: bool = Field(default=False, description="是否需推車/提籠。若評論提到『不落地』或『需推車』則為 True")
+    allow_on_floor: bool = Field(default=False, description="毛孩是否可直接在地面行走。與推車要求通常互斥")
+
+class PetEnvironment(BaseModel):
+    stairs: bool = Field(default=False, description="是否有階梯（影響推車便利性）。從評論或店名關鍵字判定")
+    outdoor_seating: bool = Field(default=False, description="是否有戶外座位。參考 Google 原始欄位或評論提及『室外』")
+    spacious: bool = Field(default=False, description="空間是否寬敞。若評論提到『很擠』、『位置少』則為 False")
+    indoor_ac: bool = Field(default=False, description="室內是否有冷氣。台灣室內店面通常預設為 True")
+    off_leash_possible: bool = Field(default=False, description="是否有圍欄或專屬區域可放繩跑跳。通常僅限寵物公園或特定農場")
+    pet_friendly_floor: bool = Field(default=False, description="地板是否防滑或適合毛孩行走。若為專業沙龍(pet_care)通常為 True")
+    has_shop_pet: bool = Field(default=False, description="店內是否有店狗或店貓。從評論提及『店長』、『店狗/貓名稱』判定")
+
+class PetService(BaseModel):
+    pet_menu: bool = Field(default=False, description="是否有寵物專屬餐點。若評論提到『毛孩零食』、『狗狗餐』則為 True")
+    free_water: bool = Field(default=False, description="是否提供寵物飲水。評論提到『給水碗』、『喝水』則為 True")
+    free_treats: bool = Field(default=False, description="是否主動提供免費點心招待毛孩")
+    pet_seating: bool = Field(default=False, description="毛孩是否可上座位。若評論提到『可以坐椅子』、『有寵物墊』則為 True")
+
+class PetFeatures(BaseModel):
+    rules: PetRules
+    environment: PetEnvironment
+    services: PetService
+
+class AIAnalysis(BaseModel):
+    venue_type: str = Field(description="空間類型判定，如：複合式沙龍、寵物咖啡廳")
+    ai_summary: str = Field(description="專業深度分析總結")
+    pet_features: PetFeatures
+    highlights: List[str] = Field(description="該地點的三個關鍵吸引力")
+    warnings: List[str] = Field(description="毛爸媽需要注意的負面反饋或限制")
+    ai_rating: float = Field(description="推薦程度", alias="rating")
+    model_config = {
+        "populate_by_name": True,
+        "from_attributes": True
+    }

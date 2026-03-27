@@ -1,10 +1,12 @@
 from typing import Optional, List, Tuple
-
+import logging
 from bson import ObjectId
 
 from domain.entities import PyObjectId
 from domain.entities.property import PropertyEntity
 from domain.repositories.property import IPropertyRepository
+
+logger = logging.getLogger(__name__)
 
 class PropertyRepository(IPropertyRepository):
     def __init__(self, client, collection_name: str):
@@ -22,7 +24,7 @@ class PropertyRepository(IPropertyRepository):
             filters["types"] = {"$in": [type]}
 
         filters["$or"] = [
-            {"display_name": {"$regex": q, "$options": "i"}},
+            {"name": {"$regex": q, "$options": "i"}},
             {"address": {"$regex": q, "$options": "i"}},
         ]
 
@@ -50,7 +52,7 @@ class PropertyRepository(IPropertyRepository):
         filters = {}
 
         if type:
-            filters["types"] = {"$in": [type]}
+            filters["primary_type"] = {"$in": [type]}
 
 
         geo_filter = {
@@ -81,15 +83,12 @@ class PropertyRepository(IPropertyRepository):
                 item = PropertyEntity(**doc)
                 items.append(item)
         except Exception as e:
-            print(f"Error processing document: {doc}")
-            print(f"Error details: {e}")
+            logger.exception(f"Error processing document: {doc}", exc_info=True)
 
-
-        # items = [PropertyEntity(**doc) for doc in docs]
         return items, total
 
     async def get_property_by_id(self, property_id: PyObjectId) -> Optional[PropertyEntity]:
-        doc = await self.collection.find_one({"_id": ObjectId(property_id)})
+        doc = await self.collection.find_one({"_id": property_id})
         if doc:
             return PropertyEntity(**doc)
         return None
