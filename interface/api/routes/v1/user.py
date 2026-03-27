@@ -5,7 +5,11 @@ from application.user import UserService
 from interface.api.dependencies.user import get_user_service, get_current_user
 
 from domain.entities import PyObjectId
-from interface.api.schemas.user import UserDetailResponse, FavoritePropertyResponse
+from interface.api.schemas.user import (
+    UserDetailResponse,
+    FavoritePropertyResponse,
+    FavoritePropertyStatusResponse,
+)
 
 router = APIRouter(prefix="/user")
 
@@ -56,4 +60,19 @@ async def update_user_favorite_property(
         **user.model_dump(by_alias=True),
         property_id=property_id,
         is_favorite=is_favorite,
+    )
+
+
+@router.get(
+    "/favorite/{property_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=FavoritePropertyStatusResponse,
+)
+async def get_user_favorite_property_status(
+    property_id: PyObjectId,
+    current_user=Depends(get_current_user),
+):
+    return FavoritePropertyStatusResponse(
+        property_id=property_id,
+        is_favorite=property_id in current_user.favorite_property_ids,
     )
