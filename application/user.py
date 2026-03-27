@@ -14,3 +14,12 @@ class UserService:
 
     async def update_user_profile(self, user_id: str, name: str):
         return await self.repo.update_user_profile(user_id=user_id, name=name)
+
+    async def update_favorite_property(
+        self, user_id: str, property_id: PyObjectId, is_favorite: bool
+    ):
+        return await self.repo.update_favorite_property(
+            user_id=user_id,
+            property_id=property_id,
+            is_favorite=is_favorite,
+        )
