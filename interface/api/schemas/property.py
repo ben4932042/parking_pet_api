@@ -2,6 +2,8 @@ from typing import List, Optional
 
 from pydantic import BaseModel, computed_field, Field
 
+from domain.entities.enrichment import AIAnalysis
+from domain.entities.property import OpeningPeriod
 
 class PropertyKeywordRequest(BaseModel):
     q: str
@@ -40,6 +42,8 @@ class PropertyDetailSchema(BaseModel):
     rating: float
     tags: List[str]
     ai_summary: str
+    regular_opening_hours: List[OpeningPeriod]
+    ai_analysis: AIAnalysis
 
 
 

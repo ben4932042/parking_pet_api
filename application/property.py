@@ -31,6 +31,8 @@ class PropertyService:
             rating=output.ai_analysis.ai_rating,
             tags=output.ai_analysis.highlights,
             ai_summary=output.ai_analysis.ai_summary,
+            regular_opening_hours=output.regular_opening_hours,
+            ai_analysis=output.ai_analysis,
         )
 
     async def update_favorite(self, user_id: str, property_id: PyObjectId, is_favorite: bool):
@@ -39,4 +41,3 @@ class PropertyService:
     async def create_property(self, name: str):
         generate_result = self.enrichment_provider.create_property_by_name(name)
         await self.repo.create(generate_result)
-
