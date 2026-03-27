@@ -4,7 +4,8 @@ from starlette import status
 from application.user import UserService
 from interface.api.dependencies.user import get_user_service, get_current_user
 
-from interface.api.schemas.user import UserDetailResponse
+from domain.entities import PyObjectId
+from interface.api.schemas.user import UserDetailResponse, FavoritePropertyResponse
 
 router = APIRouter(prefix="/user")
 
@@ -33,3 +34,26 @@ async def update_user_profile(
 @router.get("/me", status_code=status.HTTP_200_OK, response_model=UserDetailResponse)
 async def get_me(current_user=Depends(get_current_user)):
     return current_user
+
+
+@router.put(
+    "/favorite/{property_id}",
+    status_code=status.HTTP_200_OK,
+    response_model=FavoritePropertyResponse,
+)
+async def update_user_favorite_property(
+    property_id: PyObjectId,
+    is_favorite: bool,
+    service: UserService = Depends(get_user_service),
+    current_user=Depends(get_current_user),
+):
+    user = await service.update_favorite_property(
+        user_id=current_user.id,
+        property_id=property_id,
+        is_favorite=is_favorite,
+    )
+    return FavoritePropertyResponse(
+        **user.model_dump(by_alias=True),
+        property_id=property_id,
+        is_favorite=is_favorite,
+    )
