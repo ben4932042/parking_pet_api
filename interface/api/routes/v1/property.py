@@ -38,8 +38,9 @@ async def get_nearby_properties(
     params: PropertyNearbyRequest = Depends(),
     service: PropertyService = Depends(get_property_service),
 ):
+    types = params.types_str.split(",") if params.types_str else []
     items, total = await service.search_nearby(
-        params.lat, params.lng, params.radius, params.type, params.page, params.size
+        params.lat, params.lng, params.radius, types, params.page, params.size
     )
     pages = (total + params.size - 1) // params.size if params.size else 0
     return {"items": items, "total": total, "page": params.page, "size": params.size, "pages": pages}

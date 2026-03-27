@@ -10,7 +10,7 @@ class IPropertyRepository(ABC):
     async def get_by_keyword(self, q: str, type: Optional[str], page: int, size: int) -> Tuple[List[PropertyEntity], int]:
         ...
     @abstractmethod
-    async def get_nearby(self, lat: float, lng: float, radius: int, type: Optional[str], page: int, size: int) -> Tuple[List[PropertyEntity], int]:
+    async def get_nearby(self, lat: float, lng: float, radius: int, types: List[str], page: int, size: int) -> Tuple[List[PropertyEntity], int]:
         ...
     @abstractmethod
     async def get_property_by_id(self, property_id: PyObjectId) -> Optional[PropertyEntity]:

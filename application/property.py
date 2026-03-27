@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from domain.entities import PyObjectId
 from domain.entities.property import PropertySummary, PropertyEntity
@@ -27,11 +27,11 @@ class PropertyService:
         lat: float,
         lng: float,
         radius: int,
-        type: Optional[str],
+        types: List[str],
         page: int,
         size: int,
     ):
-        return await self.repo.get_nearby(lat, lng, radius, type, page, size)
+        return await self.repo.get_nearby(lat, lng, radius, types, page, size)
 
     async def search_by_keyword(self, q: str, size: int):
         return await self.enrichment_provider.search_by_chat(q, size)

@@ -45,14 +45,14 @@ class PropertyRepository(IPropertyRepository):
         lat: float,
         lng: float,
         radius: int,
-        type: Optional[str],
+        types: List[str],
         page: int,
         size: int,
     ) -> Tuple[List[PropertyEntity], int]:
         filters = {}
 
-        if type:
-            filters["primary_type"] = {"$in": [type]}
+        if types:
+            filters["primary_type"] = {"$in": types}
 
 
         geo_filter = {
