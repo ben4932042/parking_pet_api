@@ -1,12 +1,13 @@
-import json
 import logging
+
 import vertexai
 from google.oauth2 import service_account
 from vertexai.generative_models import GenerativeModel, GenerationConfig
 
-from domain.entities.enrichment import AnalysisSource, AIAnalysis
+from domain.entities.enrichment import AIAnalysis, AnalysisSource
 from domain.entities.property import PropertyEntity
 from infrastructure.config import settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +18,12 @@ creds = service_account.Credentials.from_service_account_file(
 vertexai.init(
     project=settings.google.project_id,
     location=settings.google.location,
-    credentials=creds
+    credentials=creds,
 )
 
 
 model = GenerativeModel("gemini-2.5-flash-lite")
+
 
 def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
     """
@@ -111,7 +113,11 @@ def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
 
 
 if __name__ == "__main__":
-    from infrastructure.google.place_api import search_basic_information_by_name, get_place_details
+    from infrastructure.google.place_api import (
+        search_basic_information_by_name,
+        get_place_details,
+    )
+
     place_name = "鼎泰豐 台北101店"
     basic_info = search_basic_information_by_name(place_name)
     insight_info = get_place_details(basic_info)

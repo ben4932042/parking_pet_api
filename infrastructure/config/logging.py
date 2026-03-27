@@ -72,7 +72,9 @@ LOGGING_CONFIG: Dict[str, Any] = {
                 "uvicorn.access",
                 "pymongo",
                 "asyncio",
-                "urllib3.connectionpool"
+                "urllib3.connectionpool",
+                "httpcore.http11",
+                "httpcore.connection"
             ]
         },
     },

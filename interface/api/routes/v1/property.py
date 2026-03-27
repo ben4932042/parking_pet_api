@@ -10,6 +10,7 @@ from interface.api.schemas.property import (
     PropertyNearbyRequest,
     PropertyKeywordRequest,
     PropertyOverviewResponse,
+    PropertySearchResponse,
 )
 
 router = APIRouter(prefix="/property")
@@ -18,17 +19,13 @@ router = APIRouter(prefix="/property")
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
-    response_model=Pagination[PropertyOverviewResponse],
+    response_model=PropertySearchResponse,
 )
 async def search_properties_by_keyword(
     params: PropertyKeywordRequest = Depends(),
     service: PropertyService = Depends(get_property_service),
 ):
-    items, total = await service.search_by_keyword(
-        params.q, params.type, params.page, params.size
-    )
-    pages = (total + params.size - 1) // params.size if params.size else 0
-    return {"items": items, "total": total, "page": params.page, "size": params.size, "pages": pages}
+    return await service.search_by_keyword(params.q, params.size)
 
 
 

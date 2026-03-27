@@ -1,8 +1,9 @@
 from abc import ABC
 
 from domain.entities.enrichment import AnalysisSource
-from domain.entities.property import PropertyEntity
+from domain.entities.property import PropertyEntity, PropertySearchResultEntity
 from domain.services.property_enrichment import IEnrichmentProvider
+from infrastructure.google.langchain import search_properties
 from infrastructure.google.place_api import (
     search_basic_information_by_name,
     get_place_details,
@@ -11,6 +12,8 @@ from infrastructure.google.vertex import distill_property_insights
 
 
 class GoogleEnrichmentProvider(IEnrichmentProvider):
+    def __init__(self, client, collection_name):
+        self.collection = client.get_collection(collection_name)
     def create_property_by_name(
         self, property_name: str
     ) -> PropertyEntity:
@@ -19,3 +22,6 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
         insight_info = get_place_details(basic_info)
         information = AnalysisSource.from_parts(basic_info, insight_info)
         return distill_property_insights(information)
+    async def search_by_chat(self, query: str, size: int) -> PropertySearchResultEntity:
+        result = await search_properties(query=query, size=size, collection=self.collection )
+        return PropertySearchResultEntity(**result)

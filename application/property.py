@@ -7,15 +7,15 @@ from domain.services.property_enrichment import IEnrichmentProvider
 
 
 class PropertyService:
-    def __init__(self, repo: IPropertyRepository, enrichment_provider: IEnrichmentProvider ):
+    def __init__(self, repo: IPropertyRepository, enrichment_provider: IEnrichmentProvider):
         self.repo = repo
         self.enrichment_provider = enrichment_provider
 
     async def search_nearby(self, lat: float, lng: float, radius: int,  type: Optional[str], page: int, size: int):
         return await self.repo.get_nearby(lat, lng, radius, type, page, size)
 
-    async def search_by_keyword(self, q: str, type: Optional[str], page: int, size: int):
-        return await self.repo.get_by_keyword(q, type, page, size)
+    async def search_by_keyword(self, q: str, size: int):
+        return await self.enrichment_provider.search_by_chat(q, size)
 
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)

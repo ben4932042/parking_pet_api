@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel, computed_field, Field
+from pydantic import BaseModel, Field
 
 from domain.entities.enrichment import AIAnalysis
 from domain.entities.property import OpeningPeriod
@@ -30,6 +30,12 @@ class PropertyOverviewResponse(BaseModel):
     longitude: float
     rating: float
     is_open: Optional[bool]
+
+class PropertySearchResponse(BaseModel):
+    status: str
+    original_tags: List[str] = Field(default_factory=list)
+    active_tags: List[str] = Field(default_factory=list)
+    results: List[PropertyOverviewResponse] = Field(default_factory=list)
 
 
 class PropertyDetailSchema(BaseModel):

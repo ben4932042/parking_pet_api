@@ -140,3 +140,9 @@ class PropertySummary(BaseModel):
     tags: List[str]
     regular_opening_hours: List[OpeningPeriod]
     ai_analysis: AIAnalysis
+
+class PropertySearchResultEntity(BaseModel):
+    status: str
+    original_tags: List[str] = Field(default_factory=list)
+    active_tags: List[str] = Field(default_factory=list)
+    results: List[PropertyEntity] = Field(default_factory=list)
