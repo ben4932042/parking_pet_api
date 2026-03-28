@@ -30,6 +30,7 @@ class PropertyOverviewResponse(BaseModel):
     address: str
     latitude: float
     longitude: float
+    types: List[str]
     rating: float
     is_open: Optional[bool]
 
