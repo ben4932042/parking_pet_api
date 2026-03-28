@@ -1,12 +1,8 @@
 from abc import ABC, abstractmethod
-from typing import List, Tuple, Optional
+from typing import Optional, Tuple
 
 from domain.entities.enrichment import AnalysisSource
-from domain.entities.property import (
-    PropertyEntity,
-    PropertyFilterCondition,
-    PointLocation,
-)
+from domain.entities.property import PropertyEntity, PropertyFilterCondition
 
 
 class IEnrichmentProvider(ABC):
@@ -20,10 +16,25 @@ class IEnrichmentProvider(ABC):
     def extract_search_criteria(self, query: str) -> PropertyFilterCondition: ...
 
     @abstractmethod
-    def geocode_landmark(self, landmark_name: str) -> Tuple[str, Tuple[float, float] | None]: ...
+    def geocode_landmark(self, landmark_name: str) -> Tuple[str, Optional[Tuple[float, float]]]: ...
 
+    @staticmethod
+    def _normalize_coordinates(coords: Optional[tuple[float, float]]) -> Optional[tuple[float, float]]:
+        if coords is None or len(coords) != 2:
+            return None
 
-    def generate_query(self, intent: PropertyFilterCondition, user_coords: Optional[tuple[float, float]], map_coords: Optional[tuple[float, float]]) -> dict:
+        lng, lat = coords
+        if lng is None or lat is None:
+            return None
+
+        return (lng, lat)
+
+    def generate_query(
+        self,
+        intent: PropertyFilterCondition,
+        user_coords: Optional[tuple[float, float]],
+        map_coords: Optional[tuple[float, float]],
+    ) -> dict:
         final_query = intent.mongo_query.copy()
 
         if intent.min_rating and intent.min_rating > 0:
@@ -31,14 +42,12 @@ class IEnrichmentProvider(ABC):
 
         target_coordinates = None
         if intent.landmark_context == "CURRENT_LOCATION":
-            #FIXME: consider about user_coords case
-            target_coordinates = user_coords
+            target_coordinates = self._normalize_coordinates(user_coords)
         elif intent.landmark_context:
-            display_name, landmark_coords = self.geocode_landmark(intent.landmark_context)
-            if landmark_coords:
-                target_coordinates = landmark_coords
+            _, landmark_coords = self.geocode_landmark(intent.landmark_context)
+            target_coordinates = self._normalize_coordinates(landmark_coords)
         else:
-            target_coordinates = map_coords
+            target_coordinates = self._normalize_coordinates(map_coords)
 
         if target_coordinates:
             final_query["location"] = {
@@ -51,5 +60,3 @@ class IEnrichmentProvider(ABC):
                 }
             }
         return final_query
-
-

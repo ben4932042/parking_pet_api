@@ -1,4 +1,6 @@
-from fastapi import Depends, APIRouter, HTTPException, BackgroundTasks
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from starlette import status
 
 from application.property import PropertyService
@@ -8,12 +10,17 @@ from interface.api.schemas.page import Pagination
 from interface.api.schemas.property import (
     PropertyDetailResponse,
     PropertyNearbyRequest,
-    PropertyKeywordRequest,
     PropertyOverviewResponse,
     PropertySearchResponse,
 )
 
 router = APIRouter(prefix="/property")
+
+
+def _coords_or_none(lat: Optional[float], lng: Optional[float]) -> Optional[tuple[float, float]]:
+    if lat is None or lng is None:
+        return None
+    return (lng, lat)
 
 
 @router.get(
@@ -29,9 +36,12 @@ async def search_properties_by_keyword(
     map_lng: float = None,
     service: PropertyService = Depends(get_property_service),
 ):
-    items, conditions = await service.search_by_keyword(q=query, user_coords=(user_lng, user_lat), map_coords=(map_lng, map_lat))
+    items, conditions = await service.search_by_keyword(
+        q=query,
+        user_coords=_coords_or_none(user_lat, user_lng),
+        map_coords=_coords_or_none(map_lat, map_lng),
+    )
     return {"status": "success", "preferences": conditions.preferences, "results": items}
-
 
 
 @router.get(
@@ -54,15 +64,17 @@ async def get_nearby_properties(
 @router.get("/{property_id}", response_model=PropertyDetailResponse)
 async def get_detail(property_id: PyObjectId, service: PropertyService = Depends(get_property_service)):
     prop = await service.get_details(property_id=property_id)
-    if not prop:
-        raise HTTPException(status_code=404, detail={"error": {"code": "PROPERTY_NOT_FOUND", "message": "Property not found"}})
+    if prop is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": {"code": "PROPERTY_NOT_FOUND", "message": "Property not found"}},
+        )
     return prop
+
 
 @router.post("", status_code=status.HTTP_201_CREATED, response_model=None)
 async def create_property(
-        name: str,
-        service: PropertyService = Depends(get_property_service)):
+    name: str,
+    service: PropertyService = Depends(get_property_service),
+):
     await service.create_property(name)
-
-
-

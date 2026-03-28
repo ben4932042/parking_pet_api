@@ -1,8 +1,8 @@
 import logging
-from typing import Optional, List
+from typing import List, Optional
 
 from domain.entities import PyObjectId
-from domain.entities.property import PropertySummary, PropertyEntity
+from domain.entities.property import PropertyDetailEntity, PropertyEntity
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.services.property_enrichment import IEnrichmentProvider
@@ -33,13 +33,22 @@ class PropertyService:
     ):
         return await self.repo.get_nearby(lat, lng, radius, types, page, size)
 
-    async def search_by_keyword(self, q: str, user_coords: Optional[tuple[float, float]] = None, map_coords: Optional[tuple[float, float]] = None):
+    async def search_by_keyword(
+        self,
+        q: str,
+        user_coords: Optional[tuple[float, float]] = None,
+        map_coords: Optional[tuple[float, float]] = None,
+    ):
         filter_condition = self.enrichment_provider.extract_search_criteria(q)
         logger.debug(f"Search criteria: {filter_condition}")
-        generate_query = self.enrichment_provider.generate_query(filter_condition, user_coords, map_coords)
+        generate_query = self.enrichment_provider.generate_query(
+            filter_condition,
+            user_coords,
+            map_coords,
+        )
         logger.debug(f"Generated query: {generate_query}")
         items = await self.repo.find_by_query(generate_query)
-        if len(items) == 0:
+        if not items:
             logger.info("No properties found for the given search criteria. try to search by name")
             response = await self.repo.get_by_keyword(q)
             items = response[:1]
@@ -48,17 +57,17 @@ class PropertyService:
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)
 
-    async def get_details(self, property_id: PyObjectId) -> PropertySummary:
+    async def get_details(self, property_id: PyObjectId) -> Optional[PropertyDetailEntity]:
         output: PropertyEntity = await self.repo.get_property_by_id(property_id)
         if output is None:
-            raise ValueError("Property not found")
-        return PropertySummary(
+            return None
+        return PropertyDetailEntity(
             id=output.id,
             name=output.name,
             address=output.address,
             latitude=output.latitude,
             longitude=output.longitude,
-            types=[output.primary_type],
+            types=output.types,
             rating=output.ai_analysis.ai_rating,
             tags=output.ai_analysis.highlights,
             regular_opening_hours=output.regular_opening_hours,

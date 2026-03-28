@@ -102,6 +102,8 @@ class PropertyEntity(BaseModel):
         description="即時營業狀態。若提到『現在有開嗎』、『營業中』、『不想白跑一趟』，請設為 true。"
     )
 
+    types: List[str] = Field(default_factory=list, description="primary_type 的別名。")
+
 
     model_config = {
         "populate_by_name": True,
@@ -160,10 +162,14 @@ class PropertyEntity(BaseModel):
                 return self
         self.is_open = False
         return self
+    @model_validator(mode="after")
+    def is_open_now(self) -> "PropertyEntity":
+        self.types = [self.primary_type] if self.primary_type else []
+        return self
 
 
 
-class PropertySummary(BaseModel):
+class PropertyDetailEntity(BaseModel):
     id: str
     name: str
     address: str

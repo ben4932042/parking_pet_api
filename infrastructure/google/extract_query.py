@@ -1,18 +1,14 @@
 import json
 import logging
 import warnings
-
+from typing import List, Optional
 
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field
-from typing import List, Optional
-import vertexai
-from google.oauth2 import service_account
 from langchain_google_genai import ChatGoogleGenerativeAI
+from pydantic import BaseModel, Field
 
 from domain.entities.property import PropertyEntity, PropertyFilterCondition
-from infrastructure.config import settings
 
 warnings.filterwarnings(
     "ignore", category=DeprecationWarning, module="langchain_google_vertexai"
@@ -31,7 +27,6 @@ class PreferenceTag(BaseModel):
     )
 
 
-# 建立一個專門定義「搜尋意圖」的模型
 class SearchIntent(BaseModel):
     mongo_query: dict = Field(
         description=(
@@ -46,8 +41,8 @@ class SearchIntent(BaseModel):
         description="根據使用者意圖生成的標籤列表。每個標籤包含 key (欄位_preference) 與 label (顯示文字)。"
     )
     min_rating: float = Field(
-        default=3.5,
-        description="最低評分。預設 3.5。只有當用戶提到『推薦、高品質、評價好、熱門』時才填入 3.8。",
+        default=0.0,
+        description="最低評分。預設 0.0。只有當用戶提到『推薦、高品質、評價好、熱門』時才提高門檻。",
     )
     landmark_context: Optional[str] = Field(
         None,
@@ -80,7 +75,7 @@ prompt = ChatPromptTemplate.from_messages(
    - **禁止** 在 `mongo_query` 中生成 `location` 欄位或任何經緯度數字。
    - 具體地點請統一填入 `landmark_context`。
 
-###  車程與距離換算規則 ###
+### 車程與距離換算規則 ###
 - **車程意圖**：若提到『車程、開車多久』，請估算並填入 `search_radius_meters`：
     - 『一小時』：40000 (40公里)。
     - 『半小時/30分鐘』：20000 (20公里)。
@@ -111,7 +106,7 @@ prompt = ChatPromptTemplate.from_messages(
    - 標籤：{{ "key": "欄位末端名_preference", "label": "功能簡稱" }}。
 
 ### 評價觸發規則 (嚴格執行) ###
-- **預設狀態**：`min_rating` 預設為 3.5。
+- **預設狀態**：`min_rating` 預設為 0.0。
 - **僅在使用者明確要求時才觸發**：
   - 提到『推薦、高品質、評價好、好停車』：`min_rating` = 3.8，並加入 {{ "key": "high_rating_preference", "label": "優選高評價" }}。
   - 提到『頂級、最好』：`min_rating` = 4.0。
@@ -129,7 +124,6 @@ prompt = ChatPromptTemplate.from_messages(
 
 parser = PydanticOutputParser(pydantic_object=SearchIntent)
 entity_info = json.dumps(PropertyEntity.model_json_schema(), ensure_ascii=False)
-
 
 
 def extract_query(llm: ChatGoogleGenerativeAI, user_input: str) -> PropertyFilterCondition:
