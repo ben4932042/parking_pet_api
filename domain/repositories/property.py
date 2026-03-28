@@ -7,7 +7,7 @@ from domain.entities.property import PropertyEntity
 
 class IPropertyRepository(ABC):
     @abstractmethod
-    async def get_by_keyword(self, q: str, type: Optional[str], page: int, size: int) -> Tuple[List[PropertyEntity], int]:
+    async def get_by_keyword(self, q: str) -> List[PropertyEntity]:
         ...
     @abstractmethod
     async def get_nearby(self, lat: float, lng: float, radius: int, types: List[str], page: int, size: int) -> Tuple[List[PropertyEntity], int]:
@@ -20,4 +20,7 @@ class IPropertyRepository(ABC):
         ...
     @abstractmethod
     async def create(self, new_property: PropertyEntity):
+        ...
+    @abstractmethod
+    async def find_by_query(self, query: dict) -> List[PropertyEntity]:
         ...

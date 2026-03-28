@@ -33,8 +33,17 @@ class PropertyService:
     ):
         return await self.repo.get_nearby(lat, lng, radius, types, page, size)
 
-    async def search_by_keyword(self, q: str, size: int):
-        return await self.enrichment_provider.search_by_chat(q, size)
+    async def search_by_keyword(self, q: str, user_coords: Optional[tuple[float, float]] = None, map_coords: Optional[tuple[float, float]] = None):
+        filter_condition = self.enrichment_provider.extract_search_criteria(q)
+        logger.debug(f"Search criteria: {filter_condition}")
+        generate_query = self.enrichment_provider.generate_query(filter_condition, user_coords, map_coords)
+        logger.debug(f"Generated query: {generate_query}")
+        items = await self.repo.find_by_query(generate_query)
+        if len(items) == 0:
+            logger.info("No properties found for the given search criteria. try to search by name")
+            response = await self.repo.get_by_keyword(q)
+            items = response[:1]
+        return items, filter_condition
 
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)

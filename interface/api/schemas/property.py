@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from domain.entities.enrichment import AIAnalysis
 from domain.entities.property import OpeningPeriod
+from infrastructure.google.extract_query import PreferenceTag
+
 
 class PropertyKeywordRequest(BaseModel):
     q: str
@@ -33,8 +35,7 @@ class PropertyOverviewResponse(BaseModel):
 
 class PropertySearchResponse(BaseModel):
     status: str
-    original_tags: List[str] = Field(default_factory=list)
-    active_tags: List[str] = Field(default_factory=list)
+    preferences: List[PreferenceTag] = Field(default_factory=list)
     results: List[PropertyOverviewResponse] = Field(default_factory=list)
 
 

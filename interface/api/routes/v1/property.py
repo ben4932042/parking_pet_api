@@ -22,10 +22,15 @@ router = APIRouter(prefix="/property")
     response_model=PropertySearchResponse,
 )
 async def search_properties_by_keyword(
-    params: PropertyKeywordRequest = Depends(),
+    query: str,
+    user_lat: float = None,
+    user_lng: float = None,
+    map_lat: float = None,
+    map_lng: float = None,
     service: PropertyService = Depends(get_property_service),
 ):
-    return await service.search_by_keyword(params.q, params.size)
+    items, conditions = await service.search_by_keyword(q=query, user_coords=(user_lng, user_lat), map_coords=(map_lng, map_lat))
+    return {"status": "success", "preferences": conditions.preferences, "results": items}
 
 
 

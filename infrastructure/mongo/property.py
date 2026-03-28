@@ -14,31 +14,21 @@ class PropertyRepository(IPropertyRepository):
 
     async def get_by_keyword(
         self,
-        q: str,
-        type: Optional[str],
-        page: int,
-        size: int,
-    ) -> Tuple[List[PropertyEntity], int]:
-        filters = {}
-        if type:
-            filters["types"] = {"$in": [type]}
-
-        filters["$or"] = [
+        q: str
+    ) -> List[PropertyEntity]:
+        filters = {"$or": [
             {"name": {"$regex": q, "$options": "i"}},
             {"address": {"$regex": q, "$options": "i"}},
-        ]
-
-        count_filter = filters.copy()
-
-        total: int = await self.collection.count_documents(count_filter)
-
-        skip = max(0, (page - 1) * size)
-        cursor = self.collection.find(filters).skip(skip).limit(size)
-
-        docs = await cursor.to_list(length=size)
-
+        ]}
+        cursor = self.collection.find(filters)
+        docs = await cursor.to_list()
         items = [PropertyEntity(**doc) for doc in docs]
-        return items, total
+        return items
+
+    async def find_by_query(self, query: dict) -> List[PropertyEntity]:
+        cursor = self.collection.find(query).sort("rating", -1)
+        docs = await cursor.to_list()
+        return [PropertyEntity(**doc) for doc in docs]
 
     async def get_nearby(
         self,
