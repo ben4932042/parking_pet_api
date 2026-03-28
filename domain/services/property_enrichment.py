@@ -32,11 +32,13 @@ class IEnrichmentProvider(ABC):
         target_coordinates = None
         if intent.landmark_context == "CURRENT_LOCATION":
             #FIXME: consider about user_coords case
-            target_coordinates = map_coords
+            target_coordinates = user_coords
         elif intent.landmark_context:
             display_name, landmark_coords = self.geocode_landmark(intent.landmark_context)
             if landmark_coords:
                 target_coordinates = landmark_coords
+        else:
+            target_coordinates = map_coords
 
         if target_coordinates:
             final_query["location"] = {
