@@ -152,6 +152,12 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "private_guest_room",
             "resort_hotel",
             "rv_park",
+            "school",
+            "secondary_school",
+            "university",
+            "library",
+            "preschool",
+            "primary_school"
         ],
     ),
 ]
