@@ -92,6 +92,7 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "food_store",
             "coffee_roastery",
             "food_store",
+            "dog_cafe",
         ],
     ),
     PropertyCategoryEntity(
@@ -105,6 +106,7 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "national_park",
             "state_park",
             "city_park",
+            "dog_cafe",
         ],
     ),
     PropertyCategoryEntity(
