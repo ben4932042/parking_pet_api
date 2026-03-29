@@ -27,7 +27,7 @@ router = APIRouter(prefix="/property")
 def _coords_or_none(lat: Optional[float], lng: Optional[float]) -> Optional[tuple[float, float]]:
     if lat is None or lng is None:
         return None
-    return (lng, lat)
+    return lng, lat
 
 
 @router.get(
