@@ -263,7 +263,7 @@ class PropertyDetailEntity(BaseModel):
     types: List[str]
     rating: float
     tags: List[str]
-    regular_opening_hours: List[OpeningPeriod]
+    regular_opening_hours: Optional[List[OpeningPeriod]]
     ai_analysis: AIAnalysis
     manual_overrides: Optional[PropertyManualOverrides] = None
     effective_pet_features: Optional[PetFeatures] = None
