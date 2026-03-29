@@ -2,10 +2,12 @@ import pytest
 
 from application.property import PropertyService
 from domain.entities.enrichment import AIAnalysis, PetEnvironment, PetFeatures, PetRules, PetService
+from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.property import OpeningPeriod, PropertyEntity, PropertyFilterCondition, TimePoint
 from domain.services.property_enrichment import IEnrichmentProvider
 from infrastructure.google.extract_query import SearchIntent
-from interface.api.routes.v1.property import get_detail, search_properties_by_keyword
+from interface.api.routes.v1.property import get_detail, get_nearby_properties, search_properties_by_keyword
+from interface.api.schemas.property import PropertyNearbyRequest
 
 
 class DummyEnrichmentProvider(IEnrichmentProvider):
@@ -39,6 +41,19 @@ class CaptureService:
         )
         conditions = PropertyFilterCondition(preferences=[])
         return [], conditions
+
+    async def search_nearby(self, lat, lng, radius, types, page, size):
+        self.calls.append(
+            {
+                "lat": lat,
+                "lng": lng,
+                "radius": radius,
+                "types": types,
+                "page": page,
+                "size": size,
+            }
+        )
+        return [], 0
 
 
 class MissingDetailService:
@@ -181,6 +196,34 @@ async def test_search_route_omits_invalid_coordinate_tuples():
             "map_coords": (121.56, 25.03),
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_nearby_route_expands_category_to_primary_types():
+    service = CaptureService()
+
+    await get_nearby_properties(
+        params=PropertyNearbyRequest(
+            lat=25.03,
+            lng=121.56,
+            radius=1000,
+            category=PropertyCategoryKey.RESTAURANT,
+            page=1,
+            size=20,
+        ),
+        service=service,
+    )
+
+    assert len(service.calls) == 1
+    call = service.calls[0]
+    assert call["lat"] == 25.03
+    assert call["lng"] == 121.56
+    assert call["radius"] == 1000
+    assert call["page"] == 1
+    assert call["size"] == 20
+    assert "restaurant" in call["types"]
+    assert "brunch_restaurant" in call["types"]
+    assert "bar" in call["types"]
 
 
 def test_generate_query_skips_current_location_when_user_coords_missing():

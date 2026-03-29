@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from domain.entities.audit import ActorInfo, PropertyAuditAction
 from domain.entities.enrichment import AIAnalysis
+from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.property import (
     OpeningPeriod,
     PetEnvironmentOverride,
@@ -25,10 +26,17 @@ class PropertyKeywordRequest(BaseModel):
 
 
 class PropertyNearbyRequest(BaseModel):
-    lat: float = Field(ge=-90, le=90)
-    lng: float = Field(ge=-180, le=180)
+    lat: float = Field(ge=-90, le=90, description="User or map center latitude.")
+    lng: float = Field(ge=-180, le=180, description="User or map center longitude.")
     radius: int = Field(default=10000, description="Radius in meters")
-    types_str: Optional[str] = Field(default=None)
+    category: Optional[PropertyCategoryKey] = Field(
+        default=None,
+        description=(
+            "Frontend category filter. "
+            "The backend expands this enum into one or more Google primary_type values. "
+            "Example: restaurant includes restaurant, brunch_restaurant, bar, hot_pot_restaurant, and other restaurant subtypes."
+        ),
+    )
     page: int = Field(default=1, ge=1)
     size: int = Field(default=20, ge=1, le=100)
 
@@ -40,6 +48,7 @@ class PropertyOverviewResponse(BaseModel):
     address: str
     latitude: float
     longitude: float
+    category: Optional[str]
     types: List[str]
     rating: float
     is_open: Optional[bool]

@@ -1,11 +1,12 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette import status
 
 from application.property import PropertyService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
+from domain.entities.property_category import get_primary_types_by_category_key
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import get_optional_request_actor, get_request_actor
 from interface.api.schemas.page import Pagination
@@ -33,13 +34,18 @@ def _coords_or_none(lat: Optional[float], lng: Optional[float]) -> Optional[tupl
     "",
     status_code=status.HTTP_200_OK,
     response_model=PropertySearchResponse,
+    summary="Search properties by keyword",
+    description=(
+        "Search properties by natural-language keyword. "
+        "Optional user/map coordinates help the backend apply geo-aware filtering and reranking."
+    ),
 )
 async def search_properties_by_keyword(
-    query: str,
-    user_lat: float = None,
-    user_lng: float = None,
-    map_lat: float = None,
-    map_lng: float = None,
+    query: str = Query(..., description="Natural-language search query."),
+    user_lat: float = Query(default=None, description="Current user latitude."),
+    user_lng: float = Query(default=None, description="Current user longitude."),
+    map_lat: float = Query(default=None, description="Current map center latitude."),
+    map_lng: float = Query(default=None, description="Current map center longitude."),
     service: PropertyService = Depends(get_property_service),
 ):
     items, conditions = await service.search_by_keyword(
@@ -54,12 +60,18 @@ async def search_properties_by_keyword(
     "/nearby",
     status_code=status.HTTP_200_OK,
     response_model=Pagination[PropertyOverviewResponse],
+    summary="Get nearby properties",
+    description=(
+        "Nearby search based on latitude/longitude and radius. "
+        "Use the category enum instead of raw primary_type strings. "
+        "The backend expands category into the corresponding Google Places primary_type set."
+    ),
 )
 async def get_nearby_properties(
     params: PropertyNearbyRequest = Depends(),
     service: PropertyService = Depends(get_property_service),
 ):
-    types = params.types_str.split(",") if params.types_str else []
+    types = get_primary_types_by_category_key(params.category) if params.category else []
     items, total = await service.search_nearby(
         params.lat, params.lng, params.radius, types, params.page, params.size
     )
@@ -67,7 +79,12 @@ async def get_nearby_properties(
     return {"items": items, "total": total, "page": params.page, "size": params.size, "pages": pages}
 
 
-@router.get("/{property_id}", response_model=PropertyDetailResponse)
+@router.get(
+    "/{property_id}",
+    response_model=PropertyDetailResponse,
+    summary="Get property detail",
+    description="Returns a single property detail record. Soft-deleted properties are not returned from this endpoint.",
+)
 async def get_detail(property_id: PyObjectId, service: PropertyService = Depends(get_property_service)):
     prop = await service.get_details(property_id=property_id)
     if prop is None:
@@ -78,9 +95,19 @@ async def get_detail(property_id: PyObjectId, service: PropertyService = Depends
     return prop
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=None)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=None,
+    summary="Create or sync property by name",
+    description=(
+        "Creates a new property from a keyword/name lookup or syncs an existing property if the resolved place already exists. "
+        "Manual pet-feature overrides are preserved during sync. "
+        "If the resolved property is soft-deleted, this endpoint returns conflict instead of auto-restoring it."
+    ),
+)
 async def create_property(
-    name: str,
+    name: str = Query(..., description="Property keyword or business name used for Google Places lookup."),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_optional_request_actor),
 ):
@@ -91,6 +118,12 @@ async def create_property(
     "/{property_id}/pet-features",
     status_code=status.HTTP_200_OK,
     response_model=PropertyPetFeaturesResponse,
+    summary="Patch manual pet-feature overrides",
+    description=(
+        "Partial update for manual pet-feature overrides. "
+        "Only send the fields that need to change. "
+        "Omitted fields remain unchanged."
+    ),
 )
 async def update_property_pet_features(
     property_id: PyObjectId,
@@ -125,10 +158,12 @@ async def update_property_pet_features(
     "/{property_id}",
     status_code=status.HTTP_200_OK,
     response_model=PropertyMutationResponse,
+    summary="Soft delete property",
+    description="Marks a property as deleted. Soft-deleted properties are excluded from normal search and detail endpoints.",
 )
 async def soft_delete_property(
     property_id: PyObjectId,
-    reason: Optional[str] = None,
+    reason: Optional[str] = Query(default=None, description="Optional audit reason for the soft delete."),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
@@ -152,10 +187,12 @@ async def soft_delete_property(
     "/{property_id}/restore",
     status_code=status.HTTP_200_OK,
     response_model=PropertyMutationResponse,
+    summary="Restore soft-deleted property",
+    description="Restores a previously soft-deleted property so it becomes visible in normal APIs again.",
 )
 async def restore_property(
     property_id: PyObjectId,
-    reason: Optional[str] = None,
+    reason: Optional[str] = Query(default=None, description="Optional audit reason for the restore action."),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
@@ -179,10 +216,12 @@ async def restore_property(
     "/{property_id}/audit-logs",
     status_code=status.HTTP_200_OK,
     response_model=list[PropertyAuditLogResponse],
+    summary="List property audit logs",
+    description="Returns audit history for create, sync, pet-feature override, soft delete, and restore actions.",
 )
 async def list_property_audit_logs(
     property_id: PyObjectId,
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200, description="Maximum number of audit log records to return."),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):

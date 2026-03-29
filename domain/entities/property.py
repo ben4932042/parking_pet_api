@@ -4,6 +4,7 @@ from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from domain.entities.audit import ActorInfo
+from domain.entities.property_category import get_primary_category_key
 from domain.entities.enrichment import AIAnalysis, PetEnvironment, PetFeatures, PetRules, PetService
 
 
@@ -176,6 +177,7 @@ class PropertyEntity(BaseModel):
         description="即時營業狀態。若提到『現在有開嗎』、『營業中』、『不想白跑一趟』，請設為 true。"
     )
 
+    category: Optional[str] = Field(default=None, description="前端產品分類名稱。")
     types: List[str] = Field(default_factory=list, description="primary_type 的別名。")
 
 
@@ -247,6 +249,7 @@ class PropertyEntity(BaseModel):
     @model_validator(mode="after")
     def is_open_now(self) -> "PropertyEntity":
         self.types = [self.primary_type] if self.primary_type else []
+        self.category = get_primary_category_key(self.primary_type)
         return self
 
 
