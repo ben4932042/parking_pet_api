@@ -113,6 +113,10 @@ class PropertyMutationResponse(BaseModel):
     deleted_at: Optional[datetime] = None
 
 
+class PropertyCreateResponse(BaseModel):
+    property_id: str
+
+
 class PropertyAuditLogResponse(BaseModel):
     property_id: str
     action: PropertyAuditAction

@@ -82,12 +82,16 @@ class PropertyService:
     async def create_property(self, name: str, actor: Optional[ActorInfo] = None):
         actor = actor or self._system_actor()
         source_data = self.enrichment_provider.create_property_by_name(name)
+        if source_data is None:
+            raise ValueError("Failed to resolve property from the provided keyword.")
         await self.raw_data_repo.save(source_data)
         existing = await self.repo.get_property_by_place_id(source_data.place_id, include_deleted=True)
         if existing and existing.is_deleted:
             raise ConflictError("Property is soft-deleted. Restore it before syncing again.")
 
         ai_result = self.enrichment_provider.generate_ai_analysis(source_data)
+        if ai_result is None:
+            raise ValueError("Failed to generate AI analysis for the resolved property.")
         if existing:
             final_property = self._merge_synced_property(existing, ai_result, actor)
             action = PropertyAuditAction.SYNC

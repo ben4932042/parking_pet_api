@@ -6,7 +6,8 @@ from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.property import OpeningPeriod, PropertyEntity, PropertyFilterCondition, TimePoint
 from domain.services.property_enrichment import IEnrichmentProvider
 from infrastructure.google.extract_query import SearchIntent
-from interface.api.routes.v1.property import get_detail, get_nearby_properties, search_properties_by_keyword
+from interface.api.routes.v1.property import create_property, get_detail, get_nearby_properties, search_properties_by_keyword
+from interface.api.exceptions.error import ConflictError
 from interface.api.schemas.property import PropertyNearbyRequest
 
 
@@ -59,6 +60,17 @@ class CaptureService:
 class MissingDetailService:
     async def get_details(self, property_id):
         return None
+
+
+class CreatePropertyService:
+    def __init__(self, created_property=None, error: Exception | None = None):
+        self.created_property = created_property
+        self.error = error
+
+    async def create_property(self, name, actor=None):
+        if self.error:
+            raise self.error
+        return self.created_property
 
 
 class DummyRepo:
@@ -224,6 +236,26 @@ async def test_nearby_route_expands_category_to_primary_types():
     assert "restaurant" in call["types"]
     assert "brunch_restaurant" in call["types"]
     assert "bar" in call["types"]
+
+
+@pytest.mark.asyncio
+async def test_create_property_route_returns_property_id_on_success():
+    service = CreatePropertyService(created_property=build_property(identifier="p1", latitude=25.03, longitude=121.56, rating=4.0))
+
+    response = await create_property(name="Dessert Cafe", service=service, actor=None)
+
+    assert response.property_id == "p1"
+
+
+@pytest.mark.asyncio
+async def test_create_property_route_returns_400_with_reason_on_failure():
+    service = CreatePropertyService(error=ConflictError("Property is soft-deleted. Restore it before syncing again."))
+
+    with pytest.raises(Exception) as exc_info:
+        await create_property(name="Dessert Cafe", service=service, actor=None)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Property is soft-deleted. Restore it before syncing again."
 
 
 def test_generate_query_skips_current_location_when_user_coords_missing():

@@ -7,11 +7,13 @@ from application.property import PropertyService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
 from domain.entities.property_category import get_primary_types_by_category_key
+from interface.api.exceptions.error import AppError
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import get_optional_request_actor, get_request_actor
 from interface.api.schemas.page import Pagination
 from interface.api.schemas.property import (
     PropertyAuditLogResponse,
+    PropertyCreateResponse,
     PropertyDetailResponse,
     PropertyMutationResponse,
     PropertyNearbyRequest,
@@ -98,12 +100,13 @@ async def get_detail(property_id: PyObjectId, service: PropertyService = Depends
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=None,
-    summary="Create or sync property by name",
+    response_model=PropertyCreateResponse,
+    summary="Create or sync property by keyword",
     description=(
         "Creates a new property from a keyword/name lookup or syncs an existing property if the resolved place already exists. "
-        "Manual pet-feature overrides are preserved during sync. "
-        "If the resolved property is soft-deleted, this endpoint returns conflict instead of auto-restoring it."
+        "Successful requests return HTTP 201 with the property ID. "
+        "Failures return HTTP 400 with a readable reason. "
+        "Manual pet-feature overrides are preserved during sync."
     ),
 )
 async def create_property(
@@ -111,7 +114,13 @@ async def create_property(
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_optional_request_actor),
 ):
-    await service.create_property(name, actor=actor)
+    try:
+        created_property = await service.create_property(name, actor=actor)
+        return PropertyCreateResponse(property_id=created_property.id)
+    except AppError as exc:
+        raise HTTPException(status_code=400, detail=exc.message or "Failed to create property.")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc) or "Failed to create property.")
 
 
 @router.patch(
