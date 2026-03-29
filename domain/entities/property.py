@@ -121,7 +121,7 @@ class PropertyEntity(BaseModel):
     place_id: str = Field(description="Google Maps Place ID")
     latitude: float = Field(description="Latitude of the property", ge=-90, le=90)
     longitude: float = Field(description="Longitude of the property", ge=-180, le=180)
-    regular_opening_hours: List[OpeningPeriod]
+    regular_opening_hours: Optional[List[OpeningPeriod]]
 
     address: str = Field(description="地址。僅用於『行政區名稱』（如：台北市、大安區、魚池鄉）或『路名』。"
             "禁止將具體地標（如：日月潭、101、台北車站）放進此欄位，具體地標請填入 landmark_context。"
