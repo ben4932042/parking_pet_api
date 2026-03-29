@@ -152,14 +152,24 @@ If the chosen coordinates are missing or incomplete, the geo filter is skipped.
 
 If landmark geocoding fails, the search now degrades gracefully to a non-landmark query instead of raising an exception.
 
-### 5. MongoDB executes the structured query
+### 5. MongoDB executes the structured query and the application reranks the results
 
 `PropertyRepository.find_by_query(...)` runs:
 
 - `collection.find(query)`
 - `.sort("rating", -1)`
 
-This is the core recommendation step in the live search path. The system does not currently use a learned ranker, vector similarity, or collaborative recommendation model. Ranking is still simple descending sort on the stored AI-derived rating.
+MongoDB still returns a first-pass candidate list ordered by rating, but the application layer now performs a second-pass rerank before returning results.
+
+The current rerank combines:
+
+- AI-derived rating
+- overall pet-feature density
+- requested pet-feature matches from the query
+- distance score when a geo anchor exists
+- small bonuses for exact type match and requested open-now match
+
+This is still a heuristic ranker rather than a learned recommendation model, but it is no longer pure `rating desc`.
 
 ### 6. Fallback to regex keyword search
 
@@ -259,18 +269,13 @@ The tags are important because they are the only explicit trace of the system’
 
 The following issues are still present in the current implementation and should be understood as part of the existing behavior.
 
-### 1. Query-time recommendation is mostly rating-based
-
-The live ranking strategy is currently:
-
-- filter by structured conditions
-- sort by `rating` descending
-
-This is simple and deterministic, but it means there is no deeper ranking formula combining distance, feature match strength, popularity, or confidence.
-
-### 2. Fallback only returns the first regex match
+### 1. Fallback only returns the first regex match
 
 When the structured query fails, the fallback truncates results to a single item. This is acceptable for exact place-name lookup, but it is weak for ambiguous place names or partial keywords.
+
+### 2. Ranking is heuristic, not learned
+
+The ranking layer now blends multiple signals, but it is still a hand-tuned heuristic formula. It does not yet use click feedback, popularity history, or learned relevance signals.
 
 ### 3. Search quality depends heavily on prompt behavior
 
@@ -280,10 +285,11 @@ The query parser is strongly guided by prompt rules, which is practical, but it 
 
 If the team wants the feature to evolve beyond the current implementation, the most impactful next steps would be:
 
-1. Replace pure rating sort with a composite ranking formula that includes distance, type match, feature match, and rating.
-2. Preserve multiple fallback matches instead of only the first one.
+1. Preserve multiple fallback matches instead of only the first one.
+2. Tune the heuristic weights with real query examples instead of keeping them static.
 3. Add more regression coverage around query parsing outputs, not just query assembly safeguards.
 4. Separate intent extraction from ranking strategy so recommendation tuning does not require prompt tuning.
+5. Add popularity or engagement signals once the project has usable behavioral data.
 
 ## Summary
 
@@ -298,7 +304,7 @@ At runtime, recommendation is implemented primarily through:
 
 - structured filtering
 - optional geospatial narrowing
-- descending sort by AI-derived rating
+- heuristic reranking over rating, pet-friendly signals, and distance
 - regex fallback when structured search fails
 
 That design is pragmatic and understandable, but it is still an early-stage recommendation system rather than a fully developed ranking engine.
