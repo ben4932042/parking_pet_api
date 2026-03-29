@@ -75,6 +75,7 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "vegan_restaurant",
             "vegetarian_restaurant",
             "vietnamese_restaurant",
+            "noodle_shop",
         ],
     ),
     PropertyCategoryEntity(
@@ -88,6 +89,9 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "bagel_shop",
             "acai_shop",
             "tea_house",
+            "food_store",
+            "coffee_roastery",
+            "food_store",
         ],
     ),
     PropertyCategoryEntity(
@@ -100,6 +104,7 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "garden",
             "national_park",
             "state_park",
+            "city_park",
         ],
     ),
     PropertyCategoryEntity(
@@ -114,6 +119,7 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
         label="寵物用品店",
         primary_types=[
             "pet_store",
+            "store",
         ],
     ),
     PropertyCategoryEntity(
