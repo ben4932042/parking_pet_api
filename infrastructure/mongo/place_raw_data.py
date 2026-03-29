@@ -13,3 +13,9 @@ class PlaceRawDataRepository(IPlaceRawDataRepository):
     async def create(self, source: AnalysisSource):
         await self.collection.insert_one(source.model_dump(by_alias=True))
 
+    async def save(self, source: AnalysisSource):
+        await self.collection.replace_one(
+            {"_id": source.id},
+            source.model_dump(by_alias=True),
+            upsert=True,
+        )

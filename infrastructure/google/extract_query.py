@@ -102,7 +102,7 @@ prompt = ChatPromptTemplate.from_messages(
    - 標籤：{{ "key": "primary_type_preference", "label": "類別名稱" }}。
 
 2. **功能篩選**：
-   - 使用 `ai_analysis.pet_features` 下的點號路徑布林欄位。
+   - 使用 `effective_pet_features` 下的點號路徑布林欄位。
    - 標籤：{{ "key": "欄位末端名_preference", "label": "功能簡稱" }}。
 
 ### 評價觸發規則 (嚴格執行) ###

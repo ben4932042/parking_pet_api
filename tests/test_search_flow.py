@@ -59,13 +59,19 @@ class DummyRepo:
     async def get_nearby(self, lat, lng, radius, types, page, size):
         raise NotImplementedError
 
-    async def get_property_by_id(self, property_id):
+    async def get_property_by_id(self, property_id, include_deleted=False):
+        raise NotImplementedError
+
+    async def get_property_by_place_id(self, place_id, include_deleted=False):
         raise NotImplementedError
 
     async def get_properties_by_ids(self, property_ids):
         raise NotImplementedError
 
     async def create(self, new_property):
+        raise NotImplementedError
+
+    async def save(self, property_entity):
         raise NotImplementedError
 
 
@@ -81,6 +87,17 @@ class RankingEnrichmentProvider(DummyEnrichmentProvider):
 class DummyRawDataRepo:
     async def create(self, source):
         raise NotImplementedError
+
+    async def save(self, source):
+        raise NotImplementedError
+
+
+class DummyAuditRepo:
+    async def create(self, audit_log):
+        return audit_log
+
+    async def list_by_property_id(self, property_id, limit=50):
+        return []
 
 
 def build_property(
@@ -234,6 +251,7 @@ async def test_search_reranks_by_distance_when_geo_context_exists():
     service = PropertyService(
         repo=DummyRepo([far_high_rating, near_good_rating]),
         raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
         enrichment_provider=RankingEnrichmentProvider(
             PropertyFilterCondition(
                 mongo_query={"primary_type": "cafe"},
@@ -277,6 +295,7 @@ async def test_search_reranks_by_pet_feature_density_beyond_repo_order():
     service = PropertyService(
         repo=DummyRepo([low_feature_high_rating, high_feature_lower_rating]),
         raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
         enrichment_provider=RankingEnrichmentProvider(
             PropertyFilterCondition(mongo_query={"primary_type": "cafe"})
         ),

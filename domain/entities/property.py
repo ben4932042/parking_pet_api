@@ -1,9 +1,10 @@
-from pydantic import BaseModel, Field, model_validator
-from typing import List, Literal, Optional
-from datetime import datetime, UTC
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any, List, Literal, Optional
 
-from domain.entities.enrichment import AIAnalysis
+from pydantic import BaseModel, Field, model_validator
+
+from domain.entities.audit import ActorInfo
+from domain.entities.enrichment import AIAnalysis, PetEnvironment, PetFeatures, PetRules, PetService
 
 
 class PointLocation(BaseModel):
@@ -47,6 +48,72 @@ class OpSegment(BaseModel):
     e: int = Field(description="結束分鐘數")
 
 
+class PetRulesOverride(BaseModel):
+    leash_required: Optional[bool] = None
+    stroller_required: Optional[bool] = None
+    allow_on_floor: Optional[bool] = None
+
+
+class PetEnvironmentOverride(BaseModel):
+    stairs: Optional[bool] = None
+    outdoor_seating: Optional[bool] = None
+    spacious: Optional[bool] = None
+    indoor_ac: Optional[bool] = None
+    off_leash_possible: Optional[bool] = None
+    pet_friendly_floor: Optional[bool] = None
+    has_shop_pet: Optional[bool] = None
+
+
+class PetServiceOverride(BaseModel):
+    pet_menu: Optional[bool] = None
+    free_water: Optional[bool] = None
+    free_treats: Optional[bool] = None
+    pet_seating: Optional[bool] = None
+
+
+class PetFeaturesOverride(BaseModel):
+    rules: Optional[PetRulesOverride] = None
+    environment: Optional[PetEnvironmentOverride] = None
+    services: Optional[PetServiceOverride] = None
+
+
+class PropertyManualOverrides(BaseModel):
+    pet_features: Optional[PetFeaturesOverride] = None
+    updated_by: Optional[ActorInfo] = None
+    updated_at: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def merge_pet_features(
+    inferred: PetFeatures,
+    overrides: Optional[PetFeaturesOverride],
+) -> PetFeatures:
+    if overrides is None:
+        return inferred
+
+    override_payload = overrides.model_dump(exclude_none=True)
+    if not override_payload:
+        return inferred
+
+    inferred_payload = inferred.model_dump()
+    merged_payload = _deep_merge(inferred_payload, override_payload)
+    return PetFeatures(
+        rules=PetRules(**merged_payload["rules"]),
+        environment=PetEnvironment(**merged_payload["environment"]),
+        services=PetService(**merged_payload["services"]),
+    )
+
+
 class PropertyEntity(BaseModel):
     id: str = Field(alias="_id")
     name: str = Field(description="Name of the property")
@@ -62,6 +129,13 @@ class PropertyEntity(BaseModel):
             "這類關鍵字請統一轉換為 primary_type 篩選。"
         )
     ai_analysis: AIAnalysis
+    manual_overrides: Optional[PropertyManualOverrides] = None
+    effective_pet_features: Optional[PetFeatures] = None
+    created_by: Optional[ActorInfo] = None
+    updated_by: Optional[ActorInfo] = None
+    deleted_by: Optional[ActorInfo] = None
+    deleted_at: Optional[datetime] = None
+    is_deleted: bool = False
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -141,6 +215,14 @@ class PropertyEntity(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def generate_effective_pet_features(self) -> "PropertyEntity":
+        self.effective_pet_features = merge_pet_features(
+            self.ai_analysis.pet_features,
+            self.manual_overrides.pet_features if self.manual_overrides else None,
+        )
+        return self
+
+    @model_validator(mode="after")
     def is_currently_open(self) -> "PropertyEntity":
         if not self.op_segments:
             self.is_open = None
@@ -180,6 +262,15 @@ class PropertyDetailEntity(BaseModel):
     tags: List[str]
     regular_opening_hours: List[OpeningPeriod]
     ai_analysis: AIAnalysis
+    manual_overrides: Optional[PropertyManualOverrides] = None
+    effective_pet_features: Optional[PetFeatures] = None
+    created_by: Optional[ActorInfo] = None
+    updated_by: Optional[ActorInfo] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    deleted_by: Optional[ActorInfo] = None
+    deleted_at: Optional[datetime] = None
+    is_deleted: bool = False
 
 class PropertySearchResultEntity(BaseModel):
     status: str
@@ -196,4 +287,3 @@ class PropertyFilterCondition(BaseModel):
     travel_time_limit_min: Optional[int] = Field(default=None)
     search_radius_meters: int = Field(default=100000)
     explanation: str = Field(default="")
-

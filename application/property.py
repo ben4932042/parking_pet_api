@@ -2,11 +2,22 @@ import logging
 import math
 from typing import Any, List, Optional
 
+from domain.entities.audit import ActorInfo, PropertyAuditAction, PropertyAuditLog
 from domain.entities import PyObjectId
-from domain.entities.property import PropertyDetailEntity, PropertyEntity
+from domain.entities.property import (
+    PetEnvironmentOverride,
+    PetFeaturesOverride,
+    PetRulesOverride,
+    PetServiceOverride,
+    PropertyDetailEntity,
+    PropertyEntity,
+    PropertyManualOverrides,
+)
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
+from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property import IPropertyRepository
 from domain.services.property_enrichment import IEnrichmentProvider
+from interface.api.exceptions.error import ConflictError, NotFoundError
 
 
 logger = logging.getLogger(__name__)
@@ -17,10 +28,12 @@ class PropertyService:
         self,
         repo: IPropertyRepository,
         raw_data_repo: IPlaceRawDataRepository,
+        audit_repo: IPropertyAuditRepository,
         enrichment_provider: IEnrichmentProvider,
     ):
         self.repo = repo
         self.raw_data_repo = raw_data_repo
+        self.audit_repo = audit_repo
         self.enrichment_provider = enrichment_provider
 
     async def search_nearby(
@@ -64,25 +77,162 @@ class PropertyService:
         output: PropertyEntity = await self.repo.get_property_by_id(property_id)
         if output is None:
             return None
-        return PropertyDetailEntity(
-            id=output.id,
-            name=output.name,
-            address=output.address,
-            latitude=output.latitude,
-            longitude=output.longitude,
-            types=output.types,
-            rating=output.ai_analysis.ai_rating,
-            tags=output.ai_analysis.highlights,
-            regular_opening_hours=output.regular_opening_hours,
-            ai_analysis=output.ai_analysis,
-        )
+        return self._to_detail_entity(output)
 
-    async def create_property(self, name: str):
+    async def create_property(self, name: str, actor: Optional[ActorInfo] = None):
+        actor = actor or self._system_actor()
         source_data = self.enrichment_provider.create_property_by_name(name)
-        await self.raw_data_repo.create(source_data)
+        await self.raw_data_repo.save(source_data)
+        existing = await self.repo.get_property_by_place_id(source_data.place_id, include_deleted=True)
+        if existing and existing.is_deleted:
+            raise ConflictError("Property is soft-deleted. Restore it before syncing again.")
+
         ai_result = self.enrichment_provider.generate_ai_analysis(source_data)
-        await self.repo.create(ai_result)
+        if existing:
+            final_property = self._merge_synced_property(existing, ai_result, actor)
+            action = PropertyAuditAction.SYNC
+            before = existing
+        else:
+            final_property = ai_result.model_copy(
+                update={
+                    "created_by": actor,
+                    "updated_by": actor,
+                }
+            )
+            action = PropertyAuditAction.CREATE
+            before = None
+
+        saved_property = await self.repo.save(final_property)
+        await self._create_audit_log(
+            property_id=saved_property.id,
+            action=action,
+            actor=actor,
+            before=before,
+            after=saved_property,
+        )
         logging.info(f"Property {name} created successfully")
+        return saved_property
+
+    async def update_pet_features(
+        self,
+        property_id: PyObjectId,
+        pet_rules: Optional[PetRulesOverride],
+        pet_environment: Optional[PetEnvironmentOverride],
+        pet_service: Optional[PetServiceOverride],
+        actor: ActorInfo,
+        reason: Optional[str] = None,
+    ) -> PropertyDetailEntity:
+        existing = await self.repo.get_property_by_id(property_id)
+        if existing is None:
+            raise NotFoundError("Property not found")
+
+        override = PetFeaturesOverride(
+            rules=pet_rules,
+            environment=pet_environment,
+            services=pet_service,
+        )
+        if not override.model_dump(exclude_none=True):
+            raise ConflictError("At least one pet feature override must be provided.")
+
+        merged_override = self._merge_pet_feature_overrides(
+            existing.manual_overrides.pet_features if existing.manual_overrides else None,
+            override,
+        )
+        updated_property = existing.model_copy(
+            update={
+                "manual_overrides": PropertyManualOverrides(
+                    pet_features=merged_override,
+                    updated_by=actor,
+                    updated_at=self._now(),
+                    reason=reason,
+                ),
+                "updated_by": actor,
+                "updated_at": self._now(),
+            }
+        )
+        updated_property = PropertyEntity(**updated_property.model_dump(by_alias=True))
+        saved_property = await self.repo.save(updated_property)
+        await self._create_audit_log(
+            property_id=saved_property.id,
+            action=PropertyAuditAction.PET_FEATURES_OVERRIDE,
+            actor=actor,
+            before=existing,
+            after=saved_property,
+            reason=reason,
+        )
+        return self._to_detail_entity(saved_property)
+
+    async def soft_delete_property(
+        self,
+        property_id: PyObjectId,
+        actor: ActorInfo,
+        reason: Optional[str] = None,
+    ) -> PropertyDetailEntity:
+        existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
+        if existing is None:
+            raise NotFoundError("Property not found")
+        if existing.is_deleted:
+            raise ConflictError("Property is already soft-deleted")
+
+        updated_property = existing.model_copy(
+            update={
+                "is_deleted": True,
+                "deleted_at": self._now(),
+                "deleted_by": actor,
+                "updated_at": self._now(),
+                "updated_by": actor,
+            }
+        )
+        updated_property = PropertyEntity(**updated_property.model_dump(by_alias=True))
+        saved_property = await self.repo.save(updated_property)
+        await self._create_audit_log(
+            property_id=saved_property.id,
+            action=PropertyAuditAction.SOFT_DELETE,
+            actor=actor,
+            before=existing,
+            after=saved_property,
+            reason=reason,
+        )
+        return self._to_detail_entity(saved_property)
+
+    async def restore_property(
+        self,
+        property_id: PyObjectId,
+        actor: ActorInfo,
+        reason: Optional[str] = None,
+    ) -> PropertyDetailEntity:
+        existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
+        if existing is None:
+            raise NotFoundError("Property not found")
+        if not existing.is_deleted:
+            raise ConflictError("Property is not deleted")
+
+        updated_property = existing.model_copy(
+            update={
+                "is_deleted": False,
+                "deleted_at": None,
+                "deleted_by": None,
+                "updated_at": self._now(),
+                "updated_by": actor,
+            }
+        )
+        updated_property = PropertyEntity(**updated_property.model_dump(by_alias=True))
+        saved_property = await self.repo.save(updated_property)
+        await self._create_audit_log(
+            property_id=saved_property.id,
+            action=PropertyAuditAction.RESTORE,
+            actor=actor,
+            before=existing,
+            after=saved_property,
+            reason=reason,
+        )
+        return self._to_detail_entity(saved_property)
+
+    async def get_audit_logs(self, property_id: PyObjectId, limit: int = 50) -> list[PropertyAuditLog]:
+        existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
+        if existing is None:
+            raise NotFoundError("Property not found")
+        return await self.audit_repo.list_by_property_id(property_id=str(property_id), limit=limit)
 
     def _rank_search_results(self, items: List[PropertyEntity], query: dict) -> List[PropertyEntity]:
         type_filter = query.get("primary_type")
@@ -138,7 +288,7 @@ class PropertyService:
 
     @staticmethod
     def _pet_feature_score(item: PropertyEntity) -> float:
-        pet_features = item.ai_analysis.pet_features.model_dump()
+        pet_features = (item.effective_pet_features or item.ai_analysis.pet_features).model_dump()
         bool_values: List[bool] = []
 
         def _collect(values: Any) -> None:
@@ -159,7 +309,7 @@ class PropertyService:
         return [
             key
             for key, value in query.items()
-            if key.startswith("ai_analysis.pet_features.") and isinstance(value, bool)
+            if key.startswith("effective_pet_features.") and isinstance(value, bool)
         ]
 
     @staticmethod
@@ -239,3 +389,151 @@ class PropertyService:
                 return None
             current = current[key]
         return current
+
+    @staticmethod
+    def _system_actor() -> ActorInfo:
+        return ActorInfo(name="system", source="system", role="system")
+
+    @staticmethod
+    def _now():
+        from datetime import UTC, datetime
+
+        return datetime.now(UTC)
+
+    @staticmethod
+    def _merge_synced_property(
+        existing: PropertyEntity,
+        synced: PropertyEntity,
+        actor: ActorInfo,
+    ) -> PropertyEntity:
+        payload = synced.model_dump(by_alias=True)
+        payload.update(
+            {
+                "_id": existing.id,
+                "created_at": existing.created_at,
+                "created_by": existing.created_by,
+                "updated_at": PropertyService._now(),
+                "updated_by": actor,
+                "manual_overrides": (
+                    existing.manual_overrides.model_dump(exclude_none=True)
+                    if existing.manual_overrides
+                    else None
+                ),
+                "is_deleted": existing.is_deleted,
+                "deleted_at": existing.deleted_at,
+                "deleted_by": (
+                    existing.deleted_by.model_dump(exclude_none=True)
+                    if existing.deleted_by
+                    else None
+                ),
+            }
+        )
+        return PropertyEntity(**payload)
+
+    @staticmethod
+    def _merge_pet_feature_overrides(
+        existing: Optional[PetFeaturesOverride],
+        incoming: PetFeaturesOverride,
+    ) -> PetFeaturesOverride:
+        if existing is None:
+            return incoming
+
+        existing_payload = existing.model_dump(exclude_none=True)
+        incoming_payload = incoming.model_dump(exclude_none=True)
+        merged_payload = PropertyService._deep_merge_dict(existing_payload, incoming_payload)
+        return PetFeaturesOverride(**merged_payload)
+
+    @staticmethod
+    def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(base)
+        for key, value in override.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = PropertyService._deep_merge_dict(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    async def _create_audit_log(
+        self,
+        property_id: str,
+        action: PropertyAuditAction,
+        actor: ActorInfo,
+        before: Optional[PropertyEntity],
+        after: Optional[PropertyEntity],
+        reason: Optional[str] = None,
+    ) -> None:
+        before_payload = self._serialize_property_for_audit(before)
+        after_payload = self._serialize_property_for_audit(after)
+        audit_log = PropertyAuditLog(
+            property_id=property_id,
+            action=action,
+            actor=actor,
+            reason=reason,
+            source=actor.source,
+            before=before_payload,
+            after=after_payload,
+            changes=self._build_changes(before_payload, after_payload),
+        )
+        await self.audit_repo.create(audit_log)
+
+    @staticmethod
+    def _serialize_property_for_audit(property_entity: Optional[PropertyEntity]) -> Optional[dict[str, Any]]:
+        if property_entity is None:
+            return None
+
+        payload = property_entity.model_dump(by_alias=True, exclude_none=True)
+        payload.pop("op_segments", None)
+        payload.pop("location", None)
+        payload.pop("types", None)
+        payload.pop("is_open", None)
+        return payload
+
+    @staticmethod
+    def _to_detail_entity(output: PropertyEntity) -> PropertyDetailEntity:
+        return PropertyDetailEntity(
+            id=output.id,
+            name=output.name,
+            address=output.address,
+            latitude=output.latitude,
+            longitude=output.longitude,
+            types=output.types,
+            rating=output.ai_analysis.ai_rating,
+            tags=output.ai_analysis.highlights,
+            regular_opening_hours=output.regular_opening_hours,
+            ai_analysis=output.ai_analysis,
+            manual_overrides=output.manual_overrides,
+            effective_pet_features=output.effective_pet_features,
+            created_by=output.created_by,
+            updated_by=output.updated_by,
+            created_at=output.created_at,
+            updated_at=output.updated_at,
+            deleted_by=output.deleted_by,
+            deleted_at=output.deleted_at,
+            is_deleted=output.is_deleted,
+        )
+
+    @staticmethod
+    def _build_changes(
+        before: Optional[dict[str, Any]],
+        after: Optional[dict[str, Any]],
+        path: str = "",
+    ) -> dict[str, dict[str, Any]]:
+        changes: dict[str, dict[str, Any]] = {}
+        before = before or {}
+        after = after or {}
+        all_keys = set(before.keys()) | set(after.keys())
+        for key in sorted(all_keys):
+            current_path = f"{path}.{key}" if path else key
+            before_value = before.get(key)
+            after_value = after.get(key)
+
+            if isinstance(before_value, dict) and isinstance(after_value, dict):
+                changes.update(PropertyService._build_changes(before_value, after_value, current_path))
+                continue
+
+            if before_value != after_value:
+                changes[current_path] = {
+                    "before": before_value,
+                    "after": after_value,
+                }
+        return changes

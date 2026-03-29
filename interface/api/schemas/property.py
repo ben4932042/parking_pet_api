@@ -1,9 +1,19 @@
+from datetime import datetime
 from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
+from domain.entities.audit import ActorInfo, PropertyAuditAction
 from domain.entities.enrichment import AIAnalysis
-from domain.entities.property import OpeningPeriod
+from domain.entities.property import (
+    OpeningPeriod,
+    PetEnvironmentOverride,
+    PetFeatures,
+    PetFeaturesOverride,
+    PropertyManualOverrides,
+    PetRulesOverride,
+    PetServiceOverride,
+)
 from infrastructure.google.extract_query import PreferenceTag
 
 
@@ -51,8 +61,56 @@ class PropertyDetailSchema(BaseModel):
     tags: List[str]
     regular_opening_hours: List[OpeningPeriod]
     ai_analysis: AIAnalysis
+    manual_overrides: Optional[PropertyManualOverrides] = None
+    effective_pet_features: Optional[PetFeatures] = None
+    created_by: Optional[ActorInfo] = None
+    updated_by: Optional[ActorInfo] = None
+    created_at: datetime
+    updated_at: datetime
+    deleted_by: Optional[ActorInfo] = None
+    deleted_at: Optional[datetime] = None
+    is_deleted: bool = False
 
 
 
 class PropertyDetailResponse(PropertyDetailSchema):
     model_config = {"from_attributes": True}
+
+
+class PropertyPetFeaturesPatchRequest(BaseModel):
+    pet_rules: Optional[PetRulesOverride] = None
+    pet_environment: Optional[PetEnvironmentOverride] = None
+    pet_service: Optional[PetServiceOverride] = None
+    reason: Optional[str] = None
+
+
+class PropertyPetFeaturesResponse(BaseModel):
+    property_id: str
+    inferred_pet_features: PetFeatures
+    manual_pet_features: Optional[PetFeaturesOverride] = None
+    effective_pet_features: PetFeatures
+    updated_by: Optional[ActorInfo] = None
+    updated_at: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
+class PropertyMutationResponse(BaseModel):
+    property_id: str
+    status: str
+    is_deleted: bool
+    updated_by: Optional[ActorInfo] = None
+    updated_at: Optional[datetime] = None
+    deleted_by: Optional[ActorInfo] = None
+    deleted_at: Optional[datetime] = None
+
+
+class PropertyAuditLogResponse(BaseModel):
+    property_id: str
+    action: PropertyAuditAction
+    actor: ActorInfo
+    reason: Optional[str] = None
+    source: str
+    changes: dict
+    before: Optional[dict] = None
+    after: Optional[dict] = None
+    created_at: datetime
