@@ -4,8 +4,6 @@ from typing import List, Optional
 
 from infrastructure.runtime_warnings import apply_runtime_warning_filters
 
-apply_runtime_warning_filters()
-
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -13,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from domain.entities.property import PropertyEntity, PropertyFilterCondition
 
+apply_runtime_warning_filters()
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +124,9 @@ parser = PydanticOutputParser(pydantic_object=SearchIntent)
 entity_info = json.dumps(PropertyEntity.model_json_schema(), ensure_ascii=False)
 
 
-def extract_query(llm: ChatGoogleGenerativeAI, user_input: str) -> PropertyFilterCondition:
+def extract_query(
+    llm: ChatGoogleGenerativeAI, user_input: str
+) -> PropertyFilterCondition:
     chain = prompt | llm | parser
     return chain.invoke(
         {

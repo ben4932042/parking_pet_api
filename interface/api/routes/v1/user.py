@@ -90,4 +90,6 @@ async def get_user_favorite_properties(
     current_user=Depends(get_current_user),
     property_service: PropertyService = Depends(get_property_service),
 ):
-    return await property_service.get_overviews_by_ids(current_user.favorite_property_ids)
+    return await property_service.get_overviews_by_ids(
+        current_user.favorite_property_ids
+    )

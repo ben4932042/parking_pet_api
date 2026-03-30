@@ -16,10 +16,14 @@ class IEnrichmentProvider(ABC):
     def extract_search_criteria(self, query: str) -> PropertyFilterCondition: ...
 
     @abstractmethod
-    def geocode_landmark(self, landmark_name: str) -> Tuple[str, Optional[Tuple[float, float]]]: ...
+    def geocode_landmark(
+        self, landmark_name: str
+    ) -> Tuple[str, Optional[Tuple[float, float]]]: ...
 
     @staticmethod
-    def _normalize_coordinates(coords: Optional[tuple[float, float]]) -> Optional[tuple[float, float]]:
+    def _normalize_coordinates(
+        coords: Optional[tuple[float, float]],
+    ) -> Optional[tuple[float, float]]:
         if coords is None or len(coords) != 2:
             return None
 

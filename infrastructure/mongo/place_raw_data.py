@@ -6,6 +6,7 @@ from domain.repositories.place_raw_data import IPlaceRawDataRepository
 
 logger = logging.getLogger(__name__)
 
+
 class PlaceRawDataRepository(IPlaceRawDataRepository):
     def __init__(self, client, collection_name: str):
         self.collection = client.get_collection(collection_name)

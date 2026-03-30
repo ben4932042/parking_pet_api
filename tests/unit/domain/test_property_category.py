@@ -1,4 +1,10 @@
-from domain.entities.enrichment import AIAnalysis, PetEnvironment, PetFeatures, PetRules, PetService
+from domain.entities.enrichment import (
+    AIAnalysis,
+    PetEnvironment,
+    PetFeatures,
+    PetRules,
+    PetService,
+)
 from domain.entities.property import OpeningPeriod, PropertyEntity, TimePoint
 from domain.entities.property_category import (
     PROPERTY_CATEGORIES,
@@ -37,7 +43,9 @@ def test_pet_care_maps_to_pet_grooming():
 
 def test_restaurant_category_contains_brunch_and_bar():
     restaurant_category = next(
-        category for category in PROPERTY_CATEGORIES if category.key == PropertyCategoryKey.RESTAURANT
+        category
+        for category in PROPERTY_CATEGORIES
+        if category.key == PropertyCategoryKey.RESTAURANT
     )
 
     assert "brunch_restaurant" in restaurant_category.primary_types
@@ -67,7 +75,9 @@ def test_property_entity_generates_overview_category_from_primary_type():
             venue_type="dessert cafe",
             ai_summary="summary",
             pet_features=PetFeatures(
-                rules=PetRules(leash_required=False, stroller_required=False, allow_on_floor=False),
+                rules=PetRules(
+                    leash_required=False, stroller_required=False, allow_on_floor=False
+                ),
                 environment=PetEnvironment(
                     stairs=False,
                     outdoor_seating=False,

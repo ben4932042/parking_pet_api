@@ -41,7 +41,6 @@ class PropertyNearbyRequest(BaseModel):
     size: int = Field(default=20, ge=1, le=100)
 
 
-
 class PropertyOverviewResponse(BaseModel):
     id: str
     name: str
@@ -52,6 +51,7 @@ class PropertyOverviewResponse(BaseModel):
     types: List[str]
     rating: float
     is_open: Optional[bool]
+
 
 class PropertySearchResponse(BaseModel):
     status: str
@@ -79,7 +79,6 @@ class PropertyDetailSchema(BaseModel):
     deleted_by: Optional[ActorInfo] = None
     deleted_at: Optional[datetime] = None
     is_deleted: bool = False
-
 
 
 class PropertyDetailResponse(PropertyDetailSchema):

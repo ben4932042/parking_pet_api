@@ -101,7 +101,9 @@ def test_generate_query_skips_location_when_landmark_geocode_fails():
         search_radius_meters=2000,
     )
 
-    query = provider.generate_query(condition, user_coords=None, map_coords=(121.0, 25.0))
+    query = provider.generate_query(
+        condition, user_coords=None, map_coords=(121.0, 25.0)
+    )
 
     assert query == {"primary_type": "cafe"}
 
@@ -118,7 +120,9 @@ def test_search_intent_defaults_to_neutral_rating_gate():
 
 
 @pytest.mark.asyncio
-async def test_search_reranks_by_distance_when_geo_context_exists(property_entity_factory):
+async def test_search_reranks_by_distance_when_geo_context_exists(
+    property_entity_factory,
+):
     far_high_rating = property_entity_factory(
         identifier="far-high-rating",
         latitude=25.05,
@@ -158,7 +162,9 @@ async def test_search_reranks_by_distance_when_geo_context_exists(property_entit
 
 
 @pytest.mark.asyncio
-async def test_search_reranks_by_pet_feature_density_beyond_repo_order(property_entity_factory):
+async def test_search_reranks_by_pet_feature_density_beyond_repo_order(
+    property_entity_factory,
+):
     low_feature_high_rating = property_entity_factory(
         identifier="low-feature-high-rating",
         latitude=25.03,
@@ -188,6 +194,11 @@ async def test_search_reranks_by_pet_feature_density_beyond_repo_order(property_
         ),
     )
 
-    results, _ = await service.search_by_keyword(q="pet cafe", user_coords=None, map_coords=None)
+    results, _ = await service.search_by_keyword(
+        q="pet cafe", user_coords=None, map_coords=None
+    )
 
-    assert [item.id for item in results] == ["high-feature-lower-rating", "low-feature-high-rating"]
+    assert [item.id for item in results] == [
+        "high-feature-lower-rating",
+        "low-feature-high-rating",
+    ]

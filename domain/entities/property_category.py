@@ -159,7 +159,7 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "university",
             "library",
             "preschool",
-            "primary_school"
+            "primary_school",
         ],
     ),
 ]
@@ -187,7 +187,9 @@ def get_primary_category_key(primary_type: str) -> str | None:
     return matched[0].key.value
 
 
-def get_primary_types_by_category_key(category_key: PropertyCategoryKey | None) -> list[str]:
+def get_primary_types_by_category_key(
+    category_key: PropertyCategoryKey | None,
+) -> list[str]:
     if category_key is None:
         return []
 

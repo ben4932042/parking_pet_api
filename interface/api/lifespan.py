@@ -19,4 +19,3 @@ async def lifespan(app: FastAPI):
 
     await mongodb_client.close()
     logger.info("Application shutdown completed successfully")
-

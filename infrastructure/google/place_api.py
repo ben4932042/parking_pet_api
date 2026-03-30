@@ -5,14 +5,17 @@ from domain.entities.enrichment import PlaceCandidate, PlaceDetail, Review
 from infrastructure.config import settings
 
 
-
 logger = logging.getLogger(__name__)
 
-SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText'
-DETAILS_URL = 'https://places.googleapis.com/v1/places/'
+SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+DETAILS_URL = "https://places.googleapis.com/v1/places/"
+
 
 def search_basic_information_by_name(name: str) -> PlaceCandidate:
-    headers = {"Content-Type": "application/json", "X-Goog-Api-Key": settings.google.place_api_key.get_secret_value()}
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": settings.google.place_api_key.get_secret_value(),
+    }
 
     pro_mask = (
         "places.id,places.displayName,places.formattedAddress,places.location,"
@@ -57,12 +60,15 @@ def search_basic_information_by_name(name: str) -> PlaceCandidate:
         accessibility_options=place.get("accessibilityOptions"),
         takeout=place.get("takeout"),
         delivery=place.get("delivery"),
-        dine_in=place.get("dineIn")
+        dine_in=place.get("dineIn"),
     )
 
-def get_place_details(basic_info: PlaceCandidate) -> PlaceDetail | None:
 
-    headers = {"Content-Type": "application/json", "X-Goog-Api-Key": settings.google.place_api_key.get_secret_value()}
+def get_place_details(basic_info: PlaceCandidate) -> PlaceDetail | None:
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": settings.google.place_api_key.get_secret_value(),
+    }
 
     pro_mask = (
         "rating,reviews,userRatingCount,priceLevel,regularOpeningHours,"
@@ -87,8 +93,9 @@ def get_place_details(basic_info: PlaceCandidate) -> PlaceDetail | None:
                 author=r.get("authorAttribution", {}).get("displayName"),
                 rating=r.get("rating"),
                 text=r.get("text", {}).get("text"),
-                time=r.get("relativePublishTimeDescription")
-            ) for r in details.get("reviews", [])
+                time=r.get("relativePublishTimeDescription"),
+            )
+            for r in details.get("reviews", [])
         ]
 
         return PlaceDetail(
@@ -104,9 +111,8 @@ def get_place_details(basic_info: PlaceCandidate) -> PlaceDetail | None:
             good_for_groups=details.get("goodForGroups"),
             serves_beer=details.get("servesBeer"),
             serves_wine=details.get("servesWine"),
-            reviews=formatted_reviews
+            reviews=formatted_reviews,
         )
-
 
     except Exception as e:
         logger.exception(f"Failed to get place details {str(e)}", exc_info=True)

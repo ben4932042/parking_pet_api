@@ -10,7 +10,10 @@ from domain.entities.property import (
 )
 from domain.entities.property_category import PropertyCategoryKey
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.user import get_optional_request_actor, get_request_actor
+from interface.api.dependencies.user import (
+    get_optional_request_actor,
+    get_request_actor,
+)
 from interface.api.exceptions.error import ConflictError
 
 
@@ -65,7 +68,9 @@ class PropertyMutationService:
         self.logs = logs or []
         self.calls = []
 
-    async def update_pet_features(self, property_id, pet_rules, pet_environment, pet_service, actor, reason=None):
+    async def update_pet_features(
+        self, property_id, pet_rules, pet_environment, pet_service, actor, reason=None
+    ):
         self.calls.append(
             {
                 "fn": "update_pet_features",
@@ -114,7 +119,9 @@ class PropertyMutationService:
 
 @pytest.fixture
 def anonymous_actor_override(actor_factory):
-    return actor_factory(name="anonymous-api", role="anonymous", source="api", user_id=None)
+    return actor_factory(
+        name="anonymous-api", role="anonymous", source="api", user_id=None
+    )
 
 
 @pytest.fixture
@@ -180,7 +187,9 @@ def test_create_property_route_returns_property_id_on_success(
 ):
     service = override_api_dep(
         get_property_service,
-        CreatePropertyService(created_property=property_entity_factory(identifier="p1")),
+        CreatePropertyService(
+            created_property=property_entity_factory(identifier="p1")
+        ),
     )
     override_api_dep(get_optional_request_actor, anonymous_actor_override)
 
@@ -198,14 +207,21 @@ def test_create_property_route_returns_400_with_reason_on_failure(
 ):
     override_api_dep(
         get_property_service,
-        CreatePropertyService(error=ConflictError("Property is soft-deleted. Restore it before syncing again.")),
+        CreatePropertyService(
+            error=ConflictError(
+                "Property is soft-deleted. Restore it before syncing again."
+            )
+        ),
     )
     override_api_dep(get_optional_request_actor, anonymous_actor_override)
 
     response = client.post("/api/v1/property", params={"name": "Dessert Cafe"})
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Property is soft-deleted. Restore it before syncing again."
+    assert (
+        response.json()["detail"]
+        == "Property is soft-deleted. Restore it before syncing again."
+    )
 
 
 def test_get_detail_returns_404_when_service_has_no_property(client, override_api_dep):
@@ -222,7 +238,9 @@ def test_update_pet_features_route_returns_effective_and_manual_features(
     property_entity_factory,
     request_actor_override,
 ):
-    property_entity = property_entity_factory(identifier="p1", place_id="place-1", free_water=False)
+    property_entity = property_entity_factory(
+        identifier="p1", place_id="place-1", free_water=False
+    )
     property_entity = PropertyEntity(
         **property_entity.model_dump(by_alias=True, exclude={"manual_overrides"}),
         manual_overrides=PropertyManualOverrides(
@@ -234,7 +252,9 @@ def test_update_pet_features_route_returns_effective_and_manual_features(
             updated_at=property_entity.updated_at,
         ),
     )
-    service = override_api_dep(get_property_service, PropertyMutationService(property_entity=property_entity))
+    service = override_api_dep(
+        get_property_service, PropertyMutationService(property_entity=property_entity)
+    )
     override_api_dep(get_request_actor, request_actor_override)
 
     response = client.patch(
@@ -259,14 +279,18 @@ def test_soft_delete_route_returns_deleted_status(
     property_entity_factory,
     request_actor_override,
 ):
-    deleted_property = property_entity_factory(identifier="p1", place_id="place-1").model_copy(
+    deleted_property = property_entity_factory(
+        identifier="p1", place_id="place-1"
+    ).model_copy(
         update={
             "is_deleted": True,
             "deleted_by": request_actor_override,
             "updated_by": request_actor_override,
         }
     )
-    service = override_api_dep(get_property_service, PropertyMutationService(property_entity=deleted_property))
+    service = override_api_dep(
+        get_property_service, PropertyMutationService(property_entity=deleted_property)
+    )
     override_api_dep(get_request_actor, request_actor_override)
 
     response = client.delete("/api/v1/property/p1", params={"reason": "duplicate"})
@@ -285,17 +309,23 @@ def test_restore_route_returns_restored_status(
     property_entity_factory,
     request_actor_override,
 ):
-    restored_property = property_entity_factory(identifier="p1", place_id="place-1").model_copy(
+    restored_property = property_entity_factory(
+        identifier="p1", place_id="place-1"
+    ).model_copy(
         update={
             "is_deleted": False,
             "deleted_by": None,
             "updated_by": request_actor_override,
         }
     )
-    service = override_api_dep(get_property_service, PropertyMutationService(property_entity=restored_property))
+    service = override_api_dep(
+        get_property_service, PropertyMutationService(property_entity=restored_property)
+    )
     override_api_dep(get_request_actor, request_actor_override)
 
-    response = client.post("/api/v1/property/p1/restore", params={"reason": "restore by admin"})
+    response = client.post(
+        "/api/v1/property/p1/restore", params={"reason": "restore by admin"}
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -316,7 +346,12 @@ def test_audit_logs_route_returns_history(
             action=PropertyAuditAction.PET_FEATURES_OVERRIDE,
             actor=request_actor_override,
             reason="verified",
-            changes={"manual_overrides.pet_features.services.free_water": {"before": False, "after": True}},
+            changes={
+                "manual_overrides.pet_features.services.free_water": {
+                    "before": False,
+                    "after": True,
+                }
+            },
         )
     ]
     service = override_api_dep(get_property_service, PropertyMutationService(logs=logs))

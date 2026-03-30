@@ -6,7 +6,9 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 
 class LoggingMiddleware:
-    def __init__(self, app: ASGIApp, *, exclude_paths: Optional[Set[str]] = None) -> None:
+    def __init__(
+        self, app: ASGIApp, *, exclude_paths: Optional[Set[str]] = None
+    ) -> None:
         self.app = app
         self._logger = logging.getLogger(__name__)
         self._exclude_paths = exclude_paths or set()
@@ -54,7 +56,12 @@ class LoggingMiddleware:
             return await original_receive()
 
         # 3) Log the request
-        headers = {k.decode() if isinstance(k, bytes) else k: v.decode() if isinstance(v, bytes) else v for k, v in scope.get("headers", [])}
+        headers = {
+            k.decode() if isinstance(k, bytes) else k: v.decode()
+            if isinstance(v, bytes)
+            else v
+            for k, v in scope.get("headers", [])
+        }
         # scope headers come as list[tuple[bytes, bytes]]; convert nicely
         if not headers:
             # if we built from scope manually, we might need to re-parse
@@ -66,7 +73,10 @@ class LoggingMiddleware:
             try:
                 if "application/json" in content_type:
                     body_for_log = json.loads(body.decode("utf-8"))
-                elif "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:  # noqa: E501
+                elif (
+                    "application/x-www-form-urlencoded" in content_type
+                    or "multipart/form-data" in content_type
+                ):  # noqa: E501
                     body_for_log = body.decode("utf-8", errors="replace")
                 else:
                     body_for_log = body.decode("utf-8", errors="replace")
@@ -97,7 +107,9 @@ class LoggingMiddleware:
                 response_info["status_code"] = status
                 # headers are in message["headers"]
                 # we might want to detect media_type
-                resp_headers = {k.decode(): v.decode() for k, v in message.get("headers", [])}
+                resp_headers = {
+                    k.decode(): v.decode() for k, v in message.get("headers", [])
+                }
                 response_info["media_type"] = resp_headers.get("content-type")
                 await send(message)
             elif message["type"] == "http.response.body":
@@ -106,7 +118,12 @@ class LoggingMiddleware:
                 more_body = message.get("more_body", False)
 
                 # only buffer if small and not event-stream
-                if body_bytes and not more_body and response_info["media_type"] != "text/event-stream" and (response_info["body"] is None):
+                if (
+                    body_bytes
+                    and not more_body
+                    and response_info["media_type"] != "text/event-stream"
+                    and (response_info["body"] is None)
+                ):
                     # cap size
                     # we will buffer the body but to avoid breaking streaming, we'll cap
                     if len(body_bytes) <= 10240:  # 10 KB

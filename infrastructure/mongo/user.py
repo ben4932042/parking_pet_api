@@ -30,8 +30,7 @@ class UserRepository(IUserRepository):
 
     async def update_user_profile(self, user_id: str, name: str) -> UserEntity:
         await self.collection.update_one(
-            {"_id": ObjectId(user_id)},
-            {"$set": {"name": name}}
+            {"_id": ObjectId(user_id)}, {"$set": {"name": name}}
         )
         return await self.get_user_by_id(user_id)
 

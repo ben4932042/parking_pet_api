@@ -16,7 +16,9 @@ def get_user_service(repo=Depends(get_user_repository)) -> UserService:
     return UserService(repo=repo)
 
 
-def build_actor_from_user(current_user: UserEntity, source: SourceType = "user") -> ActorInfo:
+def build_actor_from_user(
+    current_user: UserEntity, source: SourceType = "user"
+) -> ActorInfo:
     return ActorInfo(
         user_id=str(current_user.id),
         name=current_user.name,

@@ -37,6 +37,7 @@ class MongoDBClient:
 
 if __name__ == "__main__":
     import asyncio
+
     async def test_connection():
         client = MongoDBClient()
         try:

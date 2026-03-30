@@ -6,7 +6,6 @@ T = TypeVar("T")
 
 
 class Pagination(BaseModel, Generic[T]):
-
     total: int
     page: int
     size: int

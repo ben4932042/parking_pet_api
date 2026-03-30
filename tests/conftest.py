@@ -5,17 +5,22 @@ from datetime import datetime, timezone
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from domain.entities.audit import ActorInfo
-from domain.entities.enrichment import AIAnalysis, PetEnvironment, PetFeatures, PetRules, PetService
 from domain.entities.property import OpeningPeriod, PropertyEntity, TimePoint
 from domain.entities.user import UserEntity
 from interface.api.exceptions.exception_handlers import register_exception_handlers
 from interface.api.routes.v1 import router as v1_router
+from domain.entities.audit import ActorInfo
+from domain.entities.enrichment import (
+    AIAnalysis,
+    PetEnvironment,
+    PetFeatures,
+    PetRules,
+    PetService,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 @pytest.fixture

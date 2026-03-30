@@ -5,7 +5,13 @@ from pydantic import BaseModel, Field, model_validator
 
 from domain.entities.audit import ActorInfo
 from domain.entities.property_category import get_primary_category_key
-from domain.entities.enrichment import AIAnalysis, PetEnvironment, PetFeatures, PetRules, PetService
+from domain.entities.enrichment import (
+    AIAnalysis,
+    PetEnvironment,
+    PetFeatures,
+    PetRules,
+    PetService,
+)
 
 
 class PointLocation(BaseModel):
@@ -123,12 +129,13 @@ class PropertyEntity(BaseModel):
     longitude: float = Field(description="Longitude of the property", ge=-180, le=180)
     regular_opening_hours: Optional[List[OpeningPeriod]]
 
-    address: str = Field(description="地址。僅用於『行政區名稱』（如：台北市、大安區、魚池鄉）或『路名』。"
-            "禁止將具體地標（如：日月潭、101、台北車站）放進此欄位，具體地標請填入 landmark_context。"
-            "地址。僅用於『行政區名稱』或『路名』。"
-            "【嚴禁】在此搜尋『餐廳類型』或『食物關鍵字』（如：火鍋、咖啡、民宿）。"
-            "這類關鍵字請統一轉換為 primary_type 篩選。"
-        )
+    address: str = Field(
+        description="地址。僅用於『行政區名稱』（如：台北市、大安區、魚池鄉）或『路名』。"
+        "禁止將具體地標（如：日月潭、101、台北車站）放進此欄位，具體地標請填入 landmark_context。"
+        "地址。僅用於『行政區名稱』或『路名』。"
+        "【嚴禁】在此搜尋『餐廳類型』或『食物關鍵字』（如：火鍋、咖啡、民宿）。"
+        "這類關鍵字請統一轉換為 primary_type 篩選。"
+    )
     ai_analysis: AIAnalysis
     manual_overrides: Optional[PropertyManualOverrides] = None
     effective_pet_features: Optional[PetFeatures] = None
@@ -143,43 +150,43 @@ class PropertyEntity(BaseModel):
     # generated field
     op_segments: List[OpSegment] = Field(default_factory=list)
     location: Optional[PointLocation] = Field(
-        default=None, description="地理座標欄位。注意：絕對禁止在 mongo_query 中自行生成 $near 或經緯度數字。"
+        default=None,
+        description="地理座標欄位。注意：絕對禁止在 mongo_query 中自行生成 $near 或經緯度數字。",
     )
     primary_type: str = Field(
         description=(
-        "地點的分類標籤。請根據使用者需求精準匹配下列關鍵字：\n"
-        "- cafe: 包含咖啡廳、甜點店(dessert_shop)、下午茶、蛋糕(cake_shop)、麵包店(bakery)\n"
-        "- hot_pot_restaurant: 火鍋店\n"
-        "- yakiniku_restaurant: 燒肉、烤肉\n"
-        "- ramen_restaurant: 拉麵\n"
-        "- brunch_restaurant: 早午餐\n"
-        "- bistro: 餐酒館\n"
-        "- restaurant: 一般餐廳 (若上述皆不符合則用此項)\n"
-        "- lodging: 民宿、旅館、住宿\n"
-        "- veterinary_care: 醫院、獸醫、看病\n"
-        "- pet_care: 寵物美容、洗澡、剪毛\n"
-        "- pet_store: 寵物用品、買東西"
-        "- park: 公園(park)、健行(hiking_area)、寵物公園(dog_park)、花園。\n"
-        "- hospital: 獸醫院(veterinary_care)。\n"
-        "- grooming: 寵物美容、寵物洗澡(pet_care)。\n"
-        "- petSupplyStore: 寵物用品店(pet_store)。\n"
-        "- lodging: 旅館、民宿、寵物住宿(pet_boarding_service)。"
+            "地點的分類標籤。請根據使用者需求精準匹配下列關鍵字：\n"
+            "- cafe: 包含咖啡廳、甜點店(dessert_shop)、下午茶、蛋糕(cake_shop)、麵包店(bakery)\n"
+            "- hot_pot_restaurant: 火鍋店\n"
+            "- yakiniku_restaurant: 燒肉、烤肉\n"
+            "- ramen_restaurant: 拉麵\n"
+            "- brunch_restaurant: 早午餐\n"
+            "- bistro: 餐酒館\n"
+            "- restaurant: 一般餐廳 (若上述皆不符合則用此項)\n"
+            "- lodging: 民宿、旅館、住宿\n"
+            "- veterinary_care: 醫院、獸醫、看病\n"
+            "- pet_care: 寵物美容、洗澡、剪毛\n"
+            "- pet_store: 寵物用品、買東西"
+            "- park: 公園(park)、健行(hiking_area)、寵物公園(dog_park)、花園。\n"
+            "- hospital: 獸醫院(veterinary_care)。\n"
+            "- grooming: 寵物美容、寵物洗澡(pet_care)。\n"
+            "- petSupplyStore: 寵物用品店(pet_store)。\n"
+            "- lodging: 旅館、民宿、寵物住宿(pet_boarding_service)。"
         )
     )
 
     rating: Optional[float] = Field(
         default=0.0,
-        description="店家的 AI 綜合評分 (0.0-5.0)。若提到『高品質』、『熱門』、『推薦』或『好店』，請使用 {'$gte': 4.0}。"
+        description="店家的 AI 綜合評分 (0.0-5.0)。若提到『高品質』、『熱門』、『推薦』或『好店』，請使用 {'$gte': 4.0}。",
     )
 
     is_open: Optional[bool] = Field(
         default=None,
-        description="即時營業狀態。若提到『現在有開嗎』、『營業中』、『不想白跑一趟』，請設為 true。"
+        description="即時營業狀態。若提到『現在有開嗎』、『營業中』、『不想白跑一趟』，請設為 true。",
     )
 
     category: Optional[str] = Field(default=None, description="前端產品分類名稱。")
     types: List[str] = Field(default_factory=list, description="primary_type 的別名。")
-
 
     model_config = {
         "populate_by_name": True,
@@ -211,6 +218,7 @@ class PropertyEntity(BaseModel):
 
         self.location = PointLocation(coordinates=[self.longitude, self.latitude])
         return self
+
     @model_validator(mode="after")
     def generate_rating(self) -> "PropertyEntity":
         self.rating = self.ai_analysis.ai_rating
@@ -233,7 +241,6 @@ class PropertyEntity(BaseModel):
         tz_taiwan = timezone(timedelta(hours=8))
         now = datetime.now(tz_taiwan)
 
-
         day_of_week = (now.weekday() + 1) % 7
         current_minutes = (day_of_week * 1440) + (now.hour * 60) + now.minute
 
@@ -246,12 +253,12 @@ class PropertyEntity(BaseModel):
                 return self
         self.is_open = False
         return self
+
     @model_validator(mode="after")
     def is_open_now(self) -> "PropertyEntity":
         self.types = [self.primary_type] if self.primary_type else []
         self.category = get_primary_category_key(self.primary_type)
         return self
-
 
 
 class PropertyDetailEntity(BaseModel):
@@ -275,11 +282,13 @@ class PropertyDetailEntity(BaseModel):
     deleted_at: Optional[datetime] = None
     is_deleted: bool = False
 
+
 class PropertySearchResultEntity(BaseModel):
     status: str
     original_tags: List[dict] = Field(default_factory=list)
     active_tags: List[dict] = Field(default_factory=list)
     results: List[PropertyEntity] = Field(default_factory=list)
+
 
 class PropertyFilterCondition(BaseModel):
     mongo_query: dict = Field(default_factory=dict)

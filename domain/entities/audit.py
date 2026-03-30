@@ -8,6 +8,7 @@ from domain.entities import PyObjectId
 
 SourceType = Literal["user", "admin", "system", "api", "job"]
 
+
 class ActorInfo(BaseModel):
     user_id: Optional[str] = None
     name: Optional[str] = None

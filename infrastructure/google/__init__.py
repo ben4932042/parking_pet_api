@@ -1,7 +1,5 @@
 from infrastructure.runtime_warnings import apply_runtime_warning_filters
 
-apply_runtime_warning_filters()
-
 from google.oauth2 import service_account
 import vertexai
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -12,8 +10,13 @@ from domain.services.property_enrichment import IEnrichmentProvider
 from infrastructure.config import settings
 from infrastructure.google.extract_query import extract_query
 from infrastructure.google.langchain import geocode_landmark_with_llm
-from infrastructure.google.place_api import get_place_details, search_basic_information_by_name
+from infrastructure.google.place_api import (
+    get_place_details,
+    search_basic_information_by_name,
+)
 from infrastructure.google.vertex import distill_property_insights
+
+apply_runtime_warning_filters()
 
 
 class GoogleEnrichmentProvider(IEnrichmentProvider):

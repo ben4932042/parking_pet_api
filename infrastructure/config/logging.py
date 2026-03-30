@@ -74,7 +74,7 @@ LOGGING_CONFIG: Dict[str, Any] = {
                 "asyncio",
                 "urllib3.connectionpool",
                 "httpcore.http11",
-                "httpcore.connection"
+                "httpcore.connection",
             ]
         },
     },

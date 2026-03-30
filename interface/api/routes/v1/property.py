@@ -9,7 +9,10 @@ from domain.entities import PyObjectId
 from domain.entities.property_category import get_primary_types_by_category_key
 from interface.api.exceptions.error import AppError
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.user import get_optional_request_actor, get_request_actor
+from interface.api.dependencies.user import (
+    get_optional_request_actor,
+    get_request_actor,
+)
 from interface.api.schemas.page import Pagination
 from interface.api.schemas.property import (
     PropertyAuditLogResponse,
@@ -26,7 +29,9 @@ from interface.api.schemas.property import (
 router = APIRouter(prefix="/property")
 
 
-def _coords_or_none(lat: Optional[float], lng: Optional[float]) -> Optional[tuple[float, float]]:
+def _coords_or_none(
+    lat: Optional[float], lng: Optional[float]
+) -> Optional[tuple[float, float]]:
     if lat is None or lng is None:
         return None
     return lng, lat
@@ -55,7 +60,11 @@ async def search_properties_by_keyword(
         user_coords=_coords_or_none(user_lat, user_lng),
         map_coords=_coords_or_none(map_lat, map_lng),
     )
-    return {"status": "success", "preferences": conditions.preferences, "results": items}
+    return {
+        "status": "success",
+        "preferences": conditions.preferences,
+        "results": items,
+    }
 
 
 @router.get(
@@ -73,12 +82,20 @@ async def get_nearby_properties(
     params: PropertyNearbyRequest = Depends(),
     service: PropertyService = Depends(get_property_service),
 ):
-    types = get_primary_types_by_category_key(params.category) if params.category else []
+    types = (
+        get_primary_types_by_category_key(params.category) if params.category else []
+    )
     items, total = await service.search_nearby(
         params.lat, params.lng, params.radius, types, params.page, params.size
     )
     pages = (total + params.size - 1) // params.size if params.size else 0
-    return {"items": items, "total": total, "page": params.page, "size": params.size, "pages": pages}
+    return {
+        "items": items,
+        "total": total,
+        "page": params.page,
+        "size": params.size,
+        "pages": pages,
+    }
 
 
 @router.get(
@@ -87,12 +104,16 @@ async def get_nearby_properties(
     summary="Get property detail",
     description="Returns a single property detail record. Soft-deleted properties are not returned from this endpoint.",
 )
-async def get_detail(property_id: PyObjectId, service: PropertyService = Depends(get_property_service)):
+async def get_detail(
+    property_id: PyObjectId, service: PropertyService = Depends(get_property_service)
+):
     prop = await service.get_details(property_id=property_id)
     if prop is None:
         raise HTTPException(
             status_code=404,
-            detail={"error": {"code": "PROPERTY_NOT_FOUND", "message": "Property not found"}},
+            detail={
+                "error": {"code": "PROPERTY_NOT_FOUND", "message": "Property not found"}
+            },
         )
     return prop
 
@@ -110,7 +131,10 @@ async def get_detail(property_id: PyObjectId, service: PropertyService = Depends
     ),
 )
 async def create_property(
-    name: str = Query(..., description="Property keyword or business name used for Google Places lookup."),
+    name: str = Query(
+        ...,
+        description="Property keyword or business name used for Google Places lookup.",
+    ),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_optional_request_actor),
 ):
@@ -118,9 +142,13 @@ async def create_property(
         created_property = await service.create_property(name, actor=actor)
         return PropertyCreateResponse(property_id=created_property.id)
     except AppError as exc:
-        raise HTTPException(status_code=400, detail=exc.message or "Failed to create property.")
+        raise HTTPException(
+            status_code=400, detail=exc.message or "Failed to create property."
+        )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc) or "Failed to create property.")
+        raise HTTPException(
+            status_code=400, detail=str(exc) or "Failed to create property."
+        )
 
 
 @router.patch(
@@ -159,7 +187,9 @@ async def update_property_pet_features(
         effective_pet_features=updated_property.effective_pet_features,
         updated_by=updated_property.updated_by,
         updated_at=updated_property.updated_at,
-        reason=updated_property.manual_overrides.reason if updated_property.manual_overrides else None,
+        reason=updated_property.manual_overrides.reason
+        if updated_property.manual_overrides
+        else None,
     )
 
 
@@ -172,7 +202,9 @@ async def update_property_pet_features(
 )
 async def soft_delete_property(
     property_id: PyObjectId,
-    reason: Optional[str] = Query(default=None, description="Optional audit reason for the soft delete."),
+    reason: Optional[str] = Query(
+        default=None, description="Optional audit reason for the soft delete."
+    ),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
@@ -201,7 +233,9 @@ async def soft_delete_property(
 )
 async def restore_property(
     property_id: PyObjectId,
-    reason: Optional[str] = Query(default=None, description="Optional audit reason for the restore action."),
+    reason: Optional[str] = Query(
+        default=None, description="Optional audit reason for the restore action."
+    ),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
@@ -230,7 +264,12 @@ async def restore_property(
 )
 async def list_property_audit_logs(
     property_id: PyObjectId,
-    limit: int = Query(default=50, ge=1, le=200, description="Maximum number of audit log records to return."),
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=200,
+        description="Maximum number of audit log records to return.",
+    ),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):

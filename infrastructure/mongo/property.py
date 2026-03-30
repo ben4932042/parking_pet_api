@@ -8,6 +8,7 @@ from domain.repositories.property import IPropertyRepository
 
 logger = logging.getLogger(__name__)
 
+
 class PropertyRepository(IPropertyRepository):
     def __init__(self, client, collection_name: str):
         self.collection = client.get_collection(collection_name)
@@ -22,21 +23,22 @@ class PropertyRepository(IPropertyRepository):
             return base_filter
         return {"$and": [base_filter, query]}
 
-    async def get_by_keyword(
-        self,
-        q: str
-    ) -> List[PropertyEntity]:
-        filters = {"$or": [
-            {"name": {"$regex": q, "$options": "i"}},
-            {"address": {"$regex": q, "$options": "i"}},
-        ]}
+    async def get_by_keyword(self, q: str) -> List[PropertyEntity]:
+        filters = {
+            "$or": [
+                {"name": {"$regex": q, "$options": "i"}},
+                {"address": {"$regex": q, "$options": "i"}},
+            ]
+        }
         cursor = self.collection.find(self._merge_active_filter(filters))
         docs = await cursor.to_list()
         items = [PropertyEntity(**doc) for doc in docs]
         return items
 
     async def find_by_query(self, query: dict) -> List[PropertyEntity]:
-        cursor = self.collection.find(self._merge_active_filter(query)).sort("rating", -1)
+        cursor = self.collection.find(self._merge_active_filter(query)).sort(
+            "rating", -1
+        )
         docs = await cursor.to_list()
         return [PropertyEntity(**doc) for doc in docs]
 
@@ -53,7 +55,6 @@ class PropertyRepository(IPropertyRepository):
 
         if types:
             filters["primary_type"] = {"$in": types}
-
 
         geo_filter = {
             "location": {
@@ -75,7 +76,11 @@ class PropertyRepository(IPropertyRepository):
         total: int = await self.collection.count_documents(count_filter)
 
         skip = max(0, (page - 1) * size)
-        cursor = self.collection.find(self._merge_active_filter(filters)).skip(skip).limit(size)
+        cursor = (
+            self.collection.find(self._merge_active_filter(filters))
+            .skip(skip)
+            .limit(size)
+        )
 
         docs = await cursor.to_list(length=size)
         items = []
@@ -83,12 +88,14 @@ class PropertyRepository(IPropertyRepository):
             for doc in docs:
                 item = PropertyEntity(**doc)
                 items.append(item)
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error processing document: {doc}", exc_info=True)
 
         return items, total
 
-    async def get_property_by_id(self, property_id: PyObjectId, include_deleted: bool = False) -> Optional[PropertyEntity]:
+    async def get_property_by_id(
+        self, property_id: PyObjectId, include_deleted: bool = False
+    ) -> Optional[PropertyEntity]:
         query = {"_id": property_id}
         if not include_deleted:
             query = self._merge_active_filter(query)
@@ -110,7 +117,9 @@ class PropertyRepository(IPropertyRepository):
             return PropertyEntity(**doc)
         return None
 
-    async def get_properties_by_ids(self, property_ids: List[str]) -> List[PropertyEntity]:
+    async def get_properties_by_ids(
+        self, property_ids: List[str]
+    ) -> List[PropertyEntity]:
         if not property_ids:
             return []
 
@@ -124,12 +133,18 @@ class PropertyRepository(IPropertyRepository):
             self._merge_active_filter({"_id": {"$in": query_values}})
         ).to_list(length=len(query_values))
         entity_map = {str(doc["_id"]): PropertyEntity(**doc) for doc in docs}
-        return [entity_map[property_id] for property_id in property_ids if property_id in entity_map]
+        return [
+            entity_map[property_id]
+            for property_id in property_ids
+            if property_id in entity_map
+        ]
 
     async def create(self, new_property: PropertyEntity):
         await self.collection.insert_one(new_property.model_dump(by_alias=True))
 
     async def save(self, property_entity: PropertyEntity) -> PropertyEntity:
         payload = property_entity.model_dump(by_alias=True)
-        await self.collection.replace_one({"_id": property_entity.id}, payload, upsert=True)
+        await self.collection.replace_one(
+            {"_id": property_entity.id}, payload, upsert=True
+        )
         return property_entity

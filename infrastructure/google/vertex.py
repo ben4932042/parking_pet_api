@@ -1,9 +1,4 @@
 import logging
-
-from infrastructure.runtime_warnings import apply_runtime_warning_filters
-
-apply_runtime_warning_filters()
-
 import vertexai
 from google.oauth2 import service_account
 from vertexai.generative_models import GenerativeModel, GenerationConfig
@@ -11,6 +6,9 @@ from vertexai.generative_models import GenerativeModel, GenerationConfig
 from domain.entities.enrichment import AIAnalysis, AnalysisSource
 from domain.entities.property import PropertyEntity
 from infrastructure.config import settings
+from infrastructure.runtime_warnings import apply_runtime_warning_filters
+
+apply_runtime_warning_filters()
 
 
 logger = logging.getLogger(__name__)
@@ -113,7 +111,6 @@ def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
     except Exception as e:
         print(f"Vertex AI 分析失敗: {e}")
         raise e
-
 
 
 if __name__ == "__main__":

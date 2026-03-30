@@ -63,7 +63,9 @@ class PropertyService:
         logger.debug(f"Generated query: {generate_query}")
         items = await self.repo.find_by_query(generate_query)
         if not items:
-            logger.info("No properties found for the given search criteria. try to search by name")
+            logger.info(
+                "No properties found for the given search criteria. try to search by name"
+            )
             response = await self.repo.get_by_keyword(q)
             items = response[:1]
         else:
@@ -73,7 +75,9 @@ class PropertyService:
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)
 
-    async def get_details(self, property_id: PyObjectId) -> Optional[PropertyDetailEntity]:
+    async def get_details(
+        self, property_id: PyObjectId
+    ) -> Optional[PropertyDetailEntity]:
         output: PropertyEntity = await self.repo.get_property_by_id(property_id)
         if output is None:
             return None
@@ -85,13 +89,19 @@ class PropertyService:
         if source_data is None:
             raise ValueError("Failed to resolve property from the provided keyword.")
         await self.raw_data_repo.save(source_data)
-        existing = await self.repo.get_property_by_place_id(source_data.place_id, include_deleted=True)
+        existing = await self.repo.get_property_by_place_id(
+            source_data.place_id, include_deleted=True
+        )
         if existing and existing.is_deleted:
-            raise ConflictError("Property is soft-deleted. Restore it before syncing again.")
+            raise ConflictError(
+                "Property is soft-deleted. Restore it before syncing again."
+            )
 
         ai_result = self.enrichment_provider.generate_ai_analysis(source_data)
         if ai_result is None:
-            raise ValueError("Failed to generate AI analysis for the resolved property.")
+            raise ValueError(
+                "Failed to generate AI analysis for the resolved property."
+            )
         if existing:
             final_property = self._merge_synced_property(existing, ai_result, actor)
             action = PropertyAuditAction.SYNC
@@ -139,7 +149,9 @@ class PropertyService:
             raise ConflictError("At least one pet feature override must be provided.")
 
         merged_override = self._merge_pet_feature_overrides(
-            existing.manual_overrides.pet_features if existing.manual_overrides else None,
+            existing.manual_overrides.pet_features
+            if existing.manual_overrides
+            else None,
             override,
         )
         updated_property = existing.model_copy(
@@ -232,13 +244,19 @@ class PropertyService:
         )
         return self._to_detail_entity(saved_property)
 
-    async def get_audit_logs(self, property_id: PyObjectId, limit: int = 50) -> list[PropertyAuditLog]:
+    async def get_audit_logs(
+        self, property_id: PyObjectId, limit: int = 50
+    ) -> list[PropertyAuditLog]:
         existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
         if existing is None:
             raise NotFoundError("Property not found")
-        return await self.audit_repo.list_by_property_id(property_id=str(property_id), limit=limit)
+        return await self.audit_repo.list_by_property_id(
+            property_id=str(property_id), limit=limit
+        )
 
-    def _rank_search_results(self, items: List[PropertyEntity], query: dict) -> List[PropertyEntity]:
+    def _rank_search_results(
+        self, items: List[PropertyEntity], query: dict
+    ) -> List[PropertyEntity]:
         type_filter = query.get("primary_type")
         is_open_required = query.get("is_open") is True
         requested_feature_paths = self._requested_feature_paths(query)
@@ -266,7 +284,9 @@ class PropertyService:
     ) -> float:
         rating_score = max(0.0, min((item.ai_analysis.ai_rating or 0.0) / 5.0, 1.0))
         pet_feature_score = PropertyService._pet_feature_score(item)
-        requested_feature_score = PropertyService._requested_feature_score(item, requested_feature_paths)
+        requested_feature_score = PropertyService._requested_feature_score(
+            item, requested_feature_paths
+        )
         distance_score = PropertyService._distance_score(item, geo_context)
         type_score = PropertyService._type_score(item, type_filter)
         open_score = 0.05 if is_open_required and item.is_open else 0.0
@@ -292,7 +312,9 @@ class PropertyService:
 
     @staticmethod
     def _pet_feature_score(item: PropertyEntity) -> float:
-        pet_features = (item.effective_pet_features or item.ai_analysis.pet_features).model_dump()
+        pet_features = (
+            item.effective_pet_features or item.ai_analysis.pet_features
+        ).model_dump()
         bool_values: List[bool] = []
 
         def _collect(values: Any) -> None:
@@ -317,7 +339,9 @@ class PropertyService:
         ]
 
     @staticmethod
-    def _requested_feature_score(item: PropertyEntity, requested_feature_paths: List[str]) -> float:
+    def _requested_feature_score(
+        item: PropertyEntity, requested_feature_paths: List[str]
+    ) -> float:
         if not requested_feature_paths:
             return 0.0
 
@@ -353,7 +377,9 @@ class PropertyService:
         }
 
     @staticmethod
-    def _distance_score(item: PropertyEntity, geo_context: Optional[dict[str, Any]]) -> float:
+    def _distance_score(
+        item: PropertyEntity, geo_context: Optional[dict[str, Any]]
+    ) -> float:
         if not geo_context:
             return 0.0
 
@@ -444,11 +470,15 @@ class PropertyService:
 
         existing_payload = existing.model_dump(exclude_none=True)
         incoming_payload = incoming.model_dump(exclude_none=True)
-        merged_payload = PropertyService._deep_merge_dict(existing_payload, incoming_payload)
+        merged_payload = PropertyService._deep_merge_dict(
+            existing_payload, incoming_payload
+        )
         return PetFeaturesOverride(**merged_payload)
 
     @staticmethod
-    def _deep_merge_dict(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    def _deep_merge_dict(
+        base: dict[str, Any], override: dict[str, Any]
+    ) -> dict[str, Any]:
         merged = dict(base)
         for key, value in override.items():
             if isinstance(value, dict) and isinstance(merged.get(key), dict):
@@ -481,7 +511,9 @@ class PropertyService:
         await self.audit_repo.create(audit_log)
 
     @staticmethod
-    def _serialize_property_for_audit(property_entity: Optional[PropertyEntity]) -> Optional[dict[str, Any]]:
+    def _serialize_property_for_audit(
+        property_entity: Optional[PropertyEntity],
+    ) -> Optional[dict[str, Any]]:
         if property_entity is None:
             return None
 
@@ -532,7 +564,11 @@ class PropertyService:
             after_value = after.get(key)
 
             if isinstance(before_value, dict) and isinstance(after_value, dict):
-                changes.update(PropertyService._build_changes(before_value, after_value, current_path))
+                changes.update(
+                    PropertyService._build_changes(
+                        before_value, after_value, current_path
+                    )
+                )
                 continue
 
             if before_value != after_value:
