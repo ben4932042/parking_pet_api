@@ -23,6 +23,9 @@ from interface.api.exceptions.error import ConflictError, NotFoundError
 logger = logging.getLogger(__name__)
 
 
+PROMPT_INJECTION_ROUTE_REASON = "查詢包含 prompt injection 訊號，改用關鍵字搜尋"
+
+
 class PropertyService:
     def __init__(
         self,
@@ -58,6 +61,13 @@ class PropertyService:
         logger.debug(f"Search plan: {search_plan}")
 
         if search_plan.route == "keyword" or search_plan.used_fallback:
+            if search_plan.route_reason == PROMPT_INJECTION_ROUTE_REASON:
+                logger.warning(
+                    "Blocked prompt-injection-like search query",
+                    extra={"query_text": q, "route_reason": search_plan.route_reason},
+                )
+                return [], search_plan
+
             logger.debug(
                 "Search using keyword fallback",
                 extra={

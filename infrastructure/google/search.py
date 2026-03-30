@@ -166,6 +166,46 @@ QUALITY_HINT_KEYWORDS = {
     "is_open": ("現在有開", "營業中", "現在營業", "開著", "不想白跑", "有開", "有開的"),
 }
 
+NON_SEARCH_EXACT_QUERIES = {
+    "你好",
+    "哈囉",
+    "嗨",
+    "謝謝",
+    "感謝",
+    "你是誰",
+    "你會什麼",
+    "你可以做什麼",
+}
+
+NON_SEARCH_PHRASES = (
+    "幫我分析",
+    "幫我看",
+    "你看一下",
+    "這是什麼",
+    "怎麼用",
+    "怎麼做",
+)
+
+PROMPT_INJECTION_PATTERNS = (
+    "ignore previous",
+    "ignore all previous",
+    "system prompt",
+    "developer message",
+    "reveal your prompt",
+    "忽略之前",
+    "忽略前面",
+    "忽略以上",
+    "忘掉之前",
+    "系統提示",
+    "系統 prompt",
+    "開發者訊息",
+    "developer prompt",
+    "你現在是",
+    "請扮演",
+    "roleplay as",
+    "act as",
+)
+
 
 class SearchGraphState(TypedDict, total=False):
     raw_query: str
@@ -205,6 +245,48 @@ def _normalize_text_for_match(value: str) -> str:
 
 def _current_query(state: SearchGraphState) -> str:
     return state.get("query_text") or state["raw_query"]
+
+
+def _is_basic_prompt_injection(query: str) -> bool:
+    normalized_query = query.lower()
+    return any(pattern in normalized_query for pattern in PROMPT_INJECTION_PATTERNS)
+
+
+def _is_obviously_non_search_query(query: str) -> bool:
+    normalized_query = _normalize_text_for_match(query)
+    if not normalized_query:
+        return True
+
+    if _is_basic_prompt_injection(query):
+        return False
+
+    if normalized_query in {
+        _normalize_text_for_match(item) for item in NON_SEARCH_EXACT_QUERIES
+    }:
+        return True
+
+    if any(phrase in query for phrase in NON_SEARCH_PHRASES):
+        return True
+
+    if _extract_address_by_rule(query):
+        return False
+
+    if _extract_landmark_by_rule(query):
+        return False
+
+    if _extract_category_by_rule(query):
+        return False
+
+    if _extract_feature_by_rule(query) or _extract_quality_by_rule(query):
+        return False
+
+    if any(keyword in query for keyword in ("找", "搜尋", "附近")):
+        return False
+
+    if query.endswith(("嗎", "呢", "？", "?")):
+        return True
+
+    return False
 
 
 def _extract_landmark_by_rule(query: str) -> str | None:
@@ -337,6 +419,12 @@ def _should_run_typo_normalizer(query: str) -> bool:
     if not normalized_query or len(normalized_query) < 2:
         return False
 
+    if _is_basic_prompt_injection(query):
+        return False
+
+    if _is_obviously_non_search_query(query):
+        return False
+
     if _extract_landmark_by_rule(query):
         return False
 
@@ -392,6 +480,24 @@ def _typo_node(llm, state: SearchGraphState) -> dict[str, Any]:
 
 def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     query = _current_query(state)
+    if _is_basic_prompt_injection(query):
+        return {
+            "route_decision": SearchRouteDecision(
+                route="keyword",
+                confidence=0.99,
+                reason="查詢包含 prompt injection 訊號，改用關鍵字搜尋",
+            )
+        }
+
+    if _is_obviously_non_search_query(query):
+        return {
+            "route_decision": SearchRouteDecision(
+                route="keyword",
+                confidence=0.98,
+                reason="查詢內容不像搜尋條件，改用關鍵字搜尋",
+            )
+        }
+
     rule_based_address = _extract_address_by_rule(query)
     rule_based_category = _extract_category_by_rule(query)
     normalized_query = _normalize_text_for_match(query)
