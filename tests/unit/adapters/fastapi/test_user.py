@@ -1,0 +1,133 @@
+from interface.api.dependencies.property import get_property_service
+from interface.api.dependencies.user import get_current_user, get_user_service
+
+
+class UserServiceStub:
+    def __init__(self, user=None):
+        self.user = user
+        self.calls = []
+
+    async def basic_sign_in(self, name: str):
+        self.calls.append({"fn": "basic_sign_in", "name": name})
+        return self.user
+
+    async def update_user_profile(self, user_id: str, name: str):
+        self.calls.append({"fn": "update_user_profile", "user_id": user_id, "name": name})
+        return self.user
+
+    async def update_favorite_property(self, user_id: str, property_id: str, is_favorite: bool):
+        self.calls.append(
+            {
+                "fn": "update_favorite_property",
+                "user_id": user_id,
+                "property_id": property_id,
+                "is_favorite": is_favorite,
+            }
+        )
+        return self.user
+
+
+class FavoritePropertyServiceStub:
+    def __init__(self, properties=None):
+        self.properties = properties or []
+        self.calls = []
+
+    async def get_overviews_by_ids(self, property_ids):
+        self.calls.append({"fn": "get_overviews_by_ids", "property_ids": property_ids})
+        return self.properties
+
+
+def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
+    user = user_entity_factory(identifier="u1", name="Ben")
+    service = override_api_dep(get_user_service, UserServiceStub(user=user))
+
+    response = client.post("/api/v1/user/login", params={"username": "Ben"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["_id"] == "u1"
+    assert data["name"] == "Ben"
+    assert service.calls == [{"fn": "basic_sign_in", "name": "Ben"}]
+
+
+def test_update_user_profile_returns_updated_user(client, override_api_dep, user_entity_factory):
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    updated_user = user_entity_factory(identifier="u1", name="Ben Updated")
+    service = override_api_dep(get_user_service, UserServiceStub(user=updated_user))
+    override_api_dep(get_current_user, current_user)
+
+    response = client.patch("/api/v1/user/profile", params={"name": "Ben Updated"})
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["_id"] == "u1"
+    assert data["name"] == "Ben Updated"
+    assert service.calls == [{"fn": "update_user_profile", "user_id": "u1", "name": "Ben Updated"}]
+
+
+def test_get_me_returns_current_user(client, override_api_dep, user_entity_factory):
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/me")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["_id"] == "u1"
+    assert data["name"] == "Ben"
+
+
+def test_update_user_favorite_property_returns_status(client, override_api_dep, user_entity_factory):
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    updated_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=["p1"])
+    service = override_api_dep(get_user_service, UserServiceStub(user=updated_user))
+    override_api_dep(get_current_user, current_user)
+
+    response = client.put("/api/v1/user/favorite/p1", params={"is_favorite": "true"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["_id"] == "u1"
+    assert data["property_id"] == "p1"
+    assert data["is_favorite"] is True
+    assert service.calls == [
+        {
+            "fn": "update_favorite_property",
+            "user_id": "u1",
+            "property_id": "p1",
+            "is_favorite": True,
+        }
+    ]
+
+
+def test_get_user_favorite_property_status_returns_boolean(client, override_api_dep, user_entity_factory):
+    current_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=["p1"])
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/favorite/p1")
+
+    assert response.status_code == 200
+    assert response.json() == {"property_id": "p1", "is_favorite": True}
+
+
+def test_get_user_favorite_properties_returns_property_overviews(
+    client,
+    override_api_dep,
+    user_entity_factory,
+    property_entity_factory,
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=["p1", "p2"])
+    properties = [
+        property_entity_factory(identifier="p1", name="Cafe 1"),
+        property_entity_factory(identifier="p2", name="Cafe 2"),
+    ]
+    service = override_api_dep(get_property_service, FavoritePropertyServiceStub(properties=properties))
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/favorite")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [item["id"] for item in data] == ["p1", "p2"]
+    assert [item["name"] for item in data] == ["Cafe 1", "Cafe 2"]
+    assert service.calls == [{"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}]
