@@ -55,6 +55,9 @@ class PropertyOverviewResponse(BaseModel):
     types: List[str]
     rating: float
     is_open: Optional[bool]
+    has_note: bool = False
+
+    model_config = {"from_attributes": True}
 
 
 class PropertySearchResponse(BaseModel):

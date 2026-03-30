@@ -1,13 +1,17 @@
-from fastapi import Depends, APIRouter
+from fastapi import Depends, APIRouter, Query
 from starlette import status
 
 from application.property import PropertyService
+from application.property_note import PropertyNoteService
 from application.user import UserService
+from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import get_user_service, get_current_user
 
 from domain.entities import PyObjectId
+from interface.api.schemas.page import Pagination
 from interface.api.schemas.property import PropertyOverviewResponse
+from interface.api.schemas.property_note import UserPropertyNoteListItemResponse
 from interface.api.schemas.user import (
     UserDetailResponse,
     FavoritePropertyResponse,
@@ -90,6 +94,67 @@ async def get_user_favorite_properties(
     current_user=Depends(get_current_user),
     property_service: PropertyService = Depends(get_property_service),
 ):
-    return await property_service.get_overviews_by_ids(
+    properties = await property_service.get_overviews_by_ids(
         current_user.favorite_property_ids
     )
+    noted_property_ids = await property_service.get_noted_property_ids(
+        user_id=str(current_user.id),
+        property_ids=[property_item.id for property_item in properties],
+    )
+    return [
+        PropertyOverviewResponse(
+            **property_item.model_dump(by_alias=False),
+            has_note=property_item.id in noted_property_ids,
+        )
+        for property_item in properties
+    ]
+
+
+@router.get(
+    "/property-notes",
+    status_code=status.HTTP_200_OK,
+    response_model=Pagination[UserPropertyNoteListItemResponse],
+)
+async def get_user_property_notes(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    query: str | None = Query(default=None),
+    current_user=Depends(get_current_user),
+    note_service: PropertyNoteService = Depends(get_property_note_service),
+    property_service: PropertyService = Depends(get_property_service),
+):
+    notes, total = await note_service.list_notes(
+        user_id=str(current_user.id),
+        page=page,
+        size=size,
+        query=query,
+    )
+    properties = await property_service.get_overviews_by_ids(
+        [note.property_id for note in notes]
+    )
+    property_map = {property_item.id: property_item for property_item in properties}
+    items = [
+        UserPropertyNoteListItemResponse(
+            property_id=note.property_id,
+            content=note.content,
+            created_at=note.created_at,
+            updated_at=note.updated_at,
+            property=(
+                PropertyOverviewResponse(
+                    **property_map[note.property_id].model_dump(by_alias=False),
+                    has_note=True,
+                )
+                if note.property_id in property_map
+                else None
+            ),
+        )
+        for note in notes
+    ]
+    pages = (total + size - 1) // size if size else 0
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "size": size,
+        "pages": pages,
+    }

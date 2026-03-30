@@ -12,6 +12,7 @@ from domain.entities.search import SearchPlan
 from domain.entities.property_category import PropertyCategoryKey
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
+    get_optional_current_user,
     get_optional_request_actor,
     get_request_actor,
 )
@@ -19,10 +20,11 @@ from interface.api.exceptions.error import ConflictError
 
 
 class CapturePropertyService:
-    def __init__(self, route="semantic", used_fallback=False):
+    def __init__(self, route="semantic", used_fallback=False, items=None):
         self.calls = []
         self.route = route
         self.used_fallback = used_fallback
+        self.items = items or []
 
     async def search_by_keyword(
         self, q, user_coords=None, map_coords=None, open_at_minutes=None
@@ -40,7 +42,7 @@ class CapturePropertyService:
             filter_condition=PropertyFilterCondition(preferences=[]),
             used_fallback=self.used_fallback,
         )
-        return [], plan
+        return self.items, plan
 
     async def search_nearby(self, lat, lng, radius, types, page, size):
         self.calls.append(
@@ -53,7 +55,17 @@ class CapturePropertyService:
                 "size": size,
             }
         )
-        return [], 0
+        return self.items, len(self.items)
+
+    async def get_noted_property_ids(self, user_id: str, property_ids: list[str]):
+        self.calls.append(
+            {
+                "fn": "get_noted_property_ids",
+                "user_id": user_id,
+                "property_ids": property_ids,
+            }
+        )
+        return {"p1"}
 
 
 class MissingDetailService:
@@ -214,6 +226,29 @@ def test_nearby_route_expands_category_to_primary_types(client, override_api_dep
     assert "restaurant" in call["types"]
     assert "brunch_restaurant" in call["types"]
     assert "bar" in call["types"]
+
+
+def test_search_route_includes_has_note_for_authenticated_user(
+    client, override_api_dep, property_entity_factory, user_entity_factory
+):
+    service = override_api_dep(
+        get_property_service,
+        CapturePropertyService(items=[property_entity_factory(identifier="p1")]),
+    )
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    override_api_dep(get_optional_current_user, current_user)
+
+    response = client.get("/api/v1/property", params={"query": "台北"})
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["results"][0]["id"] == "p1"
+    assert data["results"][0]["has_note"] is True
+    assert service.calls[-1] == {
+        "fn": "get_noted_property_ids",
+        "user_id": "u1",
+        "property_ids": ["p1"],
+    }
 
 
 def test_create_property_route_returns_property_id_on_success(

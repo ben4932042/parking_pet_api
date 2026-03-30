@@ -15,6 +15,7 @@ from domain.entities.property import (
 )
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
+from domain.repositories.property_note import IPropertyNoteRepository
 from domain.repositories.property import IPropertyRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from interface.api.exceptions.error import ConflictError, NotFoundError
@@ -32,11 +33,13 @@ class PropertyService:
         repo: IPropertyRepository,
         raw_data_repo: IPlaceRawDataRepository,
         audit_repo: IPropertyAuditRepository,
+        note_repo: IPropertyNoteRepository,
         enrichment_provider: IEnrichmentProvider,
     ):
         self.repo = repo
         self.raw_data_repo = raw_data_repo
         self.audit_repo = audit_repo
+        self.note_repo = note_repo
         self.enrichment_provider = enrichment_provider
 
     async def search_nearby(
@@ -111,6 +114,11 @@ class PropertyService:
 
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)
+
+    async def get_noted_property_ids(
+        self, user_id: str, property_ids: list[str]
+    ) -> set[str]:
+        return await self.note_repo.get_noted_property_ids(user_id, property_ids)
 
     async def get_details(
         self, property_id: PyObjectId

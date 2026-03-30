@@ -4,16 +4,25 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette import status
 
 from application.property import PropertyService
+from application.property_note import PropertyNoteService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
 from domain.entities.property_category import get_primary_types_by_category_key
+from domain.entities.user import UserEntity
 from interface.api.exceptions.error import AppError
+from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
+    get_current_user,
+    get_optional_current_user,
     get_optional_request_actor,
     get_request_actor,
 )
 from interface.api.schemas.page import Pagination
+from interface.api.schemas.property_note import (
+    PropertyNoteResponse,
+    PropertyNoteUpsertRequest,
+)
 from interface.api.schemas.property import (
     PropertyAuditLogResponse,
     PropertyCreateResponse,
@@ -43,6 +52,31 @@ def _response_type_from_plan(route: str, used_fallback: bool) -> str:
     return "semantic_search"
 
 
+async def _attach_has_note(
+    items: list,
+    service: PropertyService,
+    current_user: Optional[UserEntity],
+):
+    if not items:
+        return []
+
+    noted_property_ids: set[str] = set()
+    if current_user is not None:
+        property_ids = [str(item.id) for item in items]
+        noted_property_ids = await service.get_noted_property_ids(
+            user_id=str(current_user.id),
+            property_ids=property_ids,
+        )
+
+    return [
+        {
+            **item.model_dump(by_alias=False),
+            "has_note": str(item.id) in noted_property_ids,
+        }
+        for item in items
+    ]
+
+
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
@@ -60,6 +94,7 @@ async def search_properties_by_keyword(
     map_lat: float = Query(default=None, description="Current map center latitude."),
     map_lng: float = Query(default=None, description="Current map center longitude."),
     service: PropertyService = Depends(get_property_service),
+    current_user: Optional[UserEntity] = Depends(get_optional_current_user),
 ):
     items, plan = await service.search_by_keyword(
         q=query,
@@ -70,8 +105,65 @@ async def search_properties_by_keyword(
         "status": "success",
         "response_type": _response_type_from_plan(plan.route, plan.used_fallback),
         "preferences": plan.filter_condition.preferences,
-        "results": items,
+        "results": await _attach_has_note(items, service, current_user),
     }
+
+
+@router.get(
+    "/{property_id}/note",
+    status_code=status.HTTP_200_OK,
+    response_model=PropertyNoteResponse | None,
+    summary="Get my private note for a property",
+)
+async def get_property_note(
+    property_id: PyObjectId,
+    service: PropertyNoteService = Depends(get_property_note_service),
+    current_user: UserEntity = Depends(get_current_user),
+):
+    note = await service.get_note(str(current_user.id), property_id)
+    if note is None:
+        return None
+    return PropertyNoteResponse(
+        property_id=note.property_id,
+        content=note.content,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+@router.put(
+    "/{property_id}/note",
+    status_code=status.HTTP_200_OK,
+    response_model=PropertyNoteResponse,
+    summary="Create or update my private note for a property",
+)
+async def upsert_property_note(
+    property_id: PyObjectId,
+    payload: PropertyNoteUpsertRequest,
+    service: PropertyNoteService = Depends(get_property_note_service),
+    current_user: UserEntity = Depends(get_current_user),
+):
+    note = await service.save_note(str(current_user.id), property_id, payload.content)
+    return PropertyNoteResponse(
+        property_id=note.property_id,
+        content=note.content,
+        created_at=note.created_at,
+        updated_at=note.updated_at,
+    )
+
+
+@router.delete(
+    "/{property_id}/note",
+    status_code=status.HTTP_200_OK,
+    summary="Delete my private note for a property",
+)
+async def delete_property_note(
+    property_id: PyObjectId,
+    service: PropertyNoteService = Depends(get_property_note_service),
+    current_user: UserEntity = Depends(get_current_user),
+):
+    deleted = await service.delete_note(str(current_user.id), property_id)
+    return {"property_id": property_id, "deleted": deleted}
 
 
 @router.get(
@@ -88,6 +180,7 @@ async def search_properties_by_keyword(
 async def get_nearby_properties(
     params: PropertyNearbyRequest = Depends(),
     service: PropertyService = Depends(get_property_service),
+    current_user: Optional[UserEntity] = Depends(get_optional_current_user),
 ):
     types = (
         get_primary_types_by_category_key(params.category) if params.category else []
@@ -97,7 +190,7 @@ async def get_nearby_properties(
     )
     pages = (total + params.size - 1) // params.size if params.size else 0
     return {
-        "items": items,
+        "items": await _attach_has_note(items, service, current_user),
         "total": total,
         "page": params.page,
         "size": params.size,

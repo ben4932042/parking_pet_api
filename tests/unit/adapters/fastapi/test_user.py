@@ -40,6 +40,16 @@ class FavoritePropertyServiceStub:
         self.calls.append({"fn": "get_overviews_by_ids", "property_ids": property_ids})
         return self.properties
 
+    async def get_noted_property_ids(self, user_id: str, property_ids: list[str]):
+        self.calls.append(
+            {
+                "fn": "get_noted_property_ids",
+                "user_id": user_id,
+                "property_ids": property_ids,
+            }
+        )
+        return {"p1"}
+
 
 def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben")
@@ -150,6 +160,12 @@ def test_get_user_favorite_properties_returns_property_overviews(
     data = response.json()
     assert [item["id"] for item in data] == ["p1", "p2"]
     assert [item["name"] for item in data] == ["Cafe 1", "Cafe 2"]
+    assert [item["has_note"] for item in data] == [True, False]
     assert service.calls == [
-        {"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}
+        {"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]},
+        {
+            "fn": "get_noted_property_ids",
+            "user_id": "u1",
+            "property_ids": ["p1", "p2"],
+        },
     ]
