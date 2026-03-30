@@ -1,5 +1,9 @@
 import logging
 
+from infrastructure.runtime_warnings import apply_runtime_warning_filters
+
+apply_runtime_warning_filters()
+
 import vertexai
 from google.oauth2 import service_account
 from vertexai.generative_models import GenerativeModel, GenerationConfig

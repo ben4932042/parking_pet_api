@@ -1,7 +1,10 @@
 import json
 import logging
-import warnings
 from typing import List, Optional
+
+from infrastructure.runtime_warnings import apply_runtime_warning_filters
+
+apply_runtime_warning_filters()
 
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,10 +12,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
 from domain.entities.property import PropertyEntity, PropertyFilterCondition
-
-warnings.filterwarnings(
-    "ignore", category=DeprecationWarning, module="langchain_google_vertexai"
-)
 
 
 logger = logging.getLogger(__name__)

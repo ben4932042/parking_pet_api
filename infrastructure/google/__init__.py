@@ -1,3 +1,7 @@
+from infrastructure.runtime_warnings import apply_runtime_warning_filters
+
+apply_runtime_warning_filters()
+
 from google.oauth2 import service_account
 import vertexai
 from langchain_google_genai import ChatGoogleGenerativeAI

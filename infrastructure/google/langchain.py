@@ -1,5 +1,8 @@
 import logging
-import warnings
+
+from infrastructure.runtime_warnings import apply_runtime_warning_filters
+
+apply_runtime_warning_filters()
 
 import vertexai
 from google.oauth2 import service_account
@@ -8,10 +11,6 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from infrastructure.config import settings
-
-warnings.filterwarnings(
-    "ignore", category=DeprecationWarning, module="langchain_google_vertexai"
-)
 
 
 logger = logging.getLogger(__name__)
