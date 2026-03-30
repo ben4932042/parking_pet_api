@@ -1,5 +1,6 @@
 from typing import Optional, List, Tuple
 import logging
+import re
 from bson import ObjectId
 
 from domain.entities import PyObjectId
@@ -7,6 +8,9 @@ from domain.entities.property import PropertyEntity
 from domain.repositories.property import IPropertyRepository
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_SEARCH_LIMIT = 100
+DEFAULT_QUERY_MAX_TIME_MS = 5000
 
 
 class PropertyRepository(IPropertyRepository):
@@ -23,23 +27,64 @@ class PropertyRepository(IPropertyRepository):
             return base_filter
         return {"$and": [base_filter, query]}
 
+    @staticmethod
+    def _build_variant_regex(text: str) -> str:
+        pattern_parts: list[str] = []
+        for char in text:
+            if char in {"台", "臺"}:
+                pattern_parts.append("[台臺]")
+            else:
+                pattern_parts.append(re.escape(char))
+        return "".join(pattern_parts)
+
+    @classmethod
+    def _normalize_regex_query(cls, value):
+        if isinstance(value, dict):
+            normalized: dict = {}
+            for key, item in value.items():
+                if key == "$regex" and isinstance(item, str):
+                    normalized[key] = cls._build_variant_regex(item)
+                else:
+                    normalized[key] = cls._normalize_regex_query(item)
+            return normalized
+        if isinstance(value, list):
+            return [cls._normalize_regex_query(item) for item in value]
+        return value
+
     async def get_by_keyword(self, q: str) -> List[PropertyEntity]:
+        regex = self._build_variant_regex(q)
         filters = {
             "$or": [
-                {"name": {"$regex": q, "$options": "i"}},
-                {"address": {"$regex": q, "$options": "i"}},
+                {"name": {"$regex": regex, "$options": "i"}},
+                {"address": {"$regex": regex, "$options": "i"}},
             ]
         }
-        cursor = self.collection.find(self._merge_active_filter(filters))
-        docs = await cursor.to_list()
+        logger.debug(
+            "Mongo keyword query",
+            extra={
+                "query_text": q,
+                "mongo_query": self._merge_active_filter(filters),
+            },
+        )
+        cursor = (
+            self.collection.find(self._merge_active_filter(filters))
+            .limit(DEFAULT_SEARCH_LIMIT)
+            .max_time_ms(DEFAULT_QUERY_MAX_TIME_MS)
+        )
+        docs = await cursor.to_list(length=DEFAULT_SEARCH_LIMIT)
         items = [PropertyEntity(**doc) for doc in docs]
         return items
 
     async def find_by_query(self, query: dict) -> List[PropertyEntity]:
-        cursor = self.collection.find(self._merge_active_filter(query)).sort(
-            "rating", -1
+        normalized_query = self._normalize_regex_query(query)
+        logger.debug("Mongo semantic query", extra={"mongo_query": normalized_query})
+        cursor = (
+            self.collection.find(self._merge_active_filter(normalized_query))
+            .sort("rating", -1)
+            .limit(DEFAULT_SEARCH_LIMIT)
+            .max_time_ms(DEFAULT_QUERY_MAX_TIME_MS)
         )
-        docs = await cursor.to_list()
+        docs = await cursor.to_list(length=DEFAULT_SEARCH_LIMIT)
         return [PropertyEntity(**doc) for doc in docs]
 
     async def get_nearby(

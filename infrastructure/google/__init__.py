@@ -14,6 +14,7 @@ from infrastructure.google.place_api import (
     get_place_details,
     search_basic_information_by_name,
 )
+from infrastructure.google.search_v2 import extract_search_plan_v2
 from infrastructure.google.vertex import distill_property_insights
 
 apply_runtime_warning_filters()
@@ -38,7 +39,7 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
             location=settings.google.location,
             credentials=creds,
             temperature=0,
-            model_kwargs={"response_mime_type": "application/json"},
+            response_mime_type="application/json",
         )
 
     def create_property_by_name(self, property_name: str) -> AnalysisSource:
@@ -51,6 +52,9 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
 
     def extract_search_criteria(self, query: str) -> PropertyFilterCondition:
         return extract_query(self.llm, query)
+
+    def extract_search_plan_v2(self, query: str):
+        return extract_search_plan_v2(self.llm, query)
 
     def geocode_landmark(self, landmark_name: str):
         display_name, coordinates = geocode_landmark_with_llm(self.llm, landmark_name)

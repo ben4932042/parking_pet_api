@@ -38,6 +38,14 @@ def get_silent_logger_config(handlers: List[str]) -> Dict[str, Any]:
     }
 
 
+def get_warning_logger_config(handlers: List[str]) -> Dict[str, Any]:
+    return {
+        "handlers": handlers,
+        "level": "WARNING",
+        "propagate": False,
+    }
+
+
 LOGGING_CONFIG: Dict[str, Any] = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -75,6 +83,12 @@ LOGGING_CONFIG: Dict[str, Any] = {
                 "urllib3.connectionpool",
                 "httpcore.http11",
                 "httpcore.connection",
+            ]
+        },
+        **{
+            name: get_warning_logger_config(["default"])
+            for name in [
+                "google_genai.models",
             ]
         },
     },

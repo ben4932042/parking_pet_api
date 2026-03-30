@@ -72,6 +72,55 @@ class PropertyService:
             items = self._rank_search_results(items, generate_query)
         return items, filter_condition
 
+    async def search_by_keyword_v2(
+        self,
+        q: str,
+        user_coords: Optional[tuple[float, float]] = None,
+        map_coords: Optional[tuple[float, float]] = None,
+    ):
+        search_plan = self.enrichment_provider.extract_search_plan_v2(q)
+        logger.debug(f"Search plan v2: {search_plan}")
+
+        if search_plan.route == "keyword" or search_plan.used_fallback:
+            logger.debug(
+                "V2 search using keyword fallback",
+                extra={
+                    "query_text": q,
+                    "fallback_reason": search_plan.fallback_reason,
+                    "warnings": search_plan.warnings,
+                },
+            )
+            items = await self.repo.get_by_keyword(q)
+            return items[:1], search_plan
+
+        generate_query = self.enrichment_provider.generate_query(
+            search_plan.filter_condition,
+            user_coords,
+            map_coords,
+        )
+        logger.debug(
+            "Generated query v2",
+            extra={
+                "query_text": q,
+                "mongo_query": generate_query,
+                "semantic_extraction": search_plan.semantic_extraction,
+                "warnings": search_plan.warnings,
+            },
+        )
+        items = await self.repo.find_by_query(generate_query)
+        if not items:
+            logger.info("V2 semantic search returned no results.")
+            logger.debug(
+                "V2 semantic query returned no results",
+                extra={
+                    "query_text": q,
+                    "mongo_query": generate_query,
+                },
+            )
+        else:
+            items = self._rank_search_results(items, generate_query)
+        return items, search_plan
+
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)
 
