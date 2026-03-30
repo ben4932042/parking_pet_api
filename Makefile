@@ -2,6 +2,11 @@
 
 PORT=8000
 
+reload-server: reload-repo stop-server run-server
+
+reload-repo:
+	git pull
+
 run-server:
 	@echo "Starting server on port $(PORT)..."
 	nohup poetry run python main.py > output.log 2>&1 & echo $$! > server.pid
