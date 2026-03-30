@@ -101,13 +101,14 @@ async def get_user_favorite_properties(
         user_id=str(current_user.id),
         property_ids=[property_item.id for property_item in properties],
     )
-    return [
+    items = [
         PropertyOverviewResponse(
             **property_item.model_dump(by_alias=False),
             has_note=property_item.id in noted_property_ids,
         )
         for property_item in properties
     ]
+    return sorted(items, key=lambda item: not item.has_note)
 
 
 @router.get(

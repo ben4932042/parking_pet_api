@@ -169,3 +169,37 @@ def test_get_user_favorite_properties_returns_property_overviews(
             "property_ids": ["p1", "p2"],
         },
     ]
+
+
+def test_get_user_favorite_properties_sorts_noted_items_first(
+    client,
+    override_api_dep,
+    user_entity_factory,
+    property_entity_factory,
+):
+    current_user = user_entity_factory(
+        identifier="u1", name="Ben", favorite_property_ids=["p2", "p1"]
+    )
+    properties = [
+        property_entity_factory(identifier="p2", name="Cafe 2"),
+        property_entity_factory(identifier="p1", name="Cafe 1"),
+    ]
+    service = override_api_dep(
+        get_property_service, FavoritePropertyServiceStub(properties=properties)
+    )
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/favorite")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert [item["id"] for item in data] == ["p1", "p2"]
+    assert [item["has_note"] for item in data] == [True, False]
+    assert service.calls == [
+        {"fn": "get_overviews_by_ids", "property_ids": ["p2", "p1"]},
+        {
+            "fn": "get_noted_property_ids",
+            "user_id": "u1",
+            "property_ids": ["p2", "p1"],
+        },
+    ]
