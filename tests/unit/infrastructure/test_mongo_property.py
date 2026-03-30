@@ -22,3 +22,24 @@ def test_normalize_regex_query_rewrites_nested_regex_strings():
             {"$or": [{"name": {"$regex": "[台臺]中店", "$options": "i"}}]},
         ]
     }
+
+
+def test_normalize_runtime_query_rewrites_is_open_to_op_segments():
+    query = {
+        "address": {"$regex": "台北", "$options": "i"},
+        "is_open": True,
+    }
+
+    normalized = PropertyRepository._normalize_runtime_query(
+        query, open_at_minutes=3720
+    )
+
+    assert normalized == {
+        "address": {"$regex": "[台臺]北", "$options": "i"},
+        "op_segments": {
+            "$elemMatch": {
+                "s": {"$lte": 3720},
+                "e": {"$gte": 3720},
+            }
+        },
+    }

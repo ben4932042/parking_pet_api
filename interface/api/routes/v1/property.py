@@ -41,9 +41,9 @@ def _coords_or_none(
     "",
     status_code=status.HTTP_200_OK,
     response_model=PropertySearchResponse,
-    summary="Search properties by keyword",
+    summary="Search properties",
     description=(
-        "Search properties by natural-language keyword. "
+        "Search properties with the semantic pipeline while preserving the current response shape. "
         "Optional user/map coordinates help the backend apply geo-aware filtering and reranking."
     ),
 )
@@ -55,14 +55,14 @@ async def search_properties_by_keyword(
     map_lng: float = Query(default=None, description="Current map center longitude."),
     service: PropertyService = Depends(get_property_service),
 ):
-    items, conditions = await service.search_by_keyword(
+    items, plan = await service.search_by_keyword(
         q=query,
         user_coords=_coords_or_none(user_lat, user_lng),
         map_coords=_coords_or_none(map_lat, map_lng),
     )
     return {
         "status": "success",
-        "preferences": conditions.preferences,
+        "preferences": plan.filter_condition.preferences,
         "results": items,
     }
 

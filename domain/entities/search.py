@@ -12,6 +12,13 @@ class SearchRouteDecision(BaseModel):
     reason: str = Field(default="")
 
 
+class TypoCorrectionIntent(BaseModel):
+    corrected_query: Optional[str] = None
+    changed: bool = False
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: str = Field(default="")
+
+
 class LocationIntent(BaseModel):
     kind: Literal["landmark", "address", "none"] = "none"
     value: Optional[str] = None
@@ -40,7 +47,7 @@ class QualityIntent(BaseModel):
     evidence: str = Field(default="")
 
 
-class SearchPlanV2(BaseModel):
+class SearchPlan(BaseModel):
     route: Literal["keyword", "semantic"]
     route_reason: str = Field(default="")
     route_confidence: float = Field(default=0.0, ge=0.0, le=1.0)

@@ -52,38 +52,14 @@ class PropertyService:
         q: str,
         user_coords: Optional[tuple[float, float]] = None,
         map_coords: Optional[tuple[float, float]] = None,
+        open_at_minutes: Optional[int] = None,
     ):
-        filter_condition = self.enrichment_provider.extract_search_criteria(q)
-        logger.debug(f"Search criteria: {filter_condition}")
-        generate_query = self.enrichment_provider.generate_query(
-            filter_condition,
-            user_coords,
-            map_coords,
-        )
-        logger.debug(f"Generated query: {generate_query}")
-        items = await self.repo.find_by_query(generate_query)
-        if not items:
-            logger.info(
-                "No properties found for the given search criteria. try to search by name"
-            )
-            response = await self.repo.get_by_keyword(q)
-            items = response[:1]
-        else:
-            items = self._rank_search_results(items, generate_query)
-        return items, filter_condition
-
-    async def search_by_keyword_v2(
-        self,
-        q: str,
-        user_coords: Optional[tuple[float, float]] = None,
-        map_coords: Optional[tuple[float, float]] = None,
-    ):
-        search_plan = self.enrichment_provider.extract_search_plan_v2(q)
-        logger.debug(f"Search plan v2: {search_plan}")
+        search_plan = self.enrichment_provider.extract_search_plan(q)
+        logger.debug(f"Search plan: {search_plan}")
 
         if search_plan.route == "keyword" or search_plan.used_fallback:
             logger.debug(
-                "V2 search using keyword fallback",
+                "Search using keyword fallback",
                 extra={
                     "query_text": q,
                     "fallback_reason": search_plan.fallback_reason,
@@ -99,7 +75,7 @@ class PropertyService:
             map_coords,
         )
         logger.debug(
-            "Generated query v2",
+            "Generated query",
             extra={
                 "query_text": q,
                 "mongo_query": generate_query,
@@ -107,11 +83,13 @@ class PropertyService:
                 "warnings": search_plan.warnings,
             },
         )
-        items = await self.repo.find_by_query(generate_query)
+        items = await self.repo.find_by_query(
+            generate_query, open_at_minutes=open_at_minutes
+        )
         if not items:
-            logger.info("V2 semantic search returned no results.")
+            logger.info("Semantic search returned no results.")
             logger.debug(
-                "V2 semantic query returned no results",
+                "Semantic query returned no results",
                 extra={
                     "query_text": q,
                     "mongo_query": generate_query,

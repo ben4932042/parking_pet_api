@@ -1,7 +1,7 @@
 import pytest
 
 from application.property import PropertyService
-from domain.entities.search_v2 import SearchPlanV2
+from domain.entities.search import SearchPlan
 from domain.entities.property import PropertyFilterCondition
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
@@ -10,7 +10,7 @@ from domain.services.property_enrichment import IEnrichmentProvider
 
 
 class DummyEnrichmentProvider(IEnrichmentProvider):
-    def __init__(self, plan: SearchPlanV2, geocode_result=("landmark", None)):
+    def __init__(self, plan: SearchPlan, geocode_result=("landmark", None)):
         self.plan = plan
         self.geocode_result = geocode_result
 
@@ -20,10 +20,7 @@ class DummyEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source):
         raise NotImplementedError
 
-    def extract_search_criteria(self, query: str):
-        raise NotImplementedError
-
-    def extract_search_plan_v2(self, query: str) -> SearchPlanV2:
+    def extract_search_plan(self, query: str) -> SearchPlan:
         return self.plan
 
     def geocode_landmark(self, landmark_name: str):
@@ -36,8 +33,8 @@ class CaptureRepo(IPropertyRepository):
         self.keyword_items = keyword_items or []
         self.calls = []
 
-    async def find_by_query(self, query):
-        self.calls.append(("find_by_query", query))
+    async def find_by_query(self, query, open_at_minutes=None):
+        self.calls.append(("find_by_query", query, open_at_minutes))
         return list(self.query_items)
 
     async def get_by_keyword(self, q):
@@ -80,7 +77,7 @@ class DummyAuditRepo(IPropertyAuditRepository):
 
 
 @pytest.mark.asyncio
-async def test_search_by_keyword_v2_uses_keyword_route_directly(
+async def test_search_by_keyword_uses_keyword_route_directly(
     property_entity_factory,
 ):
     keyword_item = property_entity_factory(identifier="keyword-hit")
@@ -90,11 +87,11 @@ async def test_search_by_keyword_v2_uses_keyword_route_directly(
         raw_data_repo=DummyRawDataRepo(),
         audit_repo=DummyAuditRepo(),
         enrichment_provider=DummyEnrichmentProvider(
-            SearchPlanV2(route="keyword", route_reason="looks like a place name")
+            SearchPlan(route="keyword", route_reason="looks like a place name")
         ),
     )
 
-    results, plan = await service.search_by_keyword_v2("肉球森林")
+    results, plan = await service.search_by_keyword("肉球森林")
 
     assert [item.id for item in results] == ["keyword-hit"]
     assert plan.route == "keyword"
@@ -102,7 +99,7 @@ async def test_search_by_keyword_v2_uses_keyword_route_directly(
 
 
 @pytest.mark.asyncio
-async def test_search_by_keyword_v2_falls_back_when_semantic_plan_requests_it(
+async def test_search_by_keyword_falls_back_when_semantic_plan_requests_it(
     property_entity_factory,
 ):
     keyword_item = property_entity_factory(identifier="fallback-hit")
@@ -112,7 +109,7 @@ async def test_search_by_keyword_v2_falls_back_when_semantic_plan_requests_it(
         raw_data_repo=DummyRawDataRepo(),
         audit_repo=DummyAuditRepo(),
         enrichment_provider=DummyEnrichmentProvider(
-            SearchPlanV2(
+            SearchPlan(
                 route="semantic",
                 used_fallback=True,
                 fallback_reason="low_confidence_primary_type",
@@ -121,7 +118,7 @@ async def test_search_by_keyword_v2_falls_back_when_semantic_plan_requests_it(
         ),
     )
 
-    results, plan = await service.search_by_keyword_v2("推薦的店")
+    results, plan = await service.search_by_keyword("推薦的店")
 
     assert [item.id for item in results] == ["fallback-hit"]
     assert plan.used_fallback is True
@@ -130,11 +127,11 @@ async def test_search_by_keyword_v2_falls_back_when_semantic_plan_requests_it(
 
 
 @pytest.mark.asyncio
-async def test_search_by_keyword_v2_returns_empty_when_semantic_query_has_no_results():
+async def test_search_by_keyword_returns_empty_when_semantic_query_has_no_results():
     repo = CaptureRepo(
         query_items=[],
     )
-    plan = SearchPlanV2(
+    plan = SearchPlan(
         route="semantic",
         filter_condition=PropertyFilterCondition(
             mongo_query={"primary_type": "cafe"},
@@ -149,23 +146,23 @@ async def test_search_by_keyword_v2_returns_empty_when_semantic_query_has_no_res
         enrichment_provider=DummyEnrichmentProvider(plan),
     )
 
-    results, updated_plan = await service.search_by_keyword_v2("咖啡廳")
+    results, updated_plan = await service.search_by_keyword("咖啡廳")
 
     assert results == []
     assert updated_plan.used_fallback is False
     assert updated_plan.fallback_reason is None
-    assert repo.calls == [("find_by_query", {"primary_type": "cafe"})]
+    assert repo.calls == [("find_by_query", {"primary_type": "cafe"}, None)]
 
 
 def test_semantic_summary_and_query_ignore_false_feature_preferences():
-    from domain.entities.search_v2 import (
+    from domain.entities.search import (
         CategoryIntent,
         LocationIntent,
         PetFeatureIntent,
         QualityIntent,
         SearchRouteDecision,
     )
-    from infrastructure.google.search_v2 import _merge_node
+    from infrastructure.google.search import _merge_node
 
     result = _merge_node(
         {
@@ -212,14 +209,14 @@ def test_semantic_summary_and_query_ignore_false_feature_preferences():
 
 
 def test_low_confidence_location_is_dropped_without_full_fallback():
-    from domain.entities.search_v2 import (
+    from domain.entities.search import (
         CategoryIntent,
         LocationIntent,
         PetFeatureIntent,
         QualityIntent,
         SearchRouteDecision,
     )
-    from infrastructure.google.search_v2 import _confidence_gate_node, _merge_node
+    from infrastructure.google.search import _confidence_gate_node, _merge_node
 
     merged = _merge_node(
         {
@@ -268,14 +265,14 @@ def test_low_confidence_location_is_dropped_without_full_fallback():
 
 
 def test_address_only_semantic_query_is_allowed_without_fallback():
-    from domain.entities.search_v2 import (
+    from domain.entities.search import (
         CategoryIntent,
         LocationIntent,
         PetFeatureIntent,
         QualityIntent,
         SearchRouteDecision,
     )
-    from infrastructure.google.search_v2 import _confidence_gate_node, _merge_node
+    from infrastructure.google.search import _confidence_gate_node, _merge_node
 
     merged = _merge_node(
         {
@@ -319,14 +316,14 @@ def test_address_only_semantic_query_is_allowed_without_fallback():
 
 
 def test_low_confidence_primary_type_becomes_warning_not_fallback():
-    from domain.entities.search_v2 import (
+    from domain.entities.search import (
         CategoryIntent,
         LocationIntent,
         PetFeatureIntent,
         QualityIntent,
         SearchRouteDecision,
     )
-    from infrastructure.google.search_v2 import _confidence_gate_node, _merge_node
+    from infrastructure.google.search import _confidence_gate_node, _merge_node
 
     merged = _merge_node(
         {
@@ -373,7 +370,7 @@ def test_low_confidence_primary_type_becomes_warning_not_fallback():
 
 
 def test_rule_based_location_parser_recognizes_taoyuan_as_address():
-    from infrastructure.google.search_v2 import _extract_address_by_rule
+    from infrastructure.google.search import _extract_address_by_rule
 
     assert _extract_address_by_rule("台北") == "台北"
     assert _extract_address_by_rule("桃園 火鍋店") == "桃園"
@@ -382,7 +379,7 @@ def test_rule_based_location_parser_recognizes_taoyuan_as_address():
 
 
 def test_route_node_treats_pure_address_query_as_semantic():
-    from infrastructure.google.search_v2 import _route_node
+    from infrastructure.google.search import _route_node
 
     result = _route_node(llm=None, state={"raw_query": "台北"})
 
@@ -391,7 +388,7 @@ def test_route_node_treats_pure_address_query_as_semantic():
 
 
 def test_rule_based_landmark_parser_recognizes_sun_moon_lake():
-    from infrastructure.google.search_v2 import (
+    from infrastructure.google.search import (
         _extract_landmark_by_rule,
         _is_pure_landmark_query,
     )
@@ -406,7 +403,7 @@ def test_rule_based_landmark_parser_recognizes_sun_moon_lake():
 
 
 def test_category_node_returns_empty_for_pure_landmark_query():
-    from infrastructure.google.search_v2 import _category_node
+    from infrastructure.google.search import _category_node
 
     result = _category_node(llm=None, state={"raw_query": "日月潭"})
 
@@ -415,7 +412,7 @@ def test_category_node_returns_empty_for_pure_landmark_query():
 
 
 def test_category_node_returns_empty_for_landmark_nearby_query():
-    from infrastructure.google.search_v2 import _category_node
+    from infrastructure.google.search import _category_node
 
     result = _category_node(llm=None, state={"raw_query": "日月潭附近"})
 
@@ -424,7 +421,7 @@ def test_category_node_returns_empty_for_landmark_nearby_query():
 
 
 def test_feature_node_skips_llm_when_query_has_no_feature_hints():
-    from infrastructure.google.search_v2 import _feature_node
+    from infrastructure.google.search import _feature_node
 
     result = _feature_node(llm=None, state={"raw_query": "台北"})
 
@@ -432,7 +429,7 @@ def test_feature_node_skips_llm_when_query_has_no_feature_hints():
 
 
 def test_feature_node_uses_rule_based_pet_menu_hint():
-    from infrastructure.google.search_v2 import _feature_node
+    from infrastructure.google.search import _feature_node
 
     result = _feature_node(llm=None, state={"raw_query": "有寵物餐的咖啡廳"})
 
@@ -440,7 +437,7 @@ def test_feature_node_uses_rule_based_pet_menu_hint():
 
 
 def test_quality_node_skips_llm_when_query_has_no_quality_hints():
-    from infrastructure.google.search_v2 import _quality_node
+    from infrastructure.google.search import _quality_node
 
     result = _quality_node(llm=None, state={"raw_query": "日月潭附近"})
 
@@ -449,15 +446,64 @@ def test_quality_node_skips_llm_when_query_has_no_quality_hints():
 
 
 def test_quality_node_uses_rule_based_open_now_hint():
-    from infrastructure.google.search_v2 import _quality_node
+    from infrastructure.google.search import _quality_node
 
     result = _quality_node(llm=None, state={"raw_query": "現在有開的咖啡廳"})
 
     assert result["quality_intent"].is_open is True
 
 
+def test_quality_node_uses_rule_based_open_hint_for_you_kai_de():
+    from infrastructure.google.search import _quality_node
+
+    result = _quality_node(llm=None, state={"raw_query": "有開的"})
+
+    assert result["quality_intent"].is_open is True
+
+
+def test_quality_only_semantic_query_is_allowed_without_fallback():
+    from domain.entities.search import (
+        CategoryIntent,
+        LocationIntent,
+        PetFeatureIntent,
+        QualityIntent,
+        SearchRouteDecision,
+    )
+    from infrastructure.google.search import _confidence_gate_node, _merge_node
+
+    merged = _merge_node(
+        {
+            "route_decision": SearchRouteDecision(
+                route="semantic",
+                confidence=0.95,
+                reason="query is an open-now condition",
+            ),
+            "location_intent": LocationIntent(),
+            "category_intent": CategoryIntent(),
+            "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
+            "quality_intent": QualityIntent(is_open=True, confidence=0.98),
+        }
+    )
+
+    result = _confidence_gate_node(
+        {
+            "plan": merged["plan"],
+            "location_intent": LocationIntent(),
+            "category_intent": CategoryIntent(),
+            "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
+            "quality_intent": QualityIntent(is_open=True, confidence=0.98),
+        }
+    )
+
+    plan = result["plan"]
+    assert plan.used_fallback is False
+    assert plan.fallback_reason is None
+    assert plan.filter_condition.mongo_query == {"is_open": True}
+    assert plan.semantic_extraction == {"is_open": True}
+
+
 def test_route_node_treats_rule_based_landmark_query_as_semantic():
-    from infrastructure.google.search_v2 import _route_node
+    from infrastructure.google.search import _route_node
 
     result = _route_node(llm=None, state={"raw_query": "日月潭"})
 
@@ -468,8 +514,8 @@ def test_route_node_treats_rule_based_landmark_query_as_semantic():
 
 
 def test_route_node_treats_pure_landmark_query_as_semantic(monkeypatch):
-    from domain.entities.search_v2 import LocationIntent
-    from infrastructure.google import search_v2
+    from domain.entities.search import LocationIntent
+    from infrastructure.google import search as search_module
 
     def fake_invoke_structured(
         llm,
@@ -489,9 +535,9 @@ def test_route_node_treats_pure_landmark_query_as_semantic(monkeypatch):
             "router prompt should not be invoked for pure landmark query"
         )
 
-    monkeypatch.setattr(search_v2, "_invoke_structured", fake_invoke_structured)
+    monkeypatch.setattr(search_module, "_invoke_structured", fake_invoke_structured)
 
-    result = search_v2._route_node(llm=object(), state={"raw_query": "日月潭"})
+    result = search_module._route_node(llm=object(), state={"raw_query": "日月潭"})
 
     assert result["route_decision"].route == "semantic"
     assert result["route_decision"].reason == "查詢本身就是地標條件"
@@ -500,14 +546,14 @@ def test_route_node_treats_pure_landmark_query_as_semantic(monkeypatch):
 
 
 def test_route_node_prefers_rule_based_landmark_before_llm(monkeypatch):
-    from infrastructure.google import search_v2
+    from infrastructure.google import search as search_module
 
     def fake_invoke_structured(*args, **kwargs):
         raise AssertionError("llm should not be invoked for rule-based landmark query")
 
-    monkeypatch.setattr(search_v2, "_invoke_structured", fake_invoke_structured)
+    monkeypatch.setattr(search_module, "_invoke_structured", fake_invoke_structured)
 
-    result = search_v2._route_node(llm=object(), state={"raw_query": "日月潭"})
+    result = search_module._route_node(llm=object(), state={"raw_query": "日月潭"})
 
     assert result["route_decision"].route == "semantic"
     assert result["route_decision"].reason == "查詢本身就是地標條件"
@@ -516,7 +562,7 @@ def test_route_node_prefers_rule_based_landmark_before_llm(monkeypatch):
 
 
 def test_rule_based_category_parser_recognizes_hot_pot_as_primary_type():
-    from infrastructure.google.search_v2 import _extract_category_by_rule
+    from infrastructure.google.search import _extract_category_by_rule
 
     intent = _extract_category_by_rule("桃園 火鍋店")
 
@@ -526,8 +572,8 @@ def test_rule_based_category_parser_recognizes_hot_pot_as_primary_type():
 
 
 def test_comma_separated_primary_type_is_normalized_by_query_rule():
-    from domain.entities.search_v2 import CategoryIntent
-    from infrastructure.google.search_v2 import _normalize_category_intent
+    from domain.entities.search import CategoryIntent
+    from infrastructure.google.search import _normalize_category_intent
 
     intent = _normalize_category_intent(
         "桃園 火鍋店",
@@ -544,14 +590,14 @@ def test_comma_separated_primary_type_is_normalized_by_query_rule():
 
 def test_category_match_expands_to_primary_type_list():
     from domain.entities.property_category import PropertyCategoryKey
-    from domain.entities.search_v2 import (
+    from domain.entities.search import (
         CategoryIntent,
         LocationIntent,
         PetFeatureIntent,
         QualityIntent,
         SearchRouteDecision,
     )
-    from infrastructure.google.search_v2 import _merge_node
+    from infrastructure.google.search import _merge_node
 
     result = _merge_node(
         {
@@ -586,6 +632,46 @@ def test_category_match_expands_to_primary_type_list():
 
 
 def test_category_prompt_uses_dynamic_property_categories_variable():
-    from infrastructure.prompt.search_v2 import CATEGORY_PARSER_PROMPT
+    from infrastructure.prompt.search import CATEGORY_PARSER_PROMPT
 
     assert "{property_categories}" in CATEGORY_PARSER_PROMPT
+
+
+def test_typo_normalizer_heuristic_runs_for_address_with_unrecognized_tail():
+    from infrastructure.google.search import _should_run_typo_normalizer
+
+    assert _should_run_typo_normalizer("桃園 咖啡聽") is True
+    assert _should_run_typo_normalizer("桃園 咖啡廳") is False
+    assert _should_run_typo_normalizer("日月潭") is False
+
+
+def test_typo_node_uses_llm_to_normalize_query(monkeypatch):
+    from domain.entities.search import TypoCorrectionIntent
+    from infrastructure.google import search as search_module
+
+    def fake_invoke_structured(
+        llm,
+        system_prompt,
+        user_input,
+        schema,
+        extra_variables=None,
+    ):
+        assert schema is TypoCorrectionIntent
+        assert user_input == "桃園 咖啡聽"
+        return TypoCorrectionIntent(
+            corrected_query="桃園 咖啡廳",
+            changed=True,
+            confidence=0.96,
+            evidence="corrected typo 聽 -> 廳",
+        )
+
+    monkeypatch.setattr(search_module, "_invoke_structured", fake_invoke_structured)
+
+    result = search_module._typo_node(
+        llm=object(),
+        state={"raw_query": "桃園 咖啡聽", "query_text": "桃園 咖啡聽"},
+    )
+
+    assert result["query_text"] == "桃園 咖啡廳"
+    assert result["typo_intent"].changed is True
+    assert result["typo_intent"].corrected_query == "桃園 咖啡廳"

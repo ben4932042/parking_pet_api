@@ -15,7 +15,11 @@ from domain.entities.property import (
     PetRulesOverride,
     PetServiceOverride,
 )
-from infrastructure.google.extract_query import PreferenceTag
+
+
+class PreferenceTag(BaseModel):
+    key: str
+    label: str
 
 
 class PropertyKeywordRequest(BaseModel):
@@ -56,17 +60,6 @@ class PropertyOverviewResponse(BaseModel):
 class PropertySearchResponse(BaseModel):
     status: str
     preferences: List[PreferenceTag] = Field(default_factory=list)
-    results: List[PropertyOverviewResponse] = Field(default_factory=list)
-
-
-class PropertySearchV2Response(BaseModel):
-    status: str
-    route: str
-    preferences: List[PreferenceTag] = Field(default_factory=list)
-    semantic_extraction: dict = Field(default_factory=dict)
-    warnings: List[str] = Field(default_factory=list)
-    used_fallback: bool = False
-    fallback_reason: Optional[str] = None
     results: List[PropertyOverviewResponse] = Field(default_factory=list)
 
 

@@ -5,16 +5,15 @@ import vertexai
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from domain.entities.enrichment import AnalysisSource
-from domain.entities.property import PropertyEntity, PropertyFilterCondition
+from domain.entities.property import PropertyEntity
 from domain.services.property_enrichment import IEnrichmentProvider
 from infrastructure.config import settings
-from infrastructure.google.extract_query import extract_query
 from infrastructure.google.langchain import geocode_landmark_with_llm
 from infrastructure.google.place_api import (
     get_place_details,
     search_basic_information_by_name,
 )
-from infrastructure.google.search_v2 import extract_search_plan_v2
+from infrastructure.google.search import extract_search_plan
 from infrastructure.google.vertex import distill_property_insights
 
 apply_runtime_warning_filters()
@@ -50,11 +49,8 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity:
         return distill_property_insights(source)
 
-    def extract_search_criteria(self, query: str) -> PropertyFilterCondition:
-        return extract_query(self.llm, query)
-
-    def extract_search_plan_v2(self, query: str):
-        return extract_search_plan_v2(self.llm, query)
+    def extract_search_plan(self, query: str):
+        return extract_search_plan(self.llm, query)
 
     def geocode_landmark(self, landmark_name: str):
         display_name, coordinates = geocode_landmark_with_llm(self.llm, landmark_name)

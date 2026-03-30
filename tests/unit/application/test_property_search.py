@@ -2,11 +2,11 @@ import pytest
 
 from application.property import PropertyService
 from domain.entities.property import PropertyFilterCondition
+from domain.entities.search import SearchPlan
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.services.property_enrichment import IEnrichmentProvider
-from infrastructure.google.extract_query import SearchIntent
 
 
 class DummyEnrichmentProvider(IEnrichmentProvider):
@@ -19,7 +19,7 @@ class DummyEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source):
         raise NotImplementedError
 
-    def extract_search_criteria(self, query: str):
+    def extract_search_plan(self, query: str) -> SearchPlan:
         raise NotImplementedError
 
     def geocode_landmark(self, landmark_name: str):
@@ -30,7 +30,7 @@ class DummyRepo(IPropertyRepository):
     def __init__(self, items):
         self.items = items
 
-    async def find_by_query(self, query):
+    async def find_by_query(self, query, open_at_minutes=None):
         return list(self.items)
 
     async def get_by_keyword(self, q):
@@ -60,8 +60,8 @@ class RankingEnrichmentProvider(DummyEnrichmentProvider):
         super().__init__()
         self.condition = condition
 
-    def extract_search_criteria(self, query: str):
-        return self.condition
+    def extract_search_plan(self, query: str) -> SearchPlan:
+        return SearchPlan(route="semantic", filter_condition=self.condition)
 
 
 class DummyRawDataRepo(IPlaceRawDataRepository):
@@ -108,13 +108,8 @@ def test_generate_query_skips_location_when_landmark_geocode_fails():
     assert query == {"primary_type": "cafe"}
 
 
-def test_search_intent_defaults_to_neutral_rating_gate():
-    intent = SearchIntent(
-        mongo_query={},
-        matched_fields=[],
-        preferences=[],
-        explanation="neutral search",
-    )
+def test_property_filter_condition_defaults_to_neutral_rating_gate():
+    intent = PropertyFilterCondition(mongo_query={})
 
     assert intent.min_rating == 0.0
 

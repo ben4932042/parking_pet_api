@@ -8,6 +8,7 @@ from domain.entities.property import (
     PetFeaturesOverride,
     PetServiceOverride,
 )
+from domain.entities.search import SearchPlan
 from domain.entities.property_category import PropertyCategoryKey
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
@@ -21,16 +22,22 @@ class CapturePropertyService:
     def __init__(self):
         self.calls = []
 
-    async def search_by_keyword(self, q, user_coords=None, map_coords=None):
+    async def search_by_keyword(
+        self, q, user_coords=None, map_coords=None, open_at_minutes=None
+    ):
         self.calls.append(
             {
                 "q": q,
                 "user_coords": user_coords,
                 "map_coords": map_coords,
+                "open_at_minutes": open_at_minutes,
             }
         )
-        conditions = PropertyFilterCondition(preferences=[])
-        return [], conditions
+        plan = SearchPlan(
+            route="semantic",
+            filter_condition=PropertyFilterCondition(preferences=[]),
+        )
+        return [], plan
 
     async def search_nearby(self, lat, lng, radius, types, page, size):
         self.calls.append(
@@ -147,6 +154,7 @@ def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
             "q": "dog cafe",
             "user_coords": None,
             "map_coords": (121.56, 25.03),
+            "open_at_minutes": None,
         }
     ]
 

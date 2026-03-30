@@ -11,13 +11,14 @@ from domain.entities.property_category import (
     PROPERTY_CATEGORIES,
     get_primary_types_by_category_key,
 )
-from domain.entities.search_v2 import (
+from domain.entities.search import (
     CategoryIntent,
     LocationIntent,
     PetFeatureIntent,
     QualityIntent,
-    SearchPlanV2,
+    SearchPlan,
     SearchRouteDecision,
+    TypoCorrectionIntent,
 )
 from infrastructure.prompt import (
     CATEGORY_PARSER_PROMPT,
@@ -25,6 +26,7 @@ from infrastructure.prompt import (
     LOCATION_PARSER_PROMPT,
     QUALITY_PARSER_PROMPT,
     ROUTER_PROMPT,
+    TYPO_NORMALIZER_PROMPT,
 )
 
 
@@ -161,18 +163,20 @@ NEGATIVE_FEATURE_HINT_KEYWORDS = {
 
 QUALITY_HINT_KEYWORDS = {
     "min_rating": ("推薦", "評價", "熱門", "最好", "頂級"),
-    "is_open": ("現在有開", "營業中", "現在營業", "開著", "不想白跑"),
+    "is_open": ("現在有開", "營業中", "現在營業", "開著", "不想白跑", "有開", "有開的"),
 }
 
 
 class SearchGraphState(TypedDict, total=False):
     raw_query: str
+    query_text: str
+    typo_intent: TypoCorrectionIntent
     route_decision: SearchRouteDecision
     location_intent: LocationIntent
     category_intent: CategoryIntent
     feature_intent: PetFeatureIntent
     quality_intent: QualityIntent
-    plan: SearchPlanV2
+    plan: SearchPlan
 
 
 def _invoke_structured(
@@ -197,6 +201,10 @@ def _invoke_structured(
 
 def _normalize_text_for_match(value: str) -> str:
     return re.sub(r"\s+", "", value).strip()
+
+
+def _current_query(state: SearchGraphState) -> str:
+    return state.get("query_text") or state["raw_query"]
 
 
 def _extract_landmark_by_rule(query: str) -> str | None:
@@ -324,9 +332,69 @@ def _extract_quality_by_rule(query: str) -> QualityIntent | None:
     )
 
 
+def _should_run_typo_normalizer(query: str) -> bool:
+    normalized_query = _normalize_text_for_match(query)
+    if not normalized_query or len(normalized_query) < 2:
+        return False
+
+    if _extract_landmark_by_rule(query):
+        return False
+
+    if _extract_category_by_rule(query):
+        return False
+
+    if _extract_feature_by_rule(query) or _extract_quality_by_rule(query):
+        return False
+
+    rule_based_address = _extract_address_by_rule(query)
+    if rule_based_address:
+        remaining_query = query.replace(rule_based_address, "").strip()
+        return bool(remaining_query)
+
+    return False
+
+
+def _typo_node(llm, state: SearchGraphState) -> dict[str, Any]:
+    query = _current_query(state)
+    if not _should_run_typo_normalizer(query):
+        return {
+            "query_text": query,
+            "typo_intent": TypoCorrectionIntent(
+                corrected_query=query,
+                changed=False,
+                confidence=1.0,
+                evidence="skip typo normalization by heuristic",
+            ),
+        }
+
+    intent = _invoke_structured(
+        llm=llm,
+        system_prompt=TYPO_NORMALIZER_PROMPT,
+        user_input=query,
+        schema=TypoCorrectionIntent,
+    )
+    corrected_query = (intent.corrected_query or query).strip() or query
+
+    if not intent.changed or intent.confidence < 0.75:
+        corrected_query = query
+        intent = TypoCorrectionIntent(
+            corrected_query=query,
+            changed=False,
+            confidence=intent.confidence,
+            evidence=intent.evidence or "typo normalizer kept original query",
+        )
+
+    return {
+        "query_text": corrected_query,
+        "typo_intent": intent,
+    }
+
+
 def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
-    rule_based_address = _extract_address_by_rule(state["raw_query"])
-    normalized_query = _normalize_text_for_match(state["raw_query"])
+    query = _current_query(state)
+    rule_based_address = _extract_address_by_rule(query)
+    rule_based_category = _extract_category_by_rule(query)
+    normalized_query = _normalize_text_for_match(query)
     if rule_based_address and normalized_query == rule_based_address:
         return {
             "route_decision": SearchRouteDecision(
@@ -336,7 +404,16 @@ def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
             )
         }
 
-    rule_based_landmark = _extract_landmark_by_rule(state["raw_query"])
+    if rule_based_address and rule_based_category:
+        return {
+            "route_decision": SearchRouteDecision(
+                route="semantic",
+                confidence=0.98,
+                reason="包含地點和分類條件",
+            )
+        }
+
+    rule_based_landmark = _extract_landmark_by_rule(query)
     if rule_based_landmark:
         return {
             "route_decision": SearchRouteDecision(
@@ -356,7 +433,7 @@ def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     location_intent = _invoke_structured(
         llm=llm,
         system_prompt=LOCATION_PARSER_PROMPT,
-        user_input=state["raw_query"],
+        user_input=query,
         schema=LocationIntent,
         extra_variables={"entity_schema": str(entity_schema)},
     )
@@ -382,7 +459,7 @@ def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     decision = _invoke_structured(
         llm=llm,
         system_prompt=ROUTER_PROMPT,
-        user_input=state["raw_query"],
+        user_input=query,
         schema=SearchRouteDecision,
     )
     return {"route_decision": decision}
@@ -461,7 +538,8 @@ def _location_node(llm, state: SearchGraphState) -> dict[str, Any]:
     if existing_intent and existing_intent.kind != "none" and existing_intent.value:
         return {"location_intent": existing_intent}
 
-    rule_based_address = _extract_address_by_rule(state["raw_query"])
+    query = _current_query(state)
+    rule_based_address = _extract_address_by_rule(query)
     if rule_based_address:
         return {
             "location_intent": LocationIntent(
@@ -472,7 +550,7 @@ def _location_node(llm, state: SearchGraphState) -> dict[str, Any]:
             )
         }
 
-    rule_based_landmark = _extract_landmark_by_rule(state["raw_query"])
+    rule_based_landmark = _extract_landmark_by_rule(query)
     if rule_based_landmark:
         return {
             "location_intent": LocationIntent(
@@ -487,7 +565,7 @@ def _location_node(llm, state: SearchGraphState) -> dict[str, Any]:
     intent = _invoke_structured(
         llm=llm,
         system_prompt=LOCATION_PARSER_PROMPT,
-        user_input=state["raw_query"],
+        user_input=query,
         schema=LocationIntent,
         extra_variables={"entity_schema": str(entity_schema)},
     )
@@ -495,8 +573,9 @@ def _location_node(llm, state: SearchGraphState) -> dict[str, Any]:
 
 
 def _category_node(llm, state: SearchGraphState) -> dict[str, Any]:
-    rule_based_landmark = _extract_landmark_by_rule(state["raw_query"])
-    rule_based_intent = _extract_category_by_rule(state["raw_query"])
+    query = _current_query(state)
+    rule_based_landmark = _extract_landmark_by_rule(query)
+    rule_based_intent = _extract_category_by_rule(query)
     if rule_based_landmark and not rule_based_intent:
         return {
             "category_intent": CategoryIntent(
@@ -515,42 +594,44 @@ def _category_node(llm, state: SearchGraphState) -> dict[str, Any]:
     intent = _invoke_structured(
         llm=llm,
         system_prompt=CATEGORY_PARSER_PROMPT,
-        user_input=state["raw_query"],
+        user_input=query,
         schema=CategoryIntent,
         extra_variables={"property_categories": property_categories},
     )
-    return {"category_intent": _normalize_category_intent(state["raw_query"], intent)}
+    return {"category_intent": _normalize_category_intent(query, intent)}
 
 
 def _feature_node(llm, state: SearchGraphState) -> dict[str, Any]:
-    rule_based_intent = _extract_feature_by_rule(state["raw_query"])
+    query = _current_query(state)
+    rule_based_intent = _extract_feature_by_rule(query)
     if rule_based_intent:
         return {"feature_intent": rule_based_intent}
 
-    if not _has_feature_hints(state["raw_query"]):
+    if not _has_feature_hints(query):
         return {"feature_intent": PetFeatureIntent()}
 
     intent = _invoke_structured(
         llm=llm,
         system_prompt=FEATURE_PARSER_PROMPT,
-        user_input=state["raw_query"],
+        user_input=query,
         schema=PetFeatureIntent,
     )
     return {"feature_intent": intent}
 
 
 def _quality_node(llm, state: SearchGraphState) -> dict[str, Any]:
-    rule_based_intent = _extract_quality_by_rule(state["raw_query"])
+    query = _current_query(state)
+    rule_based_intent = _extract_quality_by_rule(query)
     if rule_based_intent:
         return {"quality_intent": rule_based_intent}
 
-    if not _has_quality_hints(state["raw_query"]):
+    if not _has_quality_hints(query):
         return {"quality_intent": QualityIntent()}
 
     intent = _invoke_structured(
         llm=llm,
         system_prompt=QUALITY_PARSER_PROMPT,
-        user_input=state["raw_query"],
+        user_input=query,
         schema=QualityIntent,
     )
     return {"quality_intent": intent}
@@ -672,7 +753,7 @@ def _merge_node(state: SearchGraphState) -> dict[str, Any]:
         explanation=explanation,
     )
 
-    plan = SearchPlanV2(
+    plan = SearchPlan(
         route="semantic",
         route_reason=state["route_decision"].reason,
         route_confidence=state["route_decision"].confidence,
@@ -709,6 +790,8 @@ def _confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
         and not category_intent.category_key
         and location_intent.kind != "address"
         and not plan.filter_condition.landmark_context
+        and quality_intent.is_open is None
+        and quality_intent.min_rating is None
     ):
         fallback_reason = "semantic_parse_missing_core_constraints"
 
@@ -760,7 +843,7 @@ def _confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
 
 def _keyword_plan_node(state: SearchGraphState) -> dict[str, Any]:
     decision = state["route_decision"]
-    plan = SearchPlanV2(
+    plan = SearchPlan(
         route="keyword",
         route_reason=decision.reason,
         route_confidence=decision.confidence,
@@ -777,8 +860,9 @@ def _next_after_gate(state: SearchGraphState) -> str:
     return "fallback" if state["plan"].used_fallback else "semantic"
 
 
-def extract_search_plan_v2(llm, user_input: str) -> SearchPlanV2:
+def extract_search_plan(llm, user_input: str) -> SearchPlan:
     graph = StateGraph(SearchGraphState)
+    graph.add_node("typo_normalizer", lambda state: _typo_node(llm, state))
     graph.add_node("router", lambda state: _route_node(llm, state))
     graph.add_node("keyword_plan", _keyword_plan_node)
     graph.add_node("semantic_fanout", _semantic_fanout_node)
@@ -789,7 +873,8 @@ def extract_search_plan_v2(llm, user_input: str) -> SearchPlanV2:
     graph.add_node("merge_plan", _merge_node)
     graph.add_node("confidence_gate", _confidence_gate_node)
 
-    graph.add_edge(START, "router")
+    graph.add_edge(START, "typo_normalizer")
+    graph.add_edge("typo_normalizer", "router")
     graph.add_conditional_edges(
         "router",
         _next_after_router,
@@ -812,5 +897,5 @@ def extract_search_plan_v2(llm, user_input: str) -> SearchPlanV2:
     )
 
     app = graph.compile()
-    result = app.invoke({"raw_query": user_input})
+    result = app.invoke({"raw_query": user_input, "query_text": user_input})
     return result["plan"]

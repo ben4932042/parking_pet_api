@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Tuple
 import logging
 import re
@@ -28,6 +29,13 @@ class PropertyRepository(IPropertyRepository):
         return {"$and": [base_filter, query]}
 
     @staticmethod
+    def _current_taiwan_minutes() -> int:
+        tz_taiwan = timezone(timedelta(hours=8))
+        now = datetime.now(tz_taiwan)
+        day_of_week = (now.weekday() + 1) % 7
+        return (day_of_week * 1440) + (now.hour * 60) + now.minute
+
+    @staticmethod
     def _build_variant_regex(text: str) -> str:
         pattern_parts: list[str] = []
         for char in text:
@@ -50,6 +58,27 @@ class PropertyRepository(IPropertyRepository):
         if isinstance(value, list):
             return [cls._normalize_regex_query(item) for item in value]
         return value
+
+    @classmethod
+    def _normalize_runtime_query(
+        cls, query: dict, open_at_minutes: Optional[int] = None
+    ) -> dict:
+        normalized_query = cls._normalize_regex_query(query)
+        if normalized_query.get("is_open") is True:
+            current_minutes = (
+                open_at_minutes
+                if open_at_minutes is not None
+                else cls._current_taiwan_minutes()
+            )
+            normalized_query = dict(normalized_query)
+            normalized_query.pop("is_open", None)
+            normalized_query["op_segments"] = {
+                "$elemMatch": {
+                    "s": {"$lte": current_minutes},
+                    "e": {"$gte": current_minutes},
+                }
+            }
+        return normalized_query
 
     async def get_by_keyword(self, q: str) -> List[PropertyEntity]:
         regex = self._build_variant_regex(q)
@@ -75,8 +104,10 @@ class PropertyRepository(IPropertyRepository):
         items = [PropertyEntity(**doc) for doc in docs]
         return items
 
-    async def find_by_query(self, query: dict) -> List[PropertyEntity]:
-        normalized_query = self._normalize_regex_query(query)
+    async def find_by_query(
+        self, query: dict, open_at_minutes: Optional[int] = None
+    ) -> List[PropertyEntity]:
+        normalized_query = self._normalize_runtime_query(query, open_at_minutes)
         logger.debug("Mongo semantic query", extra={"mongo_query": normalized_query})
         cursor = (
             self.collection.find(self._merge_active_filter(normalized_query))

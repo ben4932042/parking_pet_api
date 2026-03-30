@@ -10,7 +10,7 @@ The goal of the feature is not full-text retrieval in the search-engine sense. T
 2. Convert it into a MongoDB filter.
 3. Apply optional geographic proximity.
 4. Sort matching documents by internal rating.
-5. Fall back to a simple regex name/address lookup when the structured query returns no result.
+5. Fall back to a simple keyword lookup only when the search plan explicitly requests it.
 
 ## Main Entry Points
 
@@ -52,7 +52,7 @@ Relevant files:
 - `interface/api/routes/v1/property.py`
 - `application/property.py`
 - `domain/services/property_enrichment.py`
-- `infrastructure/google/extract_query.py`
+- `infrastructure/google/search.py`
 - `infrastructure/google/__init__.py`
 - `infrastructure/mongo/property.py`
 - `domain/entities/property.py`
@@ -77,20 +77,17 @@ Important detail: the route now normalizes coordinates before calling the servic
 
 `PropertyService.search_by_keyword(...)` calls:
 
-- `enrichment_provider.extract_search_criteria(q)`
+- `enrichment_provider.extract_search_plan(q)`
 
-The concrete implementation is `GoogleEnrichmentProvider.extract_search_criteria(...)`, which uses Gemini through LangChain and the prompt defined in `infrastructure/google/extract_query.py`.
+The concrete implementation is `GoogleEnrichmentProvider.extract_search_plan(...)`, which uses the LangGraph-based search pipeline defined in `infrastructure/google/search.py`.
 
-The LLM is instructed to produce a structured `SearchIntent` / `PropertyFilterCondition` containing:
+The pipeline produces a structured `SearchPlan` containing:
 
-- `mongo_query`: the MongoDB filter body
-- `matched_fields`: which feature groups were recognized
-- `preferences`: display tags for the frontend
-- `min_rating`: rating threshold if the user asked for high-quality recommendations
-- `landmark_context`: a landmark name or `CURRENT_LOCATION`
-- `travel_time_limit_min`
-- `search_radius_meters`
-- `explanation`
+- `route`: whether the query should use keyword or semantic retrieval
+- `filter_condition`: the normalized `PropertyFilterCondition`
+- `semantic_extraction`: summarized address/category/feature/quality extraction
+- `warnings`: low-confidence parsing signals
+- `used_fallback` and `fallback_reason`
 
 ### 3. Intent generation rules
 

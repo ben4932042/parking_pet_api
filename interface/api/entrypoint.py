@@ -7,7 +7,6 @@ from interface.api.exceptions.exception_handlers import register_exception_handl
 from interface.api.lifespan import lifespan
 from interface.api.middlewares.logging import LoggingMiddleware
 from interface.api.routes.v1 import router as v1_router
-from interface.api.routes.v2 import router as v2_router
 from infrastructure.config import settings
 
 logger = logging.getLogger(__name__)
@@ -25,7 +24,6 @@ def get_app():
     )
 
     app.include_router(v1_router, prefix="/api/v1")
-    app.include_router(v2_router, prefix="/api/v2")
     register_exception_handlers(app)
     logger.info(f"Config: {settings.model_dump(exclude_none=True)}")
     return app

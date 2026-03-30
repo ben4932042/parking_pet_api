@@ -1,9 +1,10 @@
-from infrastructure.prompt.search_v2 import (
+from infrastructure.prompt.search import (
     CATEGORY_PARSER_PROMPT,
     FEATURE_PARSER_PROMPT,
     LOCATION_PARSER_PROMPT,
     QUALITY_PARSER_PROMPT,
     ROUTER_PROMPT,
+    TYPO_NORMALIZER_PROMPT,
 )
 
 __all__ = [
@@ -12,4 +13,5 @@ __all__ = [
     "CATEGORY_PARSER_PROMPT",
     "FEATURE_PARSER_PROMPT",
     "QUALITY_PARSER_PROMPT",
+    "TYPO_NORMALIZER_PROMPT",
 ]

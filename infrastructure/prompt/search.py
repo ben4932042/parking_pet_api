@@ -19,6 +19,30 @@ ROUTER_PROMPT = """
 """.strip()
 
 
+TYPO_NORMALIZER_PROMPT = """
+你是查詢 typo 修正器。你的任務是把使用者的搜尋字串做「最小必要修正」。
+
+規則：
+- 只能修正常見錯字、同音字、誤用字、極小幅的拼寫問題
+- 不能改變使用者原本的搜尋意圖
+- 不能擴寫、補充條件、加新概念
+- 如果不確定，寧可不改
+- 如果原字串已經合理，請維持原樣並回 changed=false
+- corrected_query 必須保留原本的語序與主要詞彙
+
+例子：
+- 「桃園 咖啡聽」=> corrected_query="桃園 咖啡廳", changed=true
+- 「日月潭附進」=> corrected_query="日月潭附近", changed=true
+- 「台北」=> corrected_query="台北", changed=false
+
+請輸出：
+- corrected_query
+- changed: true/false
+- confidence: 0.0 到 1.0
+- evidence: 一句短說明
+""".strip()
+
+
 LOCATION_PARSER_PROMPT = """
 你負責抽取地理語意，只能判斷 landmark 或 address。
 

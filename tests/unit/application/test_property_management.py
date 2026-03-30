@@ -5,6 +5,7 @@ from domain.entities.audit import PropertyAuditAction
 from domain.entities.enrichment import AnalysisSource
 from domain.entities.property import (
     PetRulesOverride,
+    PetFeaturesOverride,
     PetServiceOverride,
     PropertyEntity,
     PropertyManualOverrides,
@@ -14,6 +15,7 @@ from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from interface.api.exceptions.error import ConflictError, NotFoundError
+from domain.entities.search import SearchPlan
 
 
 class InMemoryPropertyRepo(IPropertyRepository):
@@ -88,7 +90,7 @@ class SyncEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity:
         return self.synced_property
 
-    def extract_search_criteria(self, query: str):
+    def extract_search_plan(self, query: str) -> SearchPlan:
         raise NotImplementedError
 
     def geocode_landmark(self, landmark_name: str):
@@ -154,9 +156,7 @@ async def test_sync_preserves_manual_override_and_writes_sync_audit(
     )
 
     manual_overrides = PropertyManualOverrides(
-        pet_features=PropertyManualOverrides.PetFeatures(
-            services=PetServiceOverride(free_water=True)
-        )
+        pet_features=PetFeaturesOverride(services=PetServiceOverride(free_water=True))
     )
     existing = PropertyEntity(
         **existing.model_dump(

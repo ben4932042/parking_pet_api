@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 
 from domain.entities.enrichment import AnalysisSource
 from domain.entities.property import PropertyEntity, PropertyFilterCondition
-from domain.entities.search_v2 import SearchPlanV2
+from domain.entities.search import SearchPlan
 
 
 class IEnrichmentProvider(ABC):
@@ -14,10 +14,7 @@ class IEnrichmentProvider(ABC):
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity: ...
 
     @abstractmethod
-    def extract_search_criteria(self, query: str) -> PropertyFilterCondition: ...
-
-    def extract_search_plan_v2(self, query: str) -> SearchPlanV2:
-        raise NotImplementedError
+    def extract_search_plan(self, query: str) -> SearchPlan: ...
 
     @abstractmethod
     def geocode_landmark(

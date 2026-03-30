@@ -15,7 +15,6 @@ from domain.entities.property import OpeningPeriod, PropertyEntity, TimePoint
 from domain.entities.user import UserEntity
 from interface.api.exceptions.exception_handlers import register_exception_handlers
 from interface.api.routes.v1 import router as v1_router
-from interface.api.routes.v2 import router as v2_router
 from domain.entities.audit import ActorInfo
 from domain.entities.enrichment import (
     AIAnalysis,
@@ -30,7 +29,6 @@ from domain.entities.enrichment import (
 def api_app():
     app = FastAPI()
     app.include_router(v1_router, prefix="/api/v1")
-    app.include_router(v2_router, prefix="/api/v2")
     register_exception_handlers(app)
     return app
 
