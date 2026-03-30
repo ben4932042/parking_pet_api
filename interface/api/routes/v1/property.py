@@ -37,6 +37,12 @@ def _coords_or_none(
     return lng, lat
 
 
+def _response_type_from_plan(route: str, used_fallback: bool) -> str:
+    if route == "keyword" or used_fallback:
+        return "keyword_search"
+    return "semantic_search"
+
+
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
@@ -62,6 +68,7 @@ async def search_properties_by_keyword(
     )
     return {
         "status": "success",
+        "response_type": _response_type_from_plan(plan.route, plan.used_fallback),
         "preferences": plan.filter_condition.preferences,
         "results": items,
     }

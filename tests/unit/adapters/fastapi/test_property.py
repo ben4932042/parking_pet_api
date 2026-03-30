@@ -19,8 +19,10 @@ from interface.api.exceptions.error import ConflictError
 
 
 class CapturePropertyService:
-    def __init__(self):
+    def __init__(self, route="semantic", used_fallback=False):
         self.calls = []
+        self.route = route
+        self.used_fallback = used_fallback
 
     async def search_by_keyword(
         self, q, user_coords=None, map_coords=None, open_at_minutes=None
@@ -34,8 +36,9 @@ class CapturePropertyService:
             }
         )
         plan = SearchPlan(
-            route="semantic",
+            route=self.route,
             filter_condition=PropertyFilterCondition(preferences=[]),
+            used_fallback=self.used_fallback,
         )
         return [], plan
 
@@ -149,6 +152,7 @@ def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
     )
 
     assert response.status_code == 200
+    assert response.json()["response_type"] == "semantic_search"
     assert service.calls == [
         {
             "q": "dog cafe",
@@ -157,6 +161,31 @@ def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
             "open_at_minutes": None,
         }
     ]
+
+
+def test_search_route_returns_keyword_response_type_for_keyword_retrieval(
+    client, override_api_dep
+):
+    override_api_dep(get_property_service, CapturePropertyService(route="keyword"))
+
+    response = client.get("/api/v1/property", params={"query": "肉球森林"})
+
+    assert response.status_code == 200
+    assert response.json()["response_type"] == "keyword_search"
+
+
+def test_search_route_returns_keyword_response_type_for_fallback_retrieval(
+    client, override_api_dep
+):
+    override_api_dep(
+        get_property_service,
+        CapturePropertyService(route="semantic", used_fallback=True),
+    )
+
+    response = client.get("/api/v1/property", params={"query": "推薦的店"})
+
+    assert response.status_code == 200
+    assert response.json()["response_type"] == "keyword_search"
 
 
 def test_nearby_route_expands_category_to_primary_types(client, override_api_dep):

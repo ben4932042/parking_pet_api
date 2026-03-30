@@ -59,6 +59,7 @@ class PropertyOverviewResponse(BaseModel):
 
 class PropertySearchResponse(BaseModel):
     status: str
+    response_type: str
     preferences: List[PreferenceTag] = Field(default_factory=list)
     results: List[PropertyOverviewResponse] = Field(default_factory=list)
 
