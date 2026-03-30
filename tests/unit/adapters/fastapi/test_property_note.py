@@ -114,7 +114,9 @@ def test_put_property_note_upserts_note(client, override_api_dep, user_entity_fa
 def test_get_user_property_notes_returns_note_list_with_properties(
     client, override_api_dep, user_entity_factory, property_entity_factory
 ):
-    current_user = user_entity_factory(identifier="u1", name="Ben")
+    current_user = user_entity_factory(
+        identifier="u1", name="Ben", favorite_property_ids=["p2"]
+    )
     note = PropertyNoteEntity(
         _id="n1",
         user_id="u1",
@@ -123,13 +125,24 @@ def test_get_user_property_notes_returns_note_list_with_properties(
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         updated_at=datetime(2026, 1, 2, tzinfo=UTC),
     )
+    favorite_note = PropertyNoteEntity(
+        _id="n2",
+        user_id="u1",
+        property_id="p2",
+        content="favorite",
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 4, tzinfo=UTC),
+    )
     note_service = override_api_dep(
-        get_property_note_service, PropertyNoteServiceStub(notes=[note])
+        get_property_note_service, PropertyNoteServiceStub(notes=[note, favorite_note])
     )
     property_service = override_api_dep(
         get_property_service,
         PropertyOverviewServiceStub(
-            properties=[property_entity_factory(identifier="p1", name="Cafe 1")]
+            properties=[
+                property_entity_factory(identifier="p1", name="Cafe 1"),
+                property_entity_factory(identifier="p2", name="Cafe 2"),
+            ]
         ),
     )
     override_api_dep(get_current_user, current_user)
@@ -138,13 +151,14 @@ def test_get_user_property_notes_returns_note_list_with_properties(
 
     assert response.status_code == 200
     data = response.json()
-    assert data["total"] == 1
-    assert data["items"][0]["content"] == "hello"
-    assert data["items"][0]["property"]["id"] == "p1"
+    assert data["total"] == 2
+    assert [item["property_id"] for item in data["items"]] == ["p2", "p1"]
+    assert data["items"][0]["content"] == "favorite"
+    assert data["items"][0]["property"]["id"] == "p2"
     assert data["items"][0]["property"]["has_note"] is True
     assert note_service.calls == [
         {"fn": "list_notes", "user_id": "u1", "page": 1, "size": 20, "query": None}
     ]
     assert property_service.calls == [
-        {"fn": "get_overviews_by_ids", "property_ids": ["p1"]}
+        {"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}
     ]

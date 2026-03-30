@@ -134,6 +134,7 @@ async def get_user_property_notes(
         [note.property_id for note in notes]
     )
     property_map = {property_item.id: property_item for property_item in properties}
+    favorite_property_ids = set(current_user.favorite_property_ids)
     items = [
         UserPropertyNoteListItemResponse(
             property_id=note.property_id,
@@ -151,6 +152,9 @@ async def get_user_property_notes(
         )
         for note in notes
     ]
+    items = sorted(
+        items, key=lambda item: item.property_id not in favorite_property_ids
+    )
     pages = (total + size - 1) // size if size else 0
     return {
         "items": items,
