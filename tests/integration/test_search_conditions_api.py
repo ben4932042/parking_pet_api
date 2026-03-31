@@ -170,6 +170,38 @@ def integration_search_setup(api_app):
             },
         ),
         (
+            "開車十分鐘的公園",
+            {"user_lat": 25.0339, "user_lng": 121.5645},
+            {
+                "response_type": "semantic_search",
+                "preferences": ["category_preference", "travel_time_preference"],
+                "landmark_context": "CURRENT_LOCATION",
+                "travel_time_limit_min": 10,
+                "search_radius_meters": 7500,
+                "transport_mode": "driving",
+                "query_checks": {
+                    "primary_type_includes": "park",
+                    "max_distance": 7500,
+                },
+            },
+        ),
+        (
+            "走路五分鐘的咖啡廳",
+            {"user_lat": 25.0339, "user_lng": 121.5645},
+            {
+                "response_type": "semantic_search",
+                "preferences": ["category_preference", "travel_time_preference"],
+                "landmark_context": "CURRENT_LOCATION",
+                "travel_time_limit_min": 5,
+                "search_radius_meters": 375,
+                "transport_mode": "walking",
+                "query_checks": {
+                    "primary_type_includes": "cafe",
+                    "max_distance": 375,
+                },
+            },
+        ),
+        (
             "台北101附近咖啡廳",
             {},
             {

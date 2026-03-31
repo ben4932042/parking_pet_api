@@ -189,9 +189,26 @@ TRANSPORT_KEYWORDS = {
     "bicycling": ("騎車", "單車", "自行車", "腳踏車", "騎腳踏車"),
     "driving": ("開車", "車程"),
 }
+TRANSPORT_PHRASES = {
+    keyword for keywords in TRANSPORT_KEYWORDS.values() for keyword in keywords
+}
 TRAVEL_TIME_PATTERN = re.compile(
-    r"(?:距離\s*)?(?:(?P<prefix_mode>步行|走路|徒步|騎車|單車|自行車|腳踏車|騎腳踏車|開車|車程)\s*)?(?P<minutes>\d{1,3})\s*分鐘(?:\s*(?P<suffix_mode>步行|走路|徒步|騎車|單車|自行車|腳踏車|騎腳踏車|開車|車程|內))?"
+    r"(?:距離\s*)?(?:(?P<prefix_mode>步行|走路|徒步|騎車|單車|自行車|腳踏車|騎腳踏車|開車|車程)\s*)?(?P<minutes>[零一二兩三四五六七八九十百\d]{1,4})\s*分鐘(?:\s*(?P<suffix_mode>步行|走路|徒步|騎車|單車|自行車|腳踏車|騎腳踏車|開車|車程|內))?"
 )
+
+CHINESE_NUMBER_MAP = {
+    "零": 0,
+    "一": 1,
+    "二": 2,
+    "兩": 2,
+    "三": 3,
+    "四": 4,
+    "五": 5,
+    "六": 6,
+    "七": 7,
+    "八": 8,
+    "九": 9,
+}
 
 NON_SEARCH_EXACT_QUERIES = {
     "你好",
@@ -324,7 +341,14 @@ def _extract_landmark_by_rule(query: str) -> str | None:
 
     for keyword in sorted(RULE_BASED_LANDMARK_KEYWORDS, key=len, reverse=True):
         normalized_keyword = _normalize_text_for_match(keyword)
-        if normalized_keyword in normalized_query:
+        keyword_index = normalized_query.find(normalized_keyword)
+        if keyword_index != -1:
+            next_index = keyword_index + len(normalized_keyword)
+            if next_index < len(normalized_query) and normalized_query[next_index] in {
+                "鐘",
+                "钟",
+            }:
+                continue
             return keyword
 
     if any(
@@ -632,7 +656,10 @@ def _extract_address_by_rule(query: str) -> str | None:
 
     match = ADDRESS_SUFFIX_PATTERN.search(query)
     if match:
-        return match.group("value")
+        value = match.group("value")
+        if value in TRANSPORT_PHRASES:
+            return None
+        return value
 
     return None
 
@@ -841,13 +868,42 @@ def _detect_transport_mode(query: str, matched_mode: str | None = None) -> str:
     return "driving"
 
 
+def _parse_travel_minutes(raw_value: str) -> int | None:
+    raw_value = raw_value.strip()
+    if raw_value.isdigit():
+        return int(raw_value)
+
+    if not raw_value:
+        return None
+
+    if raw_value == "十":
+        return 10
+
+    if "百" in raw_value:
+        parts = raw_value.split("百", 1)
+        hundreds = CHINESE_NUMBER_MAP.get(parts[0], 1) if parts[0] else 1
+        remainder = _parse_travel_minutes(parts[1]) or 0
+        return hundreds * 100 + remainder
+
+    if "十" in raw_value:
+        parts = raw_value.split("十", 1)
+        tens = CHINESE_NUMBER_MAP.get(parts[0], 1) if parts[0] else 1
+        ones = CHINESE_NUMBER_MAP.get(parts[1], 0) if parts[1] else 0
+        return tens * 10 + ones
+
+    if len(raw_value) == 1:
+        return CHINESE_NUMBER_MAP.get(raw_value)
+
+    return None
+
+
 def _travel_minutes_to_radius_meters(minutes: int, transport_mode: str) -> int:
     distance_km = (
         TRANSPORT_SPEED_KMH[transport_mode]
         * (minutes / 60)
         * TRANSPORT_DISTANCE_DISCOUNT[transport_mode]
     )
-    return int(distance_km * 1000)
+    return round(distance_km * 1000)
 
 
 def _extract_distance_by_rule(query: str) -> DistanceIntent | None:
@@ -855,8 +911,8 @@ def _extract_distance_by_rule(query: str) -> DistanceIntent | None:
     if not match:
         return None
 
-    minutes = int(match.group("minutes"))
-    if minutes <= 0:
+    minutes = _parse_travel_minutes(match.group("minutes"))
+    if minutes is None or minutes <= 0:
         return None
 
     transport_mode = _detect_transport_mode(
