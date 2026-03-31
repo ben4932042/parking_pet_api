@@ -13,6 +13,7 @@ from domain.entities.property_category import (
 )
 from domain.entities.search import (
     CategoryIntent,
+    DistanceIntent,
     LocationIntent,
     PetFeatureIntent,
     QualityIntent,
@@ -89,6 +90,7 @@ RULE_BASED_PRIMARY_TYPE_KEYWORDS = [
     ("寵物美容", "pet_care"),
     ("洗澡", "pet_care"),
     ("剪毛", "pet_care"),
+    ("美容", "pet_care"),
     ("寵物用品", "pet_store"),
 ]
 
@@ -149,8 +151,8 @@ FEATURE_HINT_KEYWORDS = {
     "indoor_ac": ("冷氣", "空調"),
     "off_leash_possible": ("放繩", "奔跑"),
     "pet_friendly_floor": ("止滑", "地墊"),
-    "has_shop_pet": ("店狗", "店貓"),
-    "pet_menu": ("寵物餐", "狗餐", "貓餐"),
+    "has_shop_pet": ("有店狗", "有店貓", "店裡有狗"),
+    "pet_menu": ("寵物餐",),
     "free_water": ("水碗", "飲水", "有水"),
     "free_treats": ("零食", "點心"),
     "pet_seating": ("上椅", "一起坐", "座位"),
@@ -159,12 +161,37 @@ FEATURE_HINT_KEYWORDS = {
 NEGATIVE_FEATURE_HINT_KEYWORDS = {
     "stroller_required": ("不用推車", "免推車", "不用提籠", "免提籠"),
     "allow_on_floor": ("不可落地", "不能落地"),
+    "has_shop_pet": ("沒有店狗",)
 }
 
 QUALITY_HINT_KEYWORDS = {
     "min_rating": ("推薦", "評價", "熱門", "最好", "頂級"),
     "is_open": ("現在有開", "營業中", "現在營業", "開著", "不想白跑", "有開", "有開的"),
 }
+
+TRANSPORT_SPEED_KMH = {
+    "driving": 50,
+    "bicycling": 15,
+    "walking": 5,
+}
+TRANSPORT_DISTANCE_DISCOUNT = {
+    "driving": 0.9,
+    "bicycling": 0.9,
+    "walking": 0.9,
+}
+TRANSPORT_LABELS = {
+    "driving": "車程",
+    "bicycling": "騎車",
+    "walking": "步行",
+}
+TRANSPORT_KEYWORDS = {
+    "walking": ("步行", "走路", "徒步"),
+    "bicycling": ("騎車", "單車", "自行車", "腳踏車", "騎腳踏車"),
+    "driving": ("開車", "車程"),
+}
+TRAVEL_TIME_PATTERN = re.compile(
+    r"(?:距離\s*)?(?:(?P<prefix_mode>步行|走路|徒步|騎車|單車|自行車|腳踏車|騎腳踏車|開車|車程)\s*)?(?P<minutes>\d{1,3})\s*分鐘(?:\s*(?P<suffix_mode>步行|走路|徒步|騎車|單車|自行車|腳踏車|騎腳踏車|開車|車程|內))?"
+)
 
 NON_SEARCH_EXACT_QUERIES = {
     "你好",
@@ -216,6 +243,7 @@ class SearchGraphState(TypedDict, total=False):
     category_intent: CategoryIntent
     feature_intent: PetFeatureIntent
     quality_intent: QualityIntent
+    distance_intent: DistanceIntent
     plan: SearchPlan
 
 
@@ -743,11 +771,71 @@ def _quality_node(llm, state: SearchGraphState) -> dict[str, Any]:
     return {"quality_intent": intent}
 
 
+def _detect_transport_mode(query: str, matched_mode: str | None = None) -> str:
+    if matched_mode:
+        for mode, keywords in TRANSPORT_KEYWORDS.items():
+            if matched_mode in keywords:
+                return mode
+
+    for mode, keywords in TRANSPORT_KEYWORDS.items():
+        if any(keyword in query for keyword in keywords):
+            return mode
+
+    return "driving"
+
+
+def _travel_minutes_to_radius_meters(minutes: int, transport_mode: str) -> int:
+    distance_km = (
+        TRANSPORT_SPEED_KMH[transport_mode]
+        * (minutes / 60)
+        * TRANSPORT_DISTANCE_DISCOUNT[transport_mode]
+    )
+    return int(distance_km * 1000)
+
+
+def _extract_distance_by_rule(query: str) -> DistanceIntent | None:
+    match = TRAVEL_TIME_PATTERN.search(query)
+    if not match:
+        return None
+
+    minutes = int(match.group("minutes"))
+    if minutes <= 0:
+        return None
+
+    transport_mode = _detect_transport_mode(
+        query,
+        matched_mode=match.group("prefix_mode") or match.group("suffix_mode"),
+    )
+    speed_kmh = TRANSPORT_SPEED_KMH[transport_mode]
+    discount = TRANSPORT_DISTANCE_DISCOUNT[transport_mode]
+
+    return DistanceIntent(
+        transport_mode=transport_mode,
+        travel_time_limit_min=minutes,
+        search_radius_meters=_travel_minutes_to_radius_meters(minutes, transport_mode),
+        confidence=0.95,
+        evidence=(
+            "converted travel time to radius by rule "
+            f"({transport_mode} {speed_kmh}km/h * {minutes}min * {discount})"
+        ),
+    )
+
+
+def _distance_node(state: SearchGraphState) -> dict[str, Any]:
+    query = _current_query(state)
+    rule_based_intent = _extract_distance_by_rule(query)
+    if rule_based_intent:
+        return {"distance_intent": rule_based_intent}
+
+    return {"distance_intent": DistanceIntent()}
+
+
 def _build_semantic_summary(
     location_intent: LocationIntent,
     category_intent: CategoryIntent,
     feature_intent: PetFeatureIntent,
     quality_intent: QualityIntent,
+    distance_intent: DistanceIntent,
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     if location_intent.kind == "landmark" and location_intent.value:
@@ -774,6 +862,15 @@ def _build_semantic_summary(
     if quality_intent.is_open is not None:
         summary["is_open"] = quality_intent.is_open
 
+    if distance_intent.travel_time_limit_min is not None:
+        summary["travel_time_limit_min"] = distance_intent.travel_time_limit_min
+
+    if distance_intent.search_radius_meters is not None:
+        summary["search_radius_meters"] = distance_intent.search_radius_meters
+
+    if distance_intent.travel_time_limit_min is not None:
+        summary["transport_mode"] = distance_intent.transport_mode
+
     return summary
 
 
@@ -782,6 +879,7 @@ def _merge_node(state: SearchGraphState) -> dict[str, Any]:
     category_intent = state.get("category_intent", CategoryIntent())
     feature_intent = state.get("feature_intent", PetFeatureIntent())
     quality_intent = state.get("quality_intent", QualityIntent())
+    distance_intent = state.get("distance_intent", DistanceIntent())
 
     mongo_query: dict[str, Any] = {}
     matched_fields: list[str] = []
@@ -835,6 +933,18 @@ def _merge_node(state: SearchGraphState) -> dict[str, Any]:
         matched_fields.append("is_open")
         preferences.append({"key": "is_open_preference", "label": "營業中"})
 
+    if distance_intent.travel_time_limit_min is not None:
+        matched_fields.append("travel_time_limit_min")
+        preferences.append(
+            {
+                "key": "travel_time_preference",
+                "label": (
+                    f"{distance_intent.travel_time_limit_min}分鐘"
+                    f"{TRANSPORT_LABELS[distance_intent.transport_mode]}"
+                ),
+            }
+        )
+
     landmark_context = (
         location_intent.value
         if location_intent.kind == "landmark" and location_intent.value
@@ -847,6 +957,7 @@ def _merge_node(state: SearchGraphState) -> dict[str, Any]:
         category_intent.evidence,
         feature_intent.evidence,
         quality_intent.evidence,
+        distance_intent.evidence,
     ]
     explanation = " | ".join(part for part in explanation_parts if part)
 
@@ -856,6 +967,12 @@ def _merge_node(state: SearchGraphState) -> dict[str, Any]:
         preferences=preferences,
         min_rating=quality_intent.min_rating or 0.0,
         landmark_context=landmark_context,
+        travel_time_limit_min=distance_intent.travel_time_limit_min,
+        search_radius_meters=(
+            distance_intent.search_radius_meters
+            if distance_intent.search_radius_meters is not None
+            else 100000
+        ),
         explanation=explanation,
     )
 
@@ -869,6 +986,7 @@ def _merge_node(state: SearchGraphState) -> dict[str, Any]:
             category_intent=category_intent,
             feature_intent=feature_intent,
             quality_intent=quality_intent,
+            distance_intent=distance_intent,
         ),
     )
     return {"plan": plan}
@@ -880,6 +998,7 @@ def _confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
     category_intent = state.get("category_intent", CategoryIntent())
     feature_intent = state.get("feature_intent", PetFeatureIntent())
     quality_intent = state.get("quality_intent", QualityIntent())
+    distance_intent = state.get("distance_intent", DistanceIntent())
 
     fallback_reason = None
     warnings = list(plan.warnings)
@@ -887,6 +1006,7 @@ def _confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
         plan.semantic_extraction
         or plan.filter_condition.mongo_query
         or plan.filter_condition.landmark_context
+        or plan.filter_condition.travel_time_limit_min is not None
     )
 
     if not recognized_any:
@@ -898,6 +1018,7 @@ def _confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
         and not plan.filter_condition.landmark_context
         and quality_intent.is_open is None
         and quality_intent.min_rating is None
+        and distance_intent.travel_time_limit_min is None
     ):
         fallback_reason = "semantic_parse_missing_core_constraints"
 
@@ -939,6 +1060,12 @@ def _confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
     if quality_intent.min_rating is not None and quality_intent.confidence < 0.65:
         warnings.append("low_confidence_quality")
 
+    if (
+        distance_intent.travel_time_limit_min is not None
+        and distance_intent.confidence < 0.7
+    ):
+        warnings.append("low_confidence_distance")
+
     plan.warnings = warnings
     if fallback_reason:
         plan.used_fallback = True
@@ -976,6 +1103,7 @@ def extract_search_plan(llm, user_input: str) -> SearchPlan:
     graph.add_node("category_parser", lambda state: _category_node(llm, state))
     graph.add_node("feature_parser", lambda state: _feature_node(llm, state))
     graph.add_node("quality_parser", lambda state: _quality_node(llm, state))
+    graph.add_node("distance_parser", _distance_node)
     graph.add_node("merge_plan", _merge_node)
     graph.add_node("confidence_gate", _confidence_gate_node)
 
@@ -991,10 +1119,12 @@ def extract_search_plan(llm, user_input: str) -> SearchPlan:
     graph.add_edge("semantic_fanout", "category_parser")
     graph.add_edge("semantic_fanout", "feature_parser")
     graph.add_edge("semantic_fanout", "quality_parser")
+    graph.add_edge("semantic_fanout", "distance_parser")
     graph.add_edge("location_parser", "merge_plan")
     graph.add_edge("category_parser", "merge_plan")
     graph.add_edge("feature_parser", "merge_plan")
     graph.add_edge("quality_parser", "merge_plan")
+    graph.add_edge("distance_parser", "merge_plan")
     graph.add_edge("merge_plan", "confidence_gate")
     graph.add_conditional_edges(
         "confidence_gate",

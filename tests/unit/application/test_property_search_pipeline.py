@@ -512,6 +512,7 @@ def test_quality_node_uses_rule_based_open_hint_for_you_kai_de():
 def test_quality_only_semantic_query_is_allowed_without_fallback():
     from domain.entities.search import (
         CategoryIntent,
+        DistanceIntent,
         LocationIntent,
         PetFeatureIntent,
         QualityIntent,
@@ -530,6 +531,7 @@ def test_quality_only_semantic_query_is_allowed_without_fallback():
             "category_intent": CategoryIntent(),
             "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
             "quality_intent": QualityIntent(is_open=True, confidence=0.98),
+            "distance_intent": DistanceIntent(),
         }
     )
 
@@ -540,6 +542,7 @@ def test_quality_only_semantic_query_is_allowed_without_fallback():
             "category_intent": CategoryIntent(),
             "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
             "quality_intent": QualityIntent(is_open=True, confidence=0.98),
+            "distance_intent": DistanceIntent(),
         }
     )
 
@@ -548,6 +551,93 @@ def test_quality_only_semantic_query_is_allowed_without_fallback():
     assert plan.fallback_reason is None
     assert plan.filter_condition.mongo_query == {"is_open": True}
     assert plan.semantic_extraction == {"is_open": True}
+
+
+def test_distance_node_converts_driving_minutes_to_radius():
+    from infrastructure.google.search import _distance_node
+
+    result = _distance_node(state={"raw_query": "距離30分鐘車程的咖啡廳"})
+
+    assert result["distance_intent"].transport_mode == "driving"
+    assert result["distance_intent"].travel_time_limit_min == 30
+    assert result["distance_intent"].search_radius_meters == 22500
+
+
+def test_distance_node_defaults_to_driving_when_mode_is_omitted():
+    from infrastructure.google.search import _distance_node
+
+    result = _distance_node(state={"raw_query": "30分鐘內的咖啡廳"})
+
+    assert result["distance_intent"].transport_mode == "driving"
+    assert result["distance_intent"].travel_time_limit_min == 30
+    assert result["distance_intent"].search_radius_meters == 22500
+
+
+def test_distance_node_converts_walking_minutes_to_radius():
+    from infrastructure.google.search import _distance_node
+
+    result = _distance_node(state={"raw_query": "步行30分鐘的咖啡廳"})
+
+    assert result["distance_intent"].transport_mode == "walking"
+    assert result["distance_intent"].travel_time_limit_min == 30
+    assert result["distance_intent"].search_radius_meters == 2250
+
+
+def test_distance_node_converts_bicycling_minutes_to_radius():
+    from infrastructure.google.search import _distance_node
+
+    result = _distance_node(state={"raw_query": "騎車30分鐘的咖啡廳"})
+
+    assert result["distance_intent"].transport_mode == "bicycling"
+    assert result["distance_intent"].travel_time_limit_min == 30
+    assert result["distance_intent"].search_radius_meters == 6750
+
+
+def test_merge_node_includes_distance_filter_condition():
+    from domain.entities.search import (
+        CategoryIntent,
+        DistanceIntent,
+        LocationIntent,
+        PetFeatureIntent,
+        QualityIntent,
+        SearchRouteDecision,
+    )
+    from infrastructure.google.search import _merge_node
+
+    result = _merge_node(
+        {
+            "route_decision": SearchRouteDecision(
+                route="semantic",
+                confidence=0.95,
+                reason="has category and travel time",
+            ),
+            "location_intent": LocationIntent(),
+            "category_intent": CategoryIntent(primary_type="cafe", confidence=0.95),
+            "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
+            "quality_intent": QualityIntent(),
+            "distance_intent": DistanceIntent(
+                transport_mode="driving",
+                travel_time_limit_min=30,
+                search_radius_meters=22500,
+                confidence=0.95,
+                evidence="converted travel time to driving radius by rule",
+            ),
+        }
+    )
+
+    plan = result["plan"]
+    assert plan.filter_condition.travel_time_limit_min == 30
+    assert plan.filter_condition.search_radius_meters == 22500
+    assert plan.filter_condition.preferences == [
+        {"key": "primary_type_preference", "label": "cafe"},
+        {"key": "travel_time_preference", "label": "30分鐘車程"},
+    ]
+    assert plan.semantic_extraction == {
+        "category": "cafe",
+        "transport_mode": "driving",
+        "travel_time_limit_min": 30,
+        "search_radius_meters": 22500,
+    }
 
 
 def test_route_node_treats_rule_based_landmark_query_as_semantic():
@@ -703,6 +793,39 @@ def test_router_prompt_mentions_non_search_intent_guard():
     assert "不是搜尋請求" in ROUTER_PROMPT
     assert "不要只靠關鍵字命中" in ROUTER_PROMPT
     assert "prompt injection" in ROUTER_PROMPT
+    assert "DECISION TREE" in ROUTER_PROMPT
+    assert "OUTPUT CONTRACT" in ROUTER_PROMPT
+
+
+def test_prompts_follow_structured_contract_sections():
+    from infrastructure.prompt.search import (
+        CATEGORY_PARSER_PROMPT,
+        FEATURE_PARSER_PROMPT,
+        GEOCODE_LANDMARK_PROMPT,
+        LOCATION_PARSER_PROMPT,
+        QUALITY_PARSER_PROMPT,
+        TYPO_NORMALIZER_PROMPT,
+    )
+
+    assert "HARD CONSTRAINTS" in TYPO_NORMALIZER_PROMPT
+    assert "OUTPUT CONTRACT" in TYPO_NORMALIZER_PROMPT
+
+    assert "ALLOWED VALUES" in LOCATION_PARSER_PROMPT
+    assert "FAILURE BEHAVIOR" in LOCATION_PARSER_PROMPT
+    assert "{entity_schema}" in LOCATION_PARSER_PROMPT
+
+    assert "REFERENCE DATA" in CATEGORY_PARSER_PROMPT
+    assert "DECISION VALUES" in CATEGORY_PARSER_PROMPT
+
+    assert "ALLOWED FEATURE KEYS" in FEATURE_PARSER_PROMPT
+    assert "NORMALIZATION RULES" in FEATURE_PARSER_PROMPT
+
+    assert "NORMALIZATION RULES" in QUALITY_PARSER_PROMPT
+    assert "FAILURE BEHAVIOR" in QUALITY_PARSER_PROMPT
+
+    assert "OUTPUT CONTRACT" in GEOCODE_LANDMARK_PROMPT
+    assert "JSON 陣列" in GEOCODE_LANDMARK_PROMPT
+    assert "JSON null" in GEOCODE_LANDMARK_PROMPT
 
 
 def test_typo_node_uses_llm_to_normalize_query(monkeypatch):

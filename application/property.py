@@ -152,6 +152,10 @@ class PropertyService:
             action = PropertyAuditAction.SYNC
             before = existing
         else:
+            if ai_result.primary_type == "unknown":
+                raise ValueError(
+                    "Resolved property has unknown primary_type and cannot be created."
+                )
             final_property = ai_result.model_copy(
                 update={
                     "created_by": actor,

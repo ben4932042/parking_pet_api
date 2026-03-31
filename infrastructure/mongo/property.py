@@ -39,10 +39,7 @@ class PropertyRepository(IPropertyRepository):
     def _build_variant_regex(text: str) -> str:
         pattern_parts: list[str] = []
         for char in text:
-            if char in {"台", "臺"}:
-                pattern_parts.append("[台臺]")
-            else:
-                pattern_parts.append(re.escape(char))
+            pattern_parts.append(re.escape(char))
         return "".join(pattern_parts)
 
     @classmethod

@@ -47,6 +47,14 @@ class QualityIntent(BaseModel):
     evidence: str = Field(default="")
 
 
+class DistanceIntent(BaseModel):
+    transport_mode: Literal["driving", "bicycling", "walking"] = "driving"
+    travel_time_limit_min: Optional[int] = Field(default=None, ge=0)
+    search_radius_meters: Optional[int] = Field(default=None, ge=0)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: str = Field(default="")
+
+
 class SearchPlan(BaseModel):
     route: Literal["keyword", "semantic"]
     route_reason: str = Field(default="")

@@ -185,6 +185,34 @@ async def test_sync_preserves_manual_override_and_writes_sync_audit(
 
 
 @pytest.mark.asyncio
+async def test_create_property_rejects_unknown_primary_type_for_new_record(
+    property_entity_factory, actor_factory
+):
+    synced = property_entity_factory(
+        identifier="place-unknown",
+        place_id="place-unknown",
+    )
+    synced = synced.model_copy(update={"primary_type": "unknown"})
+
+    repo = InMemoryPropertyRepo()
+    audit_repo = InMemoryAuditRepo()
+    raw_data_repo = DummyRawDataRepo()
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=SyncEnrichmentProvider(build_source("place-unknown"), synced),
+    )
+
+    with pytest.raises(ValueError, match="unknown primary_type"):
+        await service.create_property(name="test", actor=actor_factory())
+
+    assert repo.property_entity is None
+    assert audit_repo.logs == []
+    assert len(raw_data_repo.saved) == 1
+
+
+@pytest.mark.asyncio
 async def test_soft_delete_and_restore_write_audit_logs(
     property_entity_factory, actor_factory
 ):
