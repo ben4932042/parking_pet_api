@@ -103,6 +103,7 @@ HARD CONSTRAINTS
 2. 不要把店家類型、場所分類、偏好條件放進 value。
 3. 不確定時不要硬猜，回 kind=none 或降低 confidence。
 4. 行政區、縣市、路街段巷弄等地址型訊號，優先判定為 address。
+5. 若查詢是相對於使用者當前位置的時間或距離搜尋，但沒有明講地標或地址，可用特殊 landmark value=`CURRENT_LOCATION`。
 
 ADDRESS RULES
 - 台灣的縣市、直轄市、區、鄉、鎮、市、里、村、路、街、段、巷、弄，都視為 address。
@@ -113,6 +114,7 @@ ADDRESS RULES
 LANDMARK RULES
 - 地標、景點、車站、商場、百貨、景觀名稱 => landmark。
 - 例如：台北101、桃園機場、中壢夜市、小人國、華泰名品城 => landmark。
+- 若查詢是「30分鐘車程的咖啡廳」、「步行10分鐘的公園」這種相對距離搜尋，且沒有其他明確地理名稱，請回 kind=landmark, value=CURRENT_LOCATION。
 
 FAILURE BEHAVIOR
 - 不要因為查詢中有分類詞就污染地理 value。
@@ -130,6 +132,8 @@ EXAMPLES
 - 「中山路 寵物友善餐廳」=> kind=address, value=中山路
 - 「台北101 附近餐廳」=> kind=landmark, value=台北101
 - 「桃園機場 附近美食」=> kind=landmark, value=桃園機場
+- 「距離30分鐘車程的咖啡廳」=> kind=landmark, value=CURRENT_LOCATION
+- 「步行15分鐘的公園」=> kind=landmark, value=CURRENT_LOCATION
 
 參考 PropertyEntity schema：
 {entity_schema}
@@ -267,5 +271,4 @@ EXAMPLES
 - 「桃園機場」=> [121.2322, 25.0777]
 - 無法判斷時 => null
 """.strip()
-
 

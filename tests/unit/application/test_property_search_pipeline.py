@@ -593,6 +593,15 @@ def test_distance_node_converts_bicycling_minutes_to_radius():
     assert result["distance_intent"].search_radius_meters == 6750
 
 
+def test_location_node_uses_current_location_for_travel_time_query():
+    from infrastructure.google.search import _location_node
+
+    result = _location_node(llm=None, state={"raw_query": "距離30分鐘車程的咖啡廳"})
+
+    assert result["location_intent"].kind == "landmark"
+    assert result["location_intent"].value == "CURRENT_LOCATION"
+
+
 def test_merge_node_includes_distance_filter_condition():
     from domain.entities.search import (
         CategoryIntent,
@@ -813,6 +822,7 @@ def test_prompts_follow_structured_contract_sections():
     assert "ALLOWED VALUES" in LOCATION_PARSER_PROMPT
     assert "FAILURE BEHAVIOR" in LOCATION_PARSER_PROMPT
     assert "{entity_schema}" in LOCATION_PARSER_PROMPT
+    assert "CURRENT_LOCATION" in LOCATION_PARSER_PROMPT
 
     assert "REFERENCE DATA" in CATEGORY_PARSER_PROMPT
     assert "DECISION VALUES" in CATEGORY_PARSER_PROMPT

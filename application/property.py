@@ -82,6 +82,21 @@ class PropertyService:
             items = await self.repo.get_by_keyword(q)
             return items[:1], search_plan
 
+        if self._travel_time_requires_geo_anchor(
+            search_plan, user_coords=user_coords, map_coords=map_coords
+        ):
+            warning = "missing_geo_anchor_for_travel_time"
+            if warning not in search_plan.warnings:
+                search_plan.warnings.append(warning)
+            logger.info(
+                "Skipping semantic travel-time search without geo anchor",
+                extra={
+                    "query_text": q,
+                    "travel_time_limit_min": search_plan.filter_condition.travel_time_limit_min,
+                },
+            )
+            return [], search_plan
+
         generate_query = self.enrichment_provider.generate_query(
             search_plan.filter_condition,
             user_coords,
@@ -111,6 +126,24 @@ class PropertyService:
         else:
             items = self._rank_search_results(items, generate_query)
         return items, search_plan
+
+    @staticmethod
+    def _travel_time_requires_geo_anchor(
+        search_plan,
+        user_coords: Optional[tuple[float, float]] = None,
+        map_coords: Optional[tuple[float, float]] = None,
+    ) -> bool:
+        condition = search_plan.filter_condition
+        if condition.travel_time_limit_min is None:
+            return False
+
+        if condition.landmark_context == "CURRENT_LOCATION":
+            return user_coords is None
+
+        if condition.landmark_context:
+            return False
+
+        return user_coords is None and map_coords is None
 
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)

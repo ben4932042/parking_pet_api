@@ -528,6 +528,9 @@ def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
 
     rule_based_address = _extract_address_by_rule(query)
     rule_based_category = _extract_category_by_rule(query)
+    rule_based_feature = _extract_feature_by_rule(query)
+    rule_based_quality = _extract_quality_by_rule(query)
+    rule_based_distance = _extract_distance_by_rule(query)
     normalized_query = _normalize_text_for_match(query)
     if rule_based_address and normalized_query == rule_based_address:
         return {
@@ -561,6 +564,21 @@ def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
                 confidence=0.98,
                 evidence="matched landmark keyword or suffix by rule",
             ),
+        }
+
+    if (
+        rule_based_category
+        or rule_based_feature
+        or rule_based_quality
+        or rule_based_distance
+        or _should_use_current_location_context(query)
+    ):
+        return {
+            "route_decision": SearchRouteDecision(
+                route="semantic",
+                confidence=0.95,
+                reason="查詢包含分類或偏好條件",
+            )
         }
 
     entity_schema = PropertyEntity.model_json_schema()
@@ -600,8 +618,16 @@ def _route_node(llm, state: SearchGraphState) -> dict[str, Any]:
 
 
 def _extract_address_by_rule(query: str) -> str | None:
+    rule_based_landmark = _extract_landmark_by_rule(query)
+
     for keyword in sorted(TAIWAN_ADDRESS_KEYWORDS, key=len, reverse=True):
         if keyword in query:
+            if (
+                rule_based_landmark
+                and keyword in rule_based_landmark
+                and len(keyword) < len(rule_based_landmark)
+            ):
+                continue
             return keyword
 
     match = ADDRESS_SUFFIX_PATTERN.search(query)
@@ -631,6 +657,19 @@ def _extract_category_by_rule(query: str) -> CategoryIntent | None:
             )
 
     return None
+
+
+def _should_use_current_location_context(query: str) -> bool:
+    if not TRAVEL_TIME_PATTERN.search(query):
+        return False
+
+    if _extract_address_by_rule(query):
+        return False
+
+    if _extract_landmark_by_rule(query):
+        return False
+
+    return True
 
 
 def _normalize_category_intent(query: str, intent: CategoryIntent) -> CategoryIntent:
@@ -694,6 +733,24 @@ def _location_node(llm, state: SearchGraphState) -> dict[str, Any]:
                 evidence="matched landmark keyword or suffix by rule",
             )
         }
+
+    if _should_use_current_location_context(query):
+        return {
+            "location_intent": LocationIntent(
+                kind="landmark",
+                value="CURRENT_LOCATION",
+                confidence=0.95,
+                evidence="travel-time query without explicit geo anchor defaults to CURRENT_LOCATION",
+            )
+        }
+
+    if (
+        _extract_category_by_rule(query)
+        or _extract_feature_by_rule(query)
+        or _extract_quality_by_rule(query)
+        or _extract_distance_by_rule(query)
+    ):
+        return {"location_intent": LocationIntent()}
 
     entity_schema = PropertyEntity.model_json_schema()
     intent = _invoke_structured(
@@ -914,7 +971,7 @@ def _merge_node(state: SearchGraphState) -> dict[str, Any]:
             )
 
     for feature_name, feature_value in feature_intent.features.items():
-        if feature_value is not True:
+        if feature_value not in (True, False):
             continue
         field_path = FEATURE_FIELD_MAP.get(feature_name)
         if not field_path:
