@@ -2,14 +2,14 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-from interface.api.schemas.property import PreferenceTag
+from domain.entities.search_feedback import SearchFeedbackPreference
 
 
 class SearchFeedbackCreateRequest(BaseModel):
     query: str = Field(min_length=1)
     response_type: Literal["semantic_search", "keyword_search"]
     reason: str = ""
-    preferences: list[PreferenceTag] = Field(default_factory=list)
+    preferences: list[SearchFeedbackPreference] = Field(default_factory=list)
     result_ids: list[str] = Field(default_factory=list)
 
     @field_validator("query")
