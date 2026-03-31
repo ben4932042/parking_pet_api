@@ -182,10 +182,18 @@ class PropertyRepository(IPropertyRepository):
         place_id: str,
         include_deleted: bool = False,
     ) -> Optional[PropertyEntity]:
-        query = {"place_id": place_id}
+        id_query = {"_id": place_id}
         if not include_deleted:
-            query = self._merge_active_filter(query)
-        doc = await self.collection.find_one(query)
+            id_query = self._merge_active_filter(id_query)
+
+        doc = await self.collection.find_one(id_query)
+        if doc:
+            return PropertyEntity(**doc)
+
+        legacy_query = {"place_id": place_id}
+        if not include_deleted:
+            legacy_query = self._merge_active_filter(legacy_query)
+        doc = await self.collection.find_one(legacy_query)
         if doc:
             return PropertyEntity(**doc)
         return None
