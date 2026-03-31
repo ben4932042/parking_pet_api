@@ -103,6 +103,7 @@ async def search_properties_by_keyword(
     )
     return {
         "status": "success",
+        "user_query": query,
         "response_type": _response_type_from_plan(plan.route, plan.used_fallback),
         "preferences": plan.filter_condition.preferences,
         "results": await _attach_has_note(items, service, current_user),

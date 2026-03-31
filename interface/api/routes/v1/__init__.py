@@ -1,10 +1,12 @@
 from fastapi import APIRouter
 
 from interface.api.routes.v1.property import router as property_router
+from interface.api.routes.v1.search_feedback import router as search_feedback_router
 from interface.api.routes.v1.user import router as user_router
 
 
 router = APIRouter()
 
 router.include_router(property_router, tags=["property"])
+router.include_router(search_feedback_router, tags=["search-feedback"])
 router.include_router(user_router, tags=["user"])

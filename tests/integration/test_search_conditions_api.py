@@ -9,6 +9,7 @@ from domain.repositories.property_note import IPropertyNoteRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import get_optional_current_user
+from tests.integration.search_cases import SEARCH_CONDITION_CASES, SearchConditionCase
 
 
 class CaptureQueryRepo(IPropertyRepository):
@@ -132,185 +133,55 @@ def integration_search_setup(api_app):
     api_app.dependency_overrides.pop(get_property_service, None)
     api_app.dependency_overrides.pop(get_optional_current_user, None)
 
+def _assert_mongo_query_matches_case(mongo_query: dict, case: SearchConditionCase) -> None:
+    if case.query_checks.max_distance is not None:
+        assert mongo_query["location"]["$nearSphere"]["$maxDistance"] == case.query_checks.max_distance
+
+    if case.query_checks.primary_type_includes is not None:
+        primary_type_query = mongo_query["primary_type"]
+        if isinstance(primary_type_query, dict):
+            assert case.query_checks.primary_type_includes in primary_type_query["$in"]
+        else:
+            assert primary_type_query == case.query_checks.primary_type_includes
+
+    if case.query_checks.address_regex is not None:
+        assert mongo_query["address"]["$regex"] == case.query_checks.address_regex
+
+    if case.query_checks.is_open is not None:
+        assert mongo_query["is_open"] is case.query_checks.is_open
+
+    for field_name, field_value in case.query_checks.feature_equals.items():
+        assert mongo_query[field_name] is field_value
+
 
 @pytest.mark.integration
 @pytest.mark.parametrize(
-    ("query", "params", "expected"),
-    [
-        (
-            "距離30分鐘車程的咖啡廳",
-            {"user_lat": 25.0339, "user_lng": 121.5645},
-            {
-                "response_type": "semantic_search",
-                "preferences": ["category_preference", "travel_time_preference"],
-                "landmark_context": "CURRENT_LOCATION",
-                "travel_time_limit_min": 30,
-                "search_radius_meters": 22500,
-                "transport_mode": "driving",
-                "query_checks": {
-                    "primary_type_includes": "cafe",
-                    "max_distance": 22500,
-                },
-            },
-        ),
-        (
-            "步行15分鐘的公園",
-            {"user_lat": 25.0339, "user_lng": 121.5645},
-            {
-                "response_type": "semantic_search",
-                "preferences": ["category_preference", "travel_time_preference"],
-                "landmark_context": "CURRENT_LOCATION",
-                "travel_time_limit_min": 15,
-                "search_radius_meters": 1125,
-                "transport_mode": "walking",
-                "query_checks": {
-                    "primary_type_includes": "park",
-                    "max_distance": 1125,
-                },
-            },
-        ),
-        (
-            "開車十分鐘的公園",
-            {"user_lat": 25.0339, "user_lng": 121.5645},
-            {
-                "response_type": "semantic_search",
-                "preferences": ["category_preference", "travel_time_preference"],
-                "landmark_context": "CURRENT_LOCATION",
-                "travel_time_limit_min": 10,
-                "search_radius_meters": 7500,
-                "transport_mode": "driving",
-                "query_checks": {
-                    "primary_type_includes": "park",
-                    "max_distance": 7500,
-                },
-            },
-        ),
-        (
-            "走路五分鐘的咖啡廳",
-            {"user_lat": 25.0339, "user_lng": 121.5645},
-            {
-                "response_type": "semantic_search",
-                "preferences": ["category_preference", "travel_time_preference"],
-                "landmark_context": "CURRENT_LOCATION",
-                "travel_time_limit_min": 5,
-                "search_radius_meters": 375,
-                "transport_mode": "walking",
-                "query_checks": {
-                    "primary_type_includes": "cafe",
-                    "max_distance": 375,
-                },
-            },
-        ),
-        (
-            "台北101附近咖啡廳",
-            {},
-            {
-                "response_type": "semantic_search",
-                "preferences": ["category_preference"],
-                "landmark_context": "台北101",
-                "travel_time_limit_min": None,
-                "search_radius_meters": 100000,
-                "transport_mode": None,
-                "query_checks": {
-                    "primary_type_includes": "cafe",
-                    "max_distance": 100000,
-                },
-            },
-        ),
-        (
-            "現在有開的台北咖啡廳",
-            {},
-            {
-                "response_type": "semantic_search",
-                "preferences": [
-                    "address_preference",
-                    "category_preference",
-                    "is_open_preference",
-                ],
-                "landmark_context": None,
-                "travel_time_limit_min": None,
-                "search_radius_meters": 100000,
-                "transport_mode": None,
-                "query_checks": {
-                    "address_regex": "台北",
-                    "is_open": True,
-                },
-            },
-        ),
-        (
-            "沒有店狗 寵物可落地的咖啡廳",
-            {},
-            {
-                "response_type": "semantic_search",
-                "preferences": [
-                    "category_preference",
-                    "has_shop_pet_preference",
-                    "allow_on_floor_preference",
-                ],
-                "landmark_context": None,
-                "travel_time_limit_min": None,
-                "search_radius_meters": 100000,
-                "transport_mode": None,
-                "query_checks": {
-                    "primary_type_includes": "cafe",
-                    "feature_equals": {
-                        "effective_pet_features.environment.has_shop_pet": False,
-                        "effective_pet_features.rules.allow_on_floor": True,
-                    },
-                },
-            },
-        ),
-    ],
+    "case",
+    SEARCH_CONDITION_CASES,
+    ids=[case.query for case in SEARCH_CONDITION_CASES],
 )
 def test_search_api_exposes_expected_langgraph_conditions(
     client,
     integration_search_setup,
-    query,
-    params,
-    expected,
+    case: SearchConditionCase,
 ):
     repo, provider = integration_search_setup
 
-    response = client.get("/api/v1/property", params={"query": query, **params})
+    response = client.get("/api/v1/property", params={"query": case.query, **case.params})
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["response_type"] == expected["response_type"]
-    assert {item["key"] for item in payload["preferences"]} == set(expected["preferences"])
+    assert payload["user_query"] == case.query
+    assert payload["response_type"] == case.response_type
+    assert {item["key"] for item in payload["preferences"]} == set(case.preferences)
 
     assert provider.last_plan is not None
     plan = provider.last_plan
-    assert plan.filter_condition.landmark_context == expected["landmark_context"]
-    assert plan.filter_condition.travel_time_limit_min == expected["travel_time_limit_min"]
-    assert plan.filter_condition.search_radius_meters == expected["search_radius_meters"]
-    assert plan.semantic_extraction.get("transport_mode") == expected["transport_mode"]
+    assert plan.filter_condition.landmark_context == case.landmark_context
+    assert plan.filter_condition.travel_time_limit_min == case.travel_time_limit_min
+    assert plan.filter_condition.search_radius_meters == case.search_radius_meters
+    assert plan.semantic_extraction.get("transport_mode") == case.transport_mode
 
-    if expected["query_checks"].get("max_distance") is not None:
-        assert repo.calls
-        mongo_query = repo.calls[-1][1]
-        assert mongo_query["location"]["$nearSphere"]["$maxDistance"] == expected["query_checks"]["max_distance"]
-
-    primary_type = expected["query_checks"].get("primary_type_includes")
-    if primary_type is not None:
-        mongo_query = repo.calls[-1][1]
-        primary_type_query = mongo_query["primary_type"]
-        if isinstance(primary_type_query, dict):
-            assert primary_type in primary_type_query["$in"]
-        else:
-            assert primary_type_query == primary_type
-
-    address_regex = expected["query_checks"].get("address_regex")
-    if address_regex is not None:
-        mongo_query = repo.calls[-1][1]
-        assert mongo_query["address"]["$regex"] == address_regex
-
-    is_open = expected["query_checks"].get("is_open")
-    if is_open is not None:
-        mongo_query = repo.calls[-1][1]
-        assert mongo_query["is_open"] is is_open
-
-    feature_equals = expected["query_checks"].get("feature_equals")
-    if feature_equals is not None:
-        mongo_query = repo.calls[-1][1]
-        for field_name, field_value in feature_equals.items():
-            assert mongo_query[field_name] is field_value
+    assert repo.calls
+    mongo_query = repo.calls[-1][1]
+    _assert_mongo_query_matches_case(mongo_query, case)

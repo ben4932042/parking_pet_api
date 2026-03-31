@@ -165,6 +165,7 @@ def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
 
     assert response.status_code == 200
     assert response.json()["response_type"] == "semantic_search"
+    assert response.json()["user_query"] == "dog cafe"
     assert service.calls == [
         {
             "q": "dog cafe",
@@ -183,6 +184,7 @@ def test_search_route_returns_keyword_response_type_for_keyword_retrieval(
     response = client.get("/api/v1/property", params={"query": "肉球森林"})
 
     assert response.status_code == 200
+    assert response.json()["user_query"] == "肉球森林"
     assert response.json()["response_type"] == "keyword_search"
 
 
@@ -197,6 +199,7 @@ def test_search_route_returns_keyword_response_type_for_fallback_retrieval(
     response = client.get("/api/v1/property", params={"query": "推薦的店"})
 
     assert response.status_code == 200
+    assert response.json()["user_query"] == "推薦的店"
     assert response.json()["response_type"] == "keyword_search"
 
 
