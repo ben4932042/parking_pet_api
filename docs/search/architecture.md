@@ -65,10 +65,11 @@ Relevant files:
 
 ## Runtime Search Flow
 
-The current runtime path is easiest to read as a route-selection flow. `keyword_search` in the API response can mean either:
+The current runtime path is easiest to read as a route-selection flow. The API may now return:
 
-- the router selected `keyword` directly, or
-- the semantic path later marked `used_fallback = true`
+- `semantic_search`: semantic execution only
+- `keyword_search`: keyword execution only, or semantic fallback to keyword
+- `hybrid_search`: semantic and keyword both ran for the same query
 
 ```mermaid
 flowchart TD
@@ -77,22 +78,24 @@ flowchart TD
     B --> C["extract_search_plan(q)<br/>infrastructure/search/pipeline.py"]
 
     C --> D["typo_normalizer"]
-    D --> E{"router decides route"}
+    D --> E{"router decides execution_modes"}
 
-    E -->|keyword| F["keyword_plan<br/>SearchPlan.route = keyword"]
+    E -->|keyword only| F["keyword_plan<br/>SearchPlan.execution_modes = [keyword]"]
     E -->|semantic| G["semantic_fanout"]
 
     G --> H["location_parser"]
     G --> I["category_parser"]
     G --> J["feature_parser"]
     G --> K["quality_parser"]
-    G --> L["distance_parser"]
+    G --> L["time_parser"]
+    G --> MM["distance_parser"]
 
     H --> M["merge_plan"]
     I --> M
     J --> M
     K --> M
     L --> M
+    MM --> M
 
     M --> N["confidence_gate"]
 
@@ -119,14 +122,19 @@ flowchart TD
     AA --> AB["repo.search_by_vector(...)"]
     AB --> AC["rank_keyword_hybrid_results(...)"]
 
-    R --> AD["API response"]
+    R --> AH{"keyword also requested?"}
+    AH -->|no| AD["API response"]
+    AH -->|yes| AI["_search_keyword_hybrid(q)"]
+    AI --> AJ["rank_combined_search_results(...)"]
     U --> AD
     V --> AD
     Z --> AD
     AC --> AD
+    AJ --> AD
 
-    AD --> AE["response_type = keyword_search<br/>if route=keyword or used_fallback=true"]
-    AD --> AF["response_type = semantic_search<br/>otherwise"]
+    AD --> AE["response_type = keyword_search<br/>if keyword only or fallback"]
+    AD --> AF["response_type = semantic_search<br/>if semantic only"]
+    AD --> AG["response_type = hybrid_search<br/>if semantic + keyword"]
 ```
 
 ### 1. HTTP request enters the property route
@@ -152,7 +160,7 @@ The pipeline produces a structured `SearchPlan` containing:
 
 - `execution_modes`: whether the query should run keyword retrieval, semantic retrieval, or both
 - `filter_condition`: the normalized `PropertyFilterCondition`
-- `semantic_extraction`: summarized address/category/feature/quality extraction
+- `semantic_extraction`: summarized address/category/feature/quality/time extraction
 - `warnings`: low-confidence parsing signals
 - `used_fallback` and `fallback_reason`
 
@@ -195,6 +203,34 @@ The system uses `min_rating` as a coarse recommendation gate.
 
 The neutral default is now `0.0`. Rating filters are only added when the parsed intent explicitly asks for recommendation-oriented quality thresholds.
 
+#### Time-sensitive opening filters
+
+Opening-time phrases are handled by a dedicated time node instead of being folded into generic `is_open=true`.
+
+Examples of the current rule-based behavior:
+
+- `現在有開` -> open now
+- `下午有開的` -> open during today's afternoon window
+- `晚上有開的` -> open during today's evening window
+- `禮拜五開的` -> open at some point on Friday
+
+These queries are converted into `op_segments` overlap filters so the system can reason about specific time windows rather than only "open right now".
+
+### 3.1 Currently Supported Natural-Language Phrases
+
+The current search pipeline supports the following common query shapes:
+
+- direct lookup: `肉球森林`
+- ambiguous lookup plus category: `寵物公園`
+- landmark search: `青埔咖啡廳`, `台北101附近咖啡廳`
+- address search: `台北咖啡廳`, `中壢區 咖啡廳`
+- feature search: `可落地的咖啡廳`, `不用推車的餐廳`, `有寵物餐`
+- recommendation search: `推薦的店`, `評價好的咖啡廳`
+- open-now search: `現在有開的`, `營業中的咖啡廳`
+- weekday opening search: `禮拜五開的咖啡廳`
+- time-of-day opening search: `下午有開的`, `晚上有開的咖啡廳`
+- travel-time search: `步行15分鐘的公園`, `距離30分鐘車程的咖啡廳`
+
 ### 4. Final Mongo query is assembled
 
 After the LLM returns a `PropertyFilterCondition`, `generate_query(...)` merges the structured conditions into a final MongoDB filter.
@@ -203,6 +239,7 @@ This step:
 
 - starts from `intent.mongo_query`
 - adds `rating >= min_rating` when `min_rating > 0`
+- preserves explicit opening-window filters on `op_segments` when the query targets a weekday or time-of-day window
 - chooses a geographic anchor
 - injects a geospatial `location` filter using `$nearSphere`
 
