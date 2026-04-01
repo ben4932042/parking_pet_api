@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes how the current project implements search and recommendation for properties, with a focus on the keyword-based search flow exposed by `GET /api/v1/property`.
+This document describes how the current project implements search and recommendation for properties, with a focus on the keyword-based search flow exposed by `GET /api/v1/property` and the geospatial nearby flow exposed by `GET /api/v1/property/nearby`.
 
 The goal of the feature is not full-text retrieval in the search-engine sense. The current implementation is closer to an AI-assisted structured filter pipeline:
 
@@ -32,7 +32,7 @@ Response shape:
 
 ### `GET /api/v1/property/nearby`
 
-This endpoint is a pure geospatial search and does not use the LLM intent parser. It filters by distance from a point and optionally by `primary_type`.
+This endpoint is a pure geospatial search and does not use the LLM intent parser. It filters by distance from a point and optionally by frontend `category`, which the backend expands into one or more Google Places `primary_type` values.
 
 ### `POST /api/v1/property`
 
@@ -341,12 +341,107 @@ This means search behavior depends not only on raw stored data but also on Pydan
 
 It:
 
-- optionally filters `primary_type` using `types_str`
-- applies MongoDB `$near`
+- validates `lat` and `lng` as required coordinates
+- uses a default `radius=10000`, `page=1`, and `size=20`
+- optionally expands frontend `category` into one or more Google Places `primary_type` values
+- applies MongoDB `$near` on the stored GeoJSON `location`
 - paginates results with `skip` and `limit`
 - counts total results using a separate `$geoWithin` filter
+- excludes soft-deleted properties through the shared active-record filter
+- returns the standard property overview DTO plus `has_note`
 
 This endpoint is proximity-first and recommendation-second. It does not interpret natural language and does not use `preferences` tags.
+
+### Nearby Route Responsibilities
+
+The nearby path stays thin across the same route -> application -> repository layering:
+
+- `interface/api/routes/v1/property.py` validates request params and expands `category` into primary types
+- `application/property.py::PropertyService.search_nearby(...)` delegates directly to the repository
+- `infrastructure/mongo/property.py::PropertyRepository.get_nearby(...)` owns the geospatial query, pagination, and total counting
+
+This means the route currently contains a small but intentional piece of business-facing translation logic: frontend category enums are converted into the repository-facing Google Places `primary_type` list before the query runs.
+
+### Nearby Request Semantics
+
+The current request contract is:
+
+- `lat`: required latitude
+- `lng`: required longitude
+- `radius`: optional search radius in meters, default `10000`
+- `category`: optional `PropertyCategoryKey`
+- `page`: optional page number, default `1`
+- `size`: optional page size, default `20`
+
+`category` is not stored directly in MongoDB. The backend looks up the category in `domain/entities/property_category.py` and expands it to the matching `primary_type` list.
+
+Examples of the current mapping behavior:
+
+- `restaurant` includes `restaurant`, `brunch_restaurant`, `bar`, and other restaurant subtypes
+- `cafe` includes `cafe`, `coffee_shop`, `dessert_shop`, `bakery`, and `dog_cafe`
+- `pet_hospital` includes `veterinary_care`
+
+If no `category` is provided, the query stays distance-only.
+
+### Nearby Query Semantics
+
+The repository currently performs two related MongoDB queries:
+
+1. A `find(...)` query with `location.$near` to fetch the current page of results.
+2. A `count_documents(...)` query with `location.$geoWithin.$centerSphere` to compute `total`.
+
+The same query also applies:
+
+- the shared active-record filter `{"is_deleted": {"$ne": True}}`
+- an optional `primary_type: {"$in": ...}` filter when category expansion produced types
+
+The endpoint does not currently:
+
+- run the semantic search pipeline
+- use LLM-derived `preferences`
+- apply rating reranking
+- interpret map radius overrides from natural-language queries
+
+MongoDB `$near` determines result ordering, so the returned list is distance-prioritized by the database rather than explicitly sorted by application code.
+
+### Nearby Response Semantics
+
+The response shape is paginated:
+
+- `items`
+- `total`
+- `page`
+- `size`
+- `pages`
+
+Each item uses `PropertyOverviewResponse`, which includes:
+
+- `id`
+- `name`
+- `address`
+- `latitude`
+- `longitude`
+- `category`
+- `types`
+- `rating`
+- `is_open`
+- `has_note`
+
+`has_note` is attached in the route after retrieval. If a current user is available, the route asks `PropertyService.get_noted_property_ids(...)` for the returned property IDs and annotates the response items. If no user is available, `has_note` remains `false`.
+
+### Nearby Validation Anchors
+
+The current nearby behavior is pinned mainly by:
+
+- `tests/unit/adapters/fastapi/test_property.py`
+- `tests/unit/domain/test_property_category.py`
+
+These tests currently verify:
+
+- category expansion for the nearby route
+- category-to-primary-type mappings used by nearby filtering
+
+Repository-level unit coverage for `get_nearby(...)` is still relatively light compared with the keyword-search path, so future behavior changes should add direct tests close to `infrastructure/mongo/property.py` when query semantics change.
 
 ## Response Semantics
 

@@ -319,6 +319,73 @@ async def test_search_by_keyword_exact_keyword_hit_must_still_match_semantic_fil
 
 
 @pytest.mark.asyncio
+async def test_search_by_keyword_filters_far_keyword_hits_by_map_radius(
+    property_entity_factory,
+):
+    far_keyword_exact = property_entity_factory(
+        identifier="far-keyword-exact",
+        name="寵物公園",
+        primary_type="park",
+        latitude=25.1617,
+        longitude=121.7644,
+    )
+    near_semantic_match = property_entity_factory(
+        identifier="near-semantic-park",
+        name="青埔公七公園",
+        primary_type="park",
+        latitude=25.0085,
+        longitude=121.2197,
+    )
+    repo = CaptureRepo(
+        query_items=[near_semantic_match],
+        keyword_items=[far_keyword_exact],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                execution_modes=["semantic", "keyword"],
+                filter_condition=PropertyFilterCondition(
+                    mongo_query={"primary_type": "park"},
+                    preferences=[{"key": "primary_type_preference", "label": "park"}],
+                ),
+                semantic_extraction={"category": "park"},
+            )
+        ),
+    )
+
+    results, plan = await service.search_by_keyword(
+        "寵物公園",
+        map_coords=(121.25874722747007, 24.951597027520226),
+        radius=2949,
+    )
+
+    assert [item.id for item in results] == ["near-semantic-park"]
+    assert plan.execution_modes == ["semantic", "keyword"]
+    assert repo.calls == [
+        ("get_by_keyword", "寵物公園"),
+        (
+            "find_by_query",
+            {
+                "primary_type": "park",
+                "location": {
+                    "$nearSphere": {
+                        "$geometry": {
+                            "type": "Point",
+                            "coordinates": [121.25874722747007, 24.951597027520226],
+                        },
+                        "$maxDistance": 2949,
+                    }
+                },
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_search_by_keyword_returns_empty_when_semantic_query_has_no_results():
     repo = CaptureRepo(
         query_items=[],

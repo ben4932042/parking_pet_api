@@ -124,6 +124,35 @@ class PropertyNoteRepoStub(IPropertyNoteRepository):
 
 
 @pytest.mark.asyncio
+async def test_get_note_returns_repo_note_after_property_check(property_entity_factory):
+    note = PropertyNoteEntity(
+        _id="n1",
+        user_id="u1",
+        property_id="p1",
+        content="hello",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    property_repo = PropertyRepoStub(property_entity_factory(identifier="p1"))
+    note_repo = PropertyNoteRepoStub(note=note)
+    service = PropertyNoteService(note_repo=note_repo, property_repo=property_repo)
+
+    result = await service.get_note("u1", "p1")
+
+    assert result == note
+    assert property_repo.calls == [
+        {
+            "fn": "get_property_by_id",
+            "property_id": "p1",
+            "include_deleted": False,
+        }
+    ]
+    assert note_repo.calls == [
+        {"fn": "get_by_user_and_property", "user_id": "u1", "property_id": "p1"}
+    ]
+
+
+@pytest.mark.asyncio
 async def test_save_note_upserts_trimmed_content(property_entity_factory):
     property_repo = PropertyRepoStub(property_entity_factory(identifier="p1"))
     note_repo = PropertyNoteRepoStub()
@@ -161,6 +190,38 @@ async def test_save_note_raises_for_blank_content(property_entity_factory):
 
     with pytest.raises(ValidationDomainError):
         await service.save_note("u1", "p1", "   ")
+
+
+@pytest.mark.asyncio
+async def test_save_note_raises_for_content_over_limit(property_entity_factory):
+    service = PropertyNoteService(
+        note_repo=PropertyNoteRepoStub(),
+        property_repo=PropertyRepoStub(property_entity_factory(identifier="p1")),
+    )
+
+    with pytest.raises(ValidationDomainError):
+        await service.save_note("u1", "p1", "a" * 2001)
+
+
+@pytest.mark.asyncio
+async def test_delete_note_delegates_after_property_check(property_entity_factory):
+    property_repo = PropertyRepoStub(property_entity_factory(identifier="p1"))
+    note_repo = PropertyNoteRepoStub()
+    service = PropertyNoteService(note_repo=note_repo, property_repo=property_repo)
+
+    deleted = await service.delete_note("u1", "p1")
+
+    assert deleted is True
+    assert property_repo.calls == [
+        {
+            "fn": "get_property_by_id",
+            "property_id": "p1",
+            "include_deleted": False,
+        }
+    ]
+    assert note_repo.calls == [
+        {"fn": "delete", "user_id": "u1", "property_id": "p1"}
+    ]
 
 
 @pytest.mark.asyncio

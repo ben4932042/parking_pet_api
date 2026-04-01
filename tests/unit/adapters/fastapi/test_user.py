@@ -32,8 +32,9 @@ class UserServiceStub:
 
 
 class FavoritePropertyServiceStub:
-    def __init__(self, properties=None):
+    def __init__(self, properties=None, noted_property_ids=None):
         self.properties = properties or []
+        self.noted_property_ids = noted_property_ids if noted_property_ids is not None else {"p1"}
         self.calls = []
 
     async def get_overviews_by_ids(self, property_ids):
@@ -48,7 +49,7 @@ class FavoritePropertyServiceStub:
                 "property_ids": property_ids,
             }
         )
-        return {"p1"}
+        return self.noted_property_ids
 
 
 def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
@@ -122,6 +123,30 @@ def test_update_user_favorite_property_returns_status(
     ]
 
 
+def test_update_user_favorite_property_can_remove_favorite(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(
+        identifier="u1", name="Ben", favorite_property_ids=["p1"]
+    )
+    updated_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=[])
+    service = override_api_dep(get_user_service, UserServiceStub(user=updated_user))
+    override_api_dep(get_current_user, current_user)
+
+    response = client.put("/api/v1/user/favorite/p1", params={"is_favorite": "false"})
+
+    assert response.status_code == 200
+    assert response.json()["is_favorite"] is False
+    assert service.calls == [
+        {
+            "fn": "update_favorite_property",
+            "user_id": "u1",
+            "property_id": "p1",
+            "is_favorite": False,
+        }
+    ]
+
+
 def test_get_user_favorite_property_status_returns_boolean(
     client, override_api_dep, user_entity_factory
 ):
@@ -134,6 +159,18 @@ def test_get_user_favorite_property_status_returns_boolean(
 
     assert response.status_code == 200
     assert response.json() == {"property_id": "p1", "is_favorite": True}
+
+
+def test_get_user_favorite_property_status_returns_false_when_not_favorited(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=[])
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/favorite/p1")
+
+    assert response.status_code == 200
+    assert response.json() == {"property_id": "p1", "is_favorite": False}
 
 
 def test_get_user_favorite_properties_returns_property_overviews(
@@ -202,4 +239,24 @@ def test_get_user_favorite_properties_sorts_noted_items_first(
             "user_id": "u1",
             "property_ids": ["p2", "p1"],
         },
+    ]
+
+
+def test_get_user_favorite_properties_returns_empty_list(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=[])
+    service = override_api_dep(
+        get_property_service,
+        FavoritePropertyServiceStub(properties=[], noted_property_ids=set()),
+    )
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/favorite")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert service.calls == [
+        {"fn": "get_overviews_by_ids", "property_ids": []},
+        {"fn": "get_noted_property_ids", "user_id": "u1", "property_ids": []},
     ]

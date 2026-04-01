@@ -36,6 +36,7 @@ Repository-wide instructions for coding agents working in this project.
 
 - Before changing a feature, read the relevant feature docs first and follow their validation rules.
 - When working on search, read `docs/search/workflow-optimization.md`.
+- When working on nearby property search, read `docs/search/workflow-nearby.md`.
 - When working on property architecture or shared property behavior, read `docs/property/architecture.md`.
 - When working on property creation, read `docs/property/workflow-creation.md`.
 - When working on property management, read `docs/property/workflow-management.md`.

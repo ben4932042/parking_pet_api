@@ -22,6 +22,12 @@ def apply_runtime_warning_filters() -> None:
     )
     warnings.filterwarnings(
         "ignore",
+        message="This feature is deprecated as of June 24, 2025 and will be removed on June 24, 2026.*",
+        category=UserWarning,
+        module=r"vertexai\._model_garden\._model_garden_models",
+    )
+    warnings.filterwarnings(
+        "ignore",
         category=DeprecationWarning,
         module=r"langchain_google_vertexai",
     )

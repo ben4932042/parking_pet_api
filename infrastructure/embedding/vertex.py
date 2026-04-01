@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 
-import vertexai
 from google.oauth2 import service_account
-from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from domain.services.embedding import IEmbeddingProvider
 from infrastructure.config import settings
+from infrastructure.runtime_warnings import apply_runtime_warning_filters
+
+apply_runtime_warning_filters()
 
 
 class VertexEmbeddingProvider(IEmbeddingProvider):
@@ -25,35 +27,42 @@ class VertexEmbeddingProvider(IEmbeddingProvider):
             settings.google.service_account_file,
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
         )
-        vertexai.init(
+        self.model = GoogleGenerativeAIEmbeddings(
+            model=self._model_name,
+            credentials=creds,
             project=settings.google.project_id,
             location=settings.google.location,
-            credentials=creds,
+            vertexai=True,
+            output_dimensionality=self.output_dimensionality,
         )
-        self.model = TextEmbeddingModel.from_pretrained(self._model_name)
 
     @property
     def model_name(self) -> str:
         return self._model_name
 
     def embed_document(self, text: str) -> list[float]:
-        return self._embed_texts([text], task_type="RETRIEVAL_DOCUMENT")[0]
+        if not text:
+            return []
+        return self.model.embed_documents(
+            [text],
+            task_type="RETRIEVAL_DOCUMENT",
+            output_dimensionality=self.output_dimensionality,
+        )[0]
 
     def embed_query(self, text: str) -> list[float]:
-        return self._embed_texts([text], task_type="RETRIEVAL_QUERY")[0]
+        if not text:
+            return []
+        return self.model.embed_query(
+            text,
+            task_type="RETRIEVAL_QUERY",
+            output_dimensionality=self.output_dimensionality,
+        )
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        return self._embed_texts(texts, task_type="RETRIEVAL_DOCUMENT")
-
-    def _embed_texts(self, texts: list[str], task_type: str) -> list[list[float]]:
-        inputs = [
-            TextEmbeddingInput(text=text, task_type=task_type)
-            for text in texts
-        ]
-        embeddings = self.model.get_embeddings(
-            inputs,
+        return self.model.embed_documents(
+            texts,
+            task_type="RETRIEVAL_DOCUMENT",
             output_dimensionality=self.output_dimensionality,
         )
-        return [embedding.values for embedding in embeddings]
