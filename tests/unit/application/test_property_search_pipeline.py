@@ -385,6 +385,28 @@ async def test_search_by_keyword_returns_warning_when_travel_time_lacks_geo_anch
 
 
 @pytest.mark.asyncio
+async def test_search_by_keyword_returns_empty_for_non_search_intent_without_repo_lookup():
+    repo = CaptureRepo(keyword_items=["should-not-be-used"])
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                route="keyword",
+                route_reason="查詢內容不像搜尋條件，直接回傳空結果",
+            )
+        ),
+    )
+
+    results, plan = await service.search_by_keyword("你是誰")
+
+    assert results == []
+    assert plan.route == "keyword"
+    assert repo.calls == []
+
+
+@pytest.mark.asyncio
 async def test_search_by_keyword_blocks_prompt_injection_without_repo_lookup():
     repo = CaptureRepo(keyword_items=["should-not-be-used"])
     service = PropertyService(
@@ -693,7 +715,7 @@ def test_route_node_treats_obviously_non_search_query_as_keyword():
     result = route_node(llm=None, state={"raw_query": "你是誰"})
 
     assert result["route_decision"].route == "keyword"
-    assert result["route_decision"].reason == "查詢內容不像搜尋條件，改用關鍵字搜尋"
+    assert result["route_decision"].reason == "查詢內容不像搜尋條件，直接回傳空結果"
 
 
 def test_route_node_treats_prompt_injection_query_as_keyword():

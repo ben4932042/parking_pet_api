@@ -129,7 +129,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
             "route_decision": SearchRouteDecision(
                 execution_modes=["keyword"],
                 confidence=0.98,
-                reason="查詢內容不像搜尋條件，改用關鍵字搜尋",
+                reason="查詢內容不像搜尋條件，直接回傳空結果",
             )
         }
 

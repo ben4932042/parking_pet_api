@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 
 PROMPT_INJECTION_ROUTE_REASON = "查詢包含 prompt injection 訊號，改用關鍵字搜尋"
+NON_SEARCH_ROUTE_REASON = "查詢內容不像搜尋條件，直接回傳空結果"
 
 
 class PropertyService:
@@ -78,6 +79,12 @@ class PropertyService:
             if search_plan.route_reason == PROMPT_INJECTION_ROUTE_REASON:
                 logger.warning(
                     "Blocked prompt-injection-like search query",
+                    extra={"query_text": q, "route_reason": search_plan.route_reason},
+                )
+                return [], search_plan
+            if search_plan.route_reason == NON_SEARCH_ROUTE_REASON:
+                logger.info(
+                    "Skipped search for non-search-intent query",
                     extra={"query_text": q, "route_reason": search_plan.route_reason},
                 )
                 return [], search_plan
