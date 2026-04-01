@@ -150,12 +150,14 @@ def user_entity_factory():
         name: str = "Ben",
         source: str = "basic",
         favorite_property_ids: list[str] | None = None,
+        recent_searches: list[dict] | None = None,
     ):
         return UserEntity(
             _id=identifier,
             name=name,
             source=source,
             favorite_property_ids=favorite_property_ids or [],
+            recent_searches=recent_searches or [],
             created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
             updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         )

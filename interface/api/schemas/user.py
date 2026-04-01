@@ -1,11 +1,19 @@
-from pydantic import BaseModel
+from datetime import datetime
+
+from pydantic import BaseModel, Field
 
 from domain.entities import PyObjectId
-from domain.entities.user import UserEntity
 
 
-class UserDetailResponse(UserEntity):
-    model_config = {"from_attributes": True}
+class UserDetailResponse(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    name: str
+    source: str
+    favorite_property_ids: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class FavoritePropertyResponse(UserDetailResponse):

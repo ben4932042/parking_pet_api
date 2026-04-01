@@ -23,3 +23,16 @@ class UserService:
             property_id=property_id,
             is_favorite=is_favorite,
         )
+
+    async def record_recent_search(
+        self,
+        *,
+        user_id: str,
+        query: str,
+        limit: int = 20,
+    ):
+        return await self.repo.record_recent_search(
+            user_id=user_id,
+            query=query,
+            limit=limit,
+        )

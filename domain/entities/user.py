@@ -6,11 +6,17 @@ from pydantic import BaseModel, Field, ConfigDict
 from domain.entities import PyObjectId
 
 
+class UserSearchRecord(BaseModel):
+    query: str
+    searched_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
 class UserEntity(BaseModel):
     id: PyObjectId = Field(alias="_id")
     name: str
     source: Literal["apple", "basic"] = Field(default="basic")
     favorite_property_ids: list[str] = Field(default_factory=list)
+    recent_searches: list[UserSearchRecord] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

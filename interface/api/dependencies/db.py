@@ -7,7 +7,6 @@ from infrastructure.mongo.property_audit import PropertyAuditRepository
 from infrastructure.mongo.property_note import PropertyNoteRepository
 from infrastructure.mongo.property import PropertyRepository
 from infrastructure.mongo.search_feedback import SearchFeedbackRepository
-from infrastructure.mongo.search_history import SearchHistoryRepository
 from infrastructure.mongo.user import UserRepository
 
 
@@ -49,12 +48,6 @@ def get_search_feedback_repository(
     client: MongoDBClient = Depends(get_db_client),
 ) -> SearchFeedbackRepository:
     return SearchFeedbackRepository(client=client, collection_name="search_feedback")
-
-
-def get_search_history_repository(
-    client: MongoDBClient = Depends(get_db_client),
-) -> SearchHistoryRepository:
-    return SearchHistoryRepository(client=client, collection_name="search_history")
 
 
 def get_landmark_cache_repository() -> LandmarkCacheRepository:

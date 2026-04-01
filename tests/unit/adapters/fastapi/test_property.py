@@ -11,11 +11,11 @@ from domain.entities.property import (
 from domain.entities.search import SearchPlan
 from domain.entities.property_category import PropertyCategoryKey
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.search_history import get_search_history_service
 from interface.api.dependencies.user import (
     get_optional_current_user,
     get_optional_request_actor,
     get_request_actor,
+    get_user_service,
 )
 from interface.api.exceptions.error import ConflictError
 
@@ -85,20 +85,17 @@ class MissingDetailService:
         return None
 
 
-class SearchHistoryServiceStub:
+class UserServiceStub:
     def __init__(self, error=None):
         self.calls = []
         self.error = error
 
-    async def record_search(
+    async def record_recent_search(
         self,
         *,
         user_id,
         query,
-        response_type,
-        preferences,
-        result_ids,
-        result_count,
+        limit=20,
     ):
         if self.error:
             raise self.error
@@ -106,10 +103,7 @@ class SearchHistoryServiceStub:
             {
                 "user_id": user_id,
                 "query": query,
-                "response_type": response_type,
-                "preferences": preferences,
-                "result_ids": result_ids,
-                "result_count": result_count,
+                "limit": limit,
             }
         )
         return None
@@ -207,7 +201,7 @@ def request_actor_override(actor_factory):
 
 @pytest.fixture(autouse=True)
 def search_history_service_override(override_api_dep):
-    return override_api_dep(get_search_history_service, SearchHistoryServiceStub())
+    return override_api_dep(get_user_service, UserServiceStub())
 
 
 def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
@@ -362,7 +356,7 @@ def test_search_route_records_history_for_authenticated_user(
         CapturePropertyService(items=[property_entity_factory(identifier="p1")]),
     )
     history_service = override_api_dep(
-        get_search_history_service, SearchHistoryServiceStub()
+        get_user_service, UserServiceStub()
     )
     current_user = user_entity_factory(identifier="u1", name="Ben")
     override_api_dep(get_optional_current_user, current_user)
@@ -374,10 +368,7 @@ def test_search_route_records_history_for_authenticated_user(
         {
             "user_id": "u1",
             "query": "台北咖啡廳",
-            "response_type": "semantic_search",
-            "preferences": [],
-            "result_ids": ["p1"],
-            "result_count": 1,
+            "limit": 20,
         }
     ]
 
@@ -385,7 +376,7 @@ def test_search_route_records_history_for_authenticated_user(
 def test_search_route_skips_history_when_user_is_anonymous(client, override_api_dep):
     override_api_dep(get_property_service, CapturePropertyService())
     history_service = override_api_dep(
-        get_search_history_service, SearchHistoryServiceStub()
+        get_user_service, UserServiceStub()
     )
 
     response = client.get("/api/v1/property", params={"query": "台北咖啡廳"})

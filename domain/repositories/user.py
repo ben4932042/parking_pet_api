@@ -17,3 +17,12 @@ class IUserRepository(ABC):
     async def update_favorite_property(
         self, user_id: str, property_id: PyObjectId, is_favorite: bool
     ) -> UserEntity: ...
+
+    @abstractmethod
+    async def record_recent_search(
+        self,
+        user_id: str,
+        query: str,
+        *,
+        limit: int = 20,
+    ) -> UserEntity: ...

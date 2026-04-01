@@ -36,6 +36,17 @@ class UserRepoStub(IUserRepository):
         )
         return self.user
 
+    async def record_recent_search(self, user_id: str, query: str, *, limit: int = 20):
+        self.calls.append(
+            {
+                "fn": "record_recent_search",
+                "user_id": user_id,
+                "query": query,
+                "limit": limit,
+            }
+        )
+        return self.user
+
 
 @pytest.mark.asyncio
 async def test_basic_sign_in_delegates_to_repo(user_entity_factory):
@@ -94,5 +105,26 @@ async def test_update_favorite_property_delegates_to_repo(user_entity_factory):
             "user_id": "u1",
             "property_id": "p1",
             "is_favorite": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_record_recent_search_delegates_to_repo(user_entity_factory):
+    user = user_entity_factory(identifier="u1", name="Ben")
+    repo = UserRepoStub(user=user)
+    service = UserService(repo=repo)
+
+    result = await service.record_recent_search(
+        user_id="u1", query="台北餐廳", limit=10
+    )
+
+    assert result == user
+    assert repo.calls == [
+        {
+            "fn": "record_recent_search",
+            "user_id": "u1",
+            "query": "台北餐廳",
+            "limit": 10,
         }
     ]

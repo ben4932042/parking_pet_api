@@ -1,8 +1,6 @@
 from datetime import datetime, timezone
 
-from domain.entities.search_history import SearchHistoryEntity
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.search_history import get_search_history_service
 from interface.api.dependencies.user import get_current_user, get_user_service
 
 
@@ -55,17 +53,6 @@ class FavoritePropertyServiceStub:
         )
         return self.noted_property_ids
 
-
-class SearchHistoryServiceStub:
-    def __init__(self, items=None):
-        self.items = items or []
-        self.calls = []
-
-    async def list_history(self, *, user_id: str, limit: int = 20):
-        self.calls.append({"fn": "list_history", "user_id": user_id, "limit": limit})
-        return self.items
-
-
 def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben")
     service = override_api_dep(get_user_service, UserServiceStub(user=user))
@@ -99,7 +86,16 @@ def test_update_user_profile_returns_updated_user(
 
 
 def test_get_me_returns_current_user(client, override_api_dep, user_entity_factory):
-    current_user = user_entity_factory(identifier="u1", name="Ben")
+    current_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        recent_searches=[
+            {
+                "query": "台北餐廳",
+                "searched_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
+            }
+        ],
+    )
     override_api_dep(get_current_user, current_user)
 
     response = client.get("/api/v1/user/me")
@@ -108,6 +104,7 @@ def test_get_me_returns_current_user(client, override_api_dep, user_entity_facto
     data = response.json()
     assert data["_id"] == "u1"
     assert data["name"] == "Ben"
+    assert "recent_searches" not in data
 
 
 def test_update_user_favorite_property_returns_status(
@@ -279,22 +276,15 @@ def test_get_user_favorite_properties_returns_empty_list(
 def test_get_user_search_history_returns_recent_items(
     client, override_api_dep, user_entity_factory
 ):
-    current_user = user_entity_factory(identifier="u1", name="Ben")
-    history_service = override_api_dep(
-        get_search_history_service,
-        SearchHistoryServiceStub(
-            items=[
-                SearchHistoryEntity(
-                    _id="history-1",
-                    query="台北咖啡廳",
-                    response_type="semantic_search",
-                    result_ids=["p1", "p2"],
-                    result_count=2,
-                    user_id="u1",
-                    created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
-                )
-            ]
-        ),
+    current_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        recent_searches=[
+            {
+                "query": "台北咖啡廳",
+                "searched_at": datetime(2026, 1, 2, tzinfo=timezone.utc),
+            }
+        ],
     )
     override_api_dep(get_current_user, current_user)
 
@@ -303,15 +293,7 @@ def test_get_user_search_history_returns_recent_items(
     assert response.status_code == 200
     assert response.json() == [
         {
-            "id": "history-1",
             "query": "台北咖啡廳",
-            "response_type": "semantic_search",
-            "preferences": [],
-            "result_ids": ["p1", "p2"],
-            "result_count": 2,
-            "created_at": "2026-01-02T00:00:00Z",
+            "searched_at": "2026-01-02T00:00:00Z",
         }
-    ]
-    assert history_service.calls == [
-        {"fn": "list_history", "user_id": "u1", "limit": 10}
     ]

@@ -6,14 +6,12 @@ from starlette import status
 
 from application.exceptions import ApplicationError
 from application.property import PropertyService
-from application.search_history import SearchHistoryService
 from application.property_note import PropertyNoteService
+from application.user import UserService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
-from domain.entities.search_history import SearchHistoryPreference
 from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.user import UserEntity
-from interface.api.dependencies.search_history import get_search_history_service
 from interface.api.exceptions.error import AppError, from_application_error
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
@@ -22,6 +20,7 @@ from interface.api.dependencies.user import (
     get_optional_current_user,
     get_optional_request_actor,
     get_request_actor,
+    get_user_service,
 )
 from interface.api.schemas.page import Pagination
 from interface.api.schemas.property_note import (
@@ -119,7 +118,7 @@ async def search_properties_by_keyword(
         ),
     ),
     service: PropertyService = Depends(get_property_service),
-    search_history_service: SearchHistoryService = Depends(get_search_history_service),
+    user_service: UserService = Depends(get_user_service),
     current_user: Optional[UserEntity] = Depends(get_optional_current_user),
 ):
     items, plan = await service.search_by_keyword(
@@ -130,19 +129,9 @@ async def search_properties_by_keyword(
     )
     if current_user is not None:
         try:
-            await search_history_service.record_search(
+            await user_service.record_recent_search(
                 user_id=str(current_user.id),
                 query=query,
-                response_type=_response_type_from_plan(
-                    plan.execution_modes,
-                    plan.used_fallback,
-                ),
-                preferences=[
-                    SearchHistoryPreference(key=preference.key, label=preference.label)
-                    for preference in plan.filter_condition.preferences
-                ],
-                result_ids=[str(item.id) for item in items],
-                result_count=len(items),
             )
         except Exception:
             logger.exception(

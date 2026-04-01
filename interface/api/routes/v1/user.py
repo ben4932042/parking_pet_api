@@ -3,11 +3,9 @@ from starlette import status
 
 from application.property import PropertyService
 from application.property_note import PropertyNoteService
-from application.search_history import SearchHistoryService
 from application.user import UserService
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.search_history import get_search_history_service
 from interface.api.dependencies.user import get_user_service, get_current_user
 
 from domain.entities import PyObjectId
@@ -122,21 +120,12 @@ async def get_user_favorite_properties(
 async def get_user_search_history(
     limit: int = Query(default=20, ge=1, le=100),
     current_user=Depends(get_current_user),
-    search_history_service: SearchHistoryService = Depends(get_search_history_service),
 ):
-    items = await search_history_service.list_history(
-        user_id=str(current_user.id),
-        limit=limit,
-    )
+    items = current_user.recent_searches[:limit]
     return [
         UserSearchHistoryItemResponse(
-            id=str(item.id),
             query=item.query,
-            response_type=item.response_type,
-            preferences=item.preferences,
-            result_ids=item.result_ids,
-            result_count=item.result_count,
-            created_at=item.created_at,
+            searched_at=item.searched_at,
         )
         for item in items
     ]
