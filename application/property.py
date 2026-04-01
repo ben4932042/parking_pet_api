@@ -33,8 +33,8 @@ class PropertyService:
         repo: IPropertyRepository,
         raw_data_repo: IPlaceRawDataRepository,
         audit_repo: IPropertyAuditRepository,
-        note_repo: IPropertyNoteRepository,
         enrichment_provider: IEnrichmentProvider,
+        note_repo: IPropertyNoteRepository | None = None,
     ):
         self.repo = repo
         self.raw_data_repo = raw_data_repo
@@ -151,6 +151,8 @@ class PropertyService:
     async def get_noted_property_ids(
         self, user_id: str, property_ids: list[str]
     ) -> set[str]:
+        if self.note_repo is None:
+            return set()
         return await self.note_repo.get_noted_property_ids(user_id, property_ids)
 
     async def get_details(

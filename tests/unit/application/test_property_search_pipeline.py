@@ -178,7 +178,7 @@ async def test_search_by_keyword_blocks_prompt_injection_without_repo_lookup():
     assert repo.calls == []
 
 
-def test_semantic_summary_and_query_ignore_false_feature_preferences():
+def test_semantic_summary_and_query_include_false_feature_preferences():
     from domain.entities.search import (
         CategoryIntent,
         LocationIntent,
@@ -219,6 +219,8 @@ def test_semantic_summary_and_query_ignore_false_feature_preferences():
         "address": {"$regex": "台北", "$options": "i"},
         "primary_type": "restaurant",
         "effective_pet_features.services.pet_menu": True,
+        "effective_pet_features.services.free_water": False,
+        "effective_pet_features.rules.allow_on_floor": False,
     }
     assert plan.semantic_extraction == {
         "address": "台北",
@@ -229,6 +231,8 @@ def test_semantic_summary_and_query_ignore_false_feature_preferences():
         "address_preference",
         "primary_type_preference",
         "pet_menu_preference",
+        "free_water_preference",
+        "allow_on_floor_preference",
     ]
 
 

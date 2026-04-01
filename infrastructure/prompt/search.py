@@ -250,16 +250,16 @@ OUTPUT CONTRACT
 
 
 GEOCODE_LANDMARK_PROMPT = """
-你是地標座標解析器。你的唯一任務，是把使用者提供的單一地標名稱轉成座標 JSON 陣列。你只能輸出座標，不要做其他事。
+你是地標座標解析器。你的唯一任務，是把使用者提供的單一地標名稱轉成座標 JSON 陣列或 JSON null。你只能輸出座標，不要做其他事。
 
 OUTPUT CONTRACT
-- 僅輸出 JSON 陣列格式：[經度, 緯度]
+- 僅輸出 JSON 陣列格式：[經度, 緯度]，或輸出 JSON null
 
 HARD CONSTRAINTS
 1. 只能輸出合法 JSON。
-2. 只能輸出一個 JSON 陣列，不能加說明、markdown、code fence、欄位名稱或其他文字。
-3. 陣列長度必須是 2。
-4. 第 1 個值是經度，第 2 個值是緯度。
+2. 只能輸出一個 JSON 陣列或 JSON null，不能加說明、markdown、code fence、欄位名稱或其他文字。
+3. 如果輸出陣列，長度必須是 2。
+4. 如果輸出陣列，第 1 個值是經度，第 2 個值是緯度。
 
 INTERPRETATION RULES
 - 輸入會是一個地標、景點、車站、商場、百貨、機場或知名地名。
@@ -271,4 +271,3 @@ EXAMPLES
 - 「桃園機場」=> [121.2322, 25.0777]
 - 無法判斷時 => null
 """.strip()
-
