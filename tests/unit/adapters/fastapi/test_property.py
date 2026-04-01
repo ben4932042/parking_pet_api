@@ -275,7 +275,7 @@ def test_create_property_route_returns_property_id_on_success(
     assert service.created_property.id == "p1"
 
 
-def test_create_property_route_returns_400_with_reason_on_failure(
+def test_create_property_route_returns_409_with_reason_on_failure(
     client,
     override_api_dep,
     anonymous_actor_override,
@@ -292,7 +292,7 @@ def test_create_property_route_returns_400_with_reason_on_failure(
 
     response = client.post("/api/v1/property", params={"name": "Dessert Cafe"})
 
-    assert response.status_code == 400
+    assert response.status_code == 409
     assert (
         response.json()["detail"]
         == "Property is soft-deleted. Restore it before syncing again."

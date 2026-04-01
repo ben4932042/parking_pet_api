@@ -1,10 +1,10 @@
+from application.exceptions import NotFoundError
 from domain.entities.property_category import (
     PROPERTY_CATEGORIES,
     get_categories_by_primary_type,
     PropertyCategoryEntity,
     PropertyCategoryMatchEntity,
 )
-from interface.api.exceptions.error import NotFoundError
 
 
 class PropertyCategoryService:

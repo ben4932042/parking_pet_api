@@ -51,8 +51,8 @@ Relevant files:
 
 - `interface/api/routes/v1/property.py`
 - `application/property.py`
-- `application/property_search.py`
-- `application/property_search_rules.py`
+- `application/property_search/ranking.py`
+- `application/property_search/rules.py`
 - `domain/services/property_enrichment.py`
 - `infrastructure/search/pipeline.py`
 - `infrastructure/search/prompts.py`

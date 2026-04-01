@@ -27,8 +27,8 @@ The goal is to keep improvements cheap, explainable, and easy to regression-test
 
 - Route path: `interface/api/routes/v1/property.py`
 - Search application flow: `application/property.py`
-- Search ranking helpers: `application/property_search.py`
-- Search rules: `application/property_search_rules.py`
+- Search ranking helpers: `application/property_search/ranking.py`
+- Search rules: `application/property_search/rules.py`
 - Search pipeline and prompts: `infrastructure/search/`
 
 ## Rules
@@ -106,7 +106,7 @@ Choose keyword or rule updates when:
 
 Typical files:
 
-- `application/property_search_rules.py`
+- `application/property_search/rules.py`
 
 Examples:
 
@@ -125,7 +125,7 @@ Choose repository, ranking, or retrieval changes only when:
 Typical files:
 
 - `application/property.py`
-- `application/property_search.py`
+- `application/property_search/ranking.py`
 - `infrastructure/mongo/property.py`
 - retrieval architecture modules added in the future
 
@@ -206,8 +206,8 @@ This preference should guide future search-quality work unless product requireme
 
 - `interface/api/routes/v1/property.py`
 - `application/property.py`
-- `application/property_search.py`
-- `application/property_search_rules.py`
+- `application/property_search/ranking.py`
+- `application/property_search/rules.py`
 - `infrastructure/search/`
 - `tests/unit/application/test_property_search_pipeline.py`
 - `tests/integration/search_cases.py`

@@ -1,6 +1,6 @@
 from typing import Any
 
-from application.property_search_rules import FEATURE_FIELD_MAP, TRANSPORT_LABELS
+from application.property_search.rules import FEATURE_FIELD_MAP, TRANSPORT_LABELS
 from domain.entities.property import PropertyFilterCondition
 from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.search import (

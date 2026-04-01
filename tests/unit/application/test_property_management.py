@@ -1,6 +1,7 @@
 import pytest
 
 from application.property import PropertyService
+from application.exceptions import ConflictError, NotFoundError
 from domain.entities.audit import PropertyAuditAction
 from domain.entities.enrichment import AnalysisSource
 from domain.entities.property import (
@@ -14,7 +15,6 @@ from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.services.property_enrichment import IEnrichmentProvider
-from interface.api.exceptions.error import ConflictError, NotFoundError
 from domain.entities.search import SearchPlan
 
 

@@ -57,7 +57,7 @@ Read the workflow documents when you need the execution rules for a specific flo
 
 - `interface/api/routes/v1/property.py`
 - `application/property.py`
-- `application/property_search.py`
-- `application/property_search_rules.py`
+- `application/property_search/ranking.py`
+- `application/property_search/rules.py`
 - `infrastructure/mongo/property.py`
 - `interface/api/schemas/property.py`

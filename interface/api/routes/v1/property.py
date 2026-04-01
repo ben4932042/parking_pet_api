@@ -3,13 +3,14 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette import status
 
+from application.exceptions import ApplicationError
 from application.property import PropertyService
 from application.property_note import PropertyNoteService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
 from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.user import UserEntity
-from interface.api.exceptions.error import AppError
+from interface.api.exceptions.error import AppError, from_application_error
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
@@ -242,9 +243,11 @@ async def create_property(
     try:
         created_property = await service.create_property(name, actor=actor)
         return PropertyCreateResponse(property_id=created_property.id)
-    except AppError as exc:
+    except ApplicationError as exc:
+        api_error = exc if isinstance(exc, AppError) else from_application_error(exc)
         raise HTTPException(
-            status_code=400, detail=exc.message or "Failed to create property."
+            status_code=api_error.http_status,
+            detail=api_error.message or "Failed to create property.",
         )
     except Exception as exc:
         raise HTTPException(

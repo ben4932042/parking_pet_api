@@ -2,11 +2,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from application.exceptions import NotFoundError, ValidationDomainError
 from application.property_note import PropertyNoteService
 from domain.entities.property_note import PropertyNoteEntity
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_note import IPropertyNoteRepository
-from interface.api.exceptions.error import NotFoundError, ValidationDomainError
 
 
 class PropertyRepoStub(IPropertyRepository):

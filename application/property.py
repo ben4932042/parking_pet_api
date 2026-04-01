@@ -1,7 +1,8 @@
 import logging
 from typing import Any, List, Optional
 
-from application.property_search import rank_search_results
+from application.exceptions import ConflictError, NotFoundError
+from application.property_search.ranking import rank_search_results
 from domain.entities.audit import ActorInfo, PropertyAuditAction, PropertyAuditLog
 from domain.entities import PyObjectId
 from domain.entities.property import (
@@ -18,9 +19,6 @@ from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property_note import IPropertyNoteRepository
 from domain.repositories.property import IPropertyRepository
 from domain.services.property_enrichment import IEnrichmentProvider
-from interface.api.exceptions.error import ConflictError, NotFoundError
-
-
 logger = logging.getLogger(__name__)
 
 

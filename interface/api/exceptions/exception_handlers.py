@@ -9,7 +9,9 @@ from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
+from application.exceptions import ApplicationError
 from interface.api.exceptions.error import AppError
+from interface.api.exceptions.error import from_application_error
 from interface.api.exceptions.error_code import ErrorCode
 from interface.api.exceptions.problem import ProblemDetails
 
@@ -44,6 +46,8 @@ def _problem_json(
 
 
 async def app_error_handler(request: Request, exc: Exception) -> Response:
+    if isinstance(exc, ApplicationError) and not isinstance(exc, AppError):
+        exc = from_application_error(exc)
     if not isinstance(exc, AppError):
         return await unhandled_exception_handler(request, exc)
 
@@ -154,6 +158,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> Respo
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    app.add_exception_handler(ApplicationError, app_error_handler)
     app.add_exception_handler(AppError, app_error_handler)
     app.add_exception_handler(
         PydanticValidationError, pydantic_validation_error_handler

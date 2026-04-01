@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from application.property_search_rules import (
+from application.property_search.rules import (
     extract_address_by_rule,
     extract_category_by_rule,
     extract_distance_by_rule,

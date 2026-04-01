@@ -1,9 +1,15 @@
 from typing import Any, Mapping, Optional
 
+from application.exceptions import (
+    ApplicationError,
+    ConflictError as ApplicationConflictError,
+    NotFoundError as ApplicationNotFoundError,
+    ValidationDomainError as ApplicationValidationDomainError,
+)
 from interface.api.exceptions.error_code import ErrorCode
 
 
-class AppError(Exception):
+class AppError(ApplicationError):
     code: ErrorCode = ErrorCode.INTERNAL
     http_status: int = 500
 
@@ -14,10 +20,7 @@ class AppError(Exception):
         details: Optional[Mapping[str, Any]] = None,
         cause: Optional[BaseException] = None,
     ) -> None:
-        super().__init__(message)
-        self.message = message
-        self.details = dict(details or {})
-        self.cause = cause
+        super().__init__(message, details=details, cause=cause)
 
 
 class NotFoundError(AppError):
@@ -53,3 +56,29 @@ class RateLimitedError(AppError):
 class ExternalTimeoutError(AppError):
     code = ErrorCode.EXTERNAL_TIMEOUT
     http_status = 504
+
+
+def from_application_error(exc: ApplicationError) -> AppError:
+    if isinstance(exc, ApplicationNotFoundError):
+        return NotFoundError(
+            exc.message,
+            details=exc.details,
+            cause=exc.cause,
+        )
+    if isinstance(exc, ApplicationConflictError):
+        return ConflictError(
+            exc.message,
+            details=exc.details,
+            cause=exc.cause,
+        )
+    if isinstance(exc, ApplicationValidationDomainError):
+        return ValidationDomainError(
+            exc.message,
+            details=exc.details,
+            cause=exc.cause,
+        )
+    return AppError(
+        exc.message,
+        details=exc.details,
+        cause=exc.cause,
+    )

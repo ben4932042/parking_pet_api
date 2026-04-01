@@ -93,7 +93,7 @@ This covers:
 
 - `infrastructure/search/pipeline.py`
 - `infrastructure/search/prompts.py`
-- `application/property_search_rules.py`
+- `application/property_search/rules.py`
 - `domain/entities/search.py`
 - `domain/services/property_enrichment.py`
 

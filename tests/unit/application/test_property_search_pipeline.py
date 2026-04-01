@@ -157,6 +157,35 @@ async def test_search_by_keyword_returns_empty_when_semantic_query_has_no_result
 
 
 @pytest.mark.asyncio
+async def test_search_by_keyword_returns_warning_when_travel_time_lacks_geo_anchor():
+    repo = CaptureRepo(query_items=["should-not-be-used"])
+    plan = SearchPlan(
+        route="semantic",
+        filter_condition=PropertyFilterCondition(
+            mongo_query={"primary_type": "cafe"},
+            travel_time_limit_min=30,
+        ),
+        semantic_extraction={"category": "cafe", "travel_time_limit_min": 30},
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(plan),
+    )
+
+    results, updated_plan = await service.search_by_keyword(
+        "30分鐘車程咖啡廳",
+        user_coords=None,
+        map_coords=None,
+    )
+
+    assert results == []
+    assert "missing_geo_anchor_for_travel_time" in updated_plan.warnings
+    assert repo.calls == []
+
+
+@pytest.mark.asyncio
 async def test_search_by_keyword_blocks_prompt_injection_without_repo_lookup():
     repo = CaptureRepo(keyword_items=["should-not-be-used"])
     service = PropertyService(
@@ -400,7 +429,7 @@ def test_low_confidence_primary_type_becomes_warning_not_fallback():
 
 
 def test_rule_based_location_parser_recognizes_taoyuan_as_address():
-    from application.property_search_rules import extract_address_by_rule
+    from application.property_search.rules import extract_address_by_rule
 
     assert extract_address_by_rule("台北") == "台北"
     assert extract_address_by_rule("桃園 火鍋店") == "桃園"
@@ -442,7 +471,7 @@ def test_route_node_treats_prompt_injection_query_as_keyword():
 
 
 def test_rule_based_landmark_parser_recognizes_sun_moon_lake():
-    from application.property_search_rules import (
+    from application.property_search.rules import (
         extract_landmark_by_rule,
         is_pure_landmark_query,
     )
@@ -800,7 +829,7 @@ def test_route_node_prefers_rule_based_landmark_before_llm(monkeypatch):
 
 
 def test_rule_based_category_parser_recognizes_hot_pot_as_primary_type():
-    from application.property_search_rules import extract_category_by_rule
+    from application.property_search.rules import extract_category_by_rule
 
     intent = extract_category_by_rule("桃園 火鍋店")
 
@@ -810,7 +839,7 @@ def test_rule_based_category_parser_recognizes_hot_pot_as_primary_type():
 
 
 def test_rule_based_category_parser_recognizes_park_as_primary_type():
-    from application.property_search_rules import extract_category_by_rule
+    from application.property_search.rules import extract_category_by_rule
 
     intent = extract_category_by_rule("青埔 公園")
 
@@ -820,7 +849,7 @@ def test_rule_based_category_parser_recognizes_park_as_primary_type():
 
 
 def test_rule_based_category_parser_skips_negated_park_keyword():
-    from application.property_search_rules import extract_category_by_rule
+    from application.property_search.rules import extract_category_by_rule
 
     intent = extract_category_by_rule("不是公園的地方")
 
@@ -829,7 +858,7 @@ def test_rule_based_category_parser_skips_negated_park_keyword():
 
 def test_comma_separated_primary_type_is_normalized_by_query_rule():
     from domain.entities.search import CategoryIntent
-    from application.property_search_rules import normalize_category_intent
+    from application.property_search.rules import normalize_category_intent
 
     intent = normalize_category_intent(
         "桃園 火鍋店",
@@ -894,7 +923,7 @@ def test_category_prompt_uses_dynamic_property_categories_variable():
 
 
 def test_typo_normalizer_heuristic_runs_for_address_with_unrecognized_tail():
-    from application.property_search_rules import should_run_typo_normalizer
+    from application.property_search.rules import should_run_typo_normalizer
 
     assert should_run_typo_normalizer("桃園 咖啡聽") is True
     assert should_run_typo_normalizer("桃園 咖啡廳") is False

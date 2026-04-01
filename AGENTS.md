@@ -18,10 +18,12 @@ Repository-wide instructions for coding agents working in this project.
 
 ## Architecture Guardrails
 
+- This project follows clean-architecture-oriented layering: `domain -> application -> interface`.
 - Keep business logic out of framework orchestration layers.
 - Rules that encode product behavior, query interpretation, heuristics, or decision policy belong in `application/` or `domain-adjacent` modules, not in framework adapters.
 - `infrastructure/` should focus on adapters, prompts, external integrations, persistence details, and orchestration glue.
 - If a function would still be meaningful without LangGraph, FastAPI, MongoDB, or vendor SDKs, treat it as business logic first and place it outside infrastructure unless there is a strong reason not to.
+- `application/` must not depend on `interface/`; application errors belong in `application.exceptions`, and `interface/` is responsible for mapping them to API responses.
 
 ## Development Docs
 
