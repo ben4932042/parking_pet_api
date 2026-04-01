@@ -14,7 +14,6 @@ from domain.entities.property import (
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
-from domain.services.embedding import IEmbeddingProvider
 from domain.services.property_enrichment import IEnrichmentProvider
 from domain.entities.search import SearchPlan
 
@@ -24,9 +23,6 @@ class InMemoryPropertyRepo(IPropertyRepository):
         self.property_entity = property_entity
 
     async def get_by_keyword(self, q: str):
-        return []
-
-    async def search_by_vector(self, query_vector, limit=20, filters=None):
         return []
 
     async def get_nearby(self, lat, lng, radius, types, page, size):
@@ -99,16 +95,6 @@ class SyncEnrichmentProvider(IEnrichmentProvider):
 
     def geocode_landmark(self, landmark_name: str):
         return landmark_name, None
-
-
-class StubEmbeddingProvider(IEmbeddingProvider):
-    model_name = "stub-embedding"
-
-    def embed_document(self, text: str) -> list[float]:
-        return [float(len(text))]
-
-    def embed_query(self, text: str) -> list[float]:
-        return [float(len(text))]
 
 
 def build_source(place_id: str) -> AnalysisSource:
@@ -406,7 +392,6 @@ async def test_update_aliases_merges_manual_aliases_and_writes_audit_log(
         enrichment_provider=SyncEnrichmentProvider(
             build_source("place-1"), repo.property_entity
         ),
-        embedding_provider=StubEmbeddingProvider(),
     )
 
     detail = await service.update_aliases(
@@ -418,5 +403,4 @@ async def test_update_aliases_merges_manual_aliases_and_writes_audit_log(
 
     assert detail.aliases == ["公七公園", "青埔七號公園"]
     assert detail.manual_aliases == ["青埔七號公園", "公七公園"]
-    assert repo.property_entity.embedding_model == "stub-embedding"
     assert audit_repo.logs[-1].action == PropertyAuditAction.ALIASES_UPDATE

@@ -1,4 +1,8 @@
+from datetime import datetime, timezone
+
+from domain.entities.search_history import SearchHistoryEntity
 from interface.api.dependencies.property import get_property_service
+from interface.api.dependencies.search_history import get_search_history_service
 from interface.api.dependencies.user import get_current_user, get_user_service
 
 
@@ -50,6 +54,16 @@ class FavoritePropertyServiceStub:
             }
         )
         return self.noted_property_ids
+
+
+class SearchHistoryServiceStub:
+    def __init__(self, items=None):
+        self.items = items or []
+        self.calls = []
+
+    async def list_history(self, *, user_id: str, limit: int = 20):
+        self.calls.append({"fn": "list_history", "user_id": user_id, "limit": limit})
+        return self.items
 
 
 def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
@@ -259,4 +273,45 @@ def test_get_user_favorite_properties_returns_empty_list(
     assert service.calls == [
         {"fn": "get_overviews_by_ids", "property_ids": []},
         {"fn": "get_noted_property_ids", "user_id": "u1", "property_ids": []},
+    ]
+
+
+def test_get_user_search_history_returns_recent_items(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    history_service = override_api_dep(
+        get_search_history_service,
+        SearchHistoryServiceStub(
+            items=[
+                SearchHistoryEntity(
+                    _id="history-1",
+                    query="台北咖啡廳",
+                    response_type="semantic_search",
+                    result_ids=["p1", "p2"],
+                    result_count=2,
+                    user_id="u1",
+                    created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                )
+            ]
+        ),
+    )
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/search-history", params={"limit": 10})
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": "history-1",
+            "query": "台北咖啡廳",
+            "response_type": "semantic_search",
+            "preferences": [],
+            "result_ids": ["p1", "p2"],
+            "result_count": 2,
+            "created_at": "2026-01-02T00:00:00Z",
+        }
+    ]
+    assert history_service.calls == [
+        {"fn": "list_history", "user_id": "u1", "limit": 10}
     ]

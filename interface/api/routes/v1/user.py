@@ -3,15 +3,18 @@ from starlette import status
 
 from application.property import PropertyService
 from application.property_note import PropertyNoteService
+from application.search_history import SearchHistoryService
 from application.user import UserService
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
+from interface.api.dependencies.search_history import get_search_history_service
 from interface.api.dependencies.user import get_user_service, get_current_user
 
 from domain.entities import PyObjectId
 from interface.api.schemas.page import Pagination
 from interface.api.schemas.property import PropertyOverviewResponse
 from interface.api.schemas.property_note import UserPropertyNoteListItemResponse
+from interface.api.schemas.search_history import UserSearchHistoryItemResponse
 from interface.api.schemas.user import (
     UserDetailResponse,
     FavoritePropertyResponse,
@@ -109,6 +112,34 @@ async def get_user_favorite_properties(
         for property_item in properties
     ]
     return sorted(items, key=lambda item: not item.has_note)
+
+
+@router.get(
+    "/search-history",
+    status_code=status.HTTP_200_OK,
+    response_model=list[UserSearchHistoryItemResponse],
+)
+async def get_user_search_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user=Depends(get_current_user),
+    search_history_service: SearchHistoryService = Depends(get_search_history_service),
+):
+    items = await search_history_service.list_history(
+        user_id=str(current_user.id),
+        limit=limit,
+    )
+    return [
+        UserSearchHistoryItemResponse(
+            id=str(item.id),
+            query=item.query,
+            response_type=item.response_type,
+            preferences=item.preferences,
+            result_ids=item.result_ids,
+            result_count=item.result_count,
+            created_at=item.created_at,
+        )
+        for item in items
+    ]
 
 
 @router.get(

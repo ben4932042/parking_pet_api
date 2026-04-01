@@ -30,13 +30,11 @@ COMMON_ENGLISH_LOCATION_WORDS = {
 }
 
 
-def build_property_search_fields(property_entity: PropertyEntity) -> dict[str, object]:
+def build_property_alias_fields(property_entity: PropertyEntity) -> dict[str, object]:
     generated_aliases = _build_generated_aliases(property_entity.name)
     aliases = _merge_aliases(generated_aliases, property_entity.manual_aliases)
-    search_text = _build_search_text(property_entity, aliases)
     return {
         "aliases": aliases,
-        "search_text": search_text,
     }
 
 
@@ -84,32 +82,6 @@ def _merge_aliases(generated_aliases: list[str], manual_aliases: list[str]) -> l
         aliases.append(cleaned)
 
     return aliases
-
-
-def _build_search_text(property_entity: PropertyEntity, aliases: list[str]) -> str:
-    parts = [
-        property_entity.name,
-        *aliases,
-        property_entity.primary_type,
-        property_entity.category,
-        property_entity.ai_analysis.venue_type,
-    ]
-
-    normalized_parts: list[str] = []
-    seen: set[str] = set()
-    for part in parts:
-        cleaned = _normalize_space(part)
-        if not cleaned:
-            continue
-        lowered = cleaned.casefold()
-        if lowered in seen:
-            continue
-        seen.add(lowered)
-        normalized_parts.append(cleaned)
-
-    return " ".join(normalized_parts)
-
-
 def _normalize_space(value: str | None) -> str:
     if not value:
         return ""

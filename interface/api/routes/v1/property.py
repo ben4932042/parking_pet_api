@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -5,11 +6,14 @@ from starlette import status
 
 from application.exceptions import ApplicationError
 from application.property import PropertyService
+from application.search_history import SearchHistoryService
 from application.property_note import PropertyNoteService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
+from domain.entities.search_history import SearchHistoryPreference
 from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.user import UserEntity
+from interface.api.dependencies.search_history import get_search_history_service
 from interface.api.exceptions.error import AppError, from_application_error
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
@@ -39,6 +43,7 @@ from interface.api.schemas.property import (
 )
 
 router = APIRouter(prefix="/property")
+logger = logging.getLogger(__name__)
 
 
 def _coords_or_none(
@@ -52,15 +57,12 @@ def _coords_or_none(
 def _response_type_from_plan(
     execution_modes: list[str],
     used_fallback: bool,
-    fallback_reason: str | None = None,
 ) -> str:
     modes = set(execution_modes)
     if modes == {"semantic", "keyword"}:
         return "hybrid_search"
     if modes == {"keyword"}:
         return "keyword_search"
-    if fallback_reason == "semantic_zero_results_vector_fallback":
-        return "fallback_search"
     if used_fallback:
         return "keyword_search"
     return "semantic_search"
@@ -117,6 +119,7 @@ async def search_properties_by_keyword(
         ),
     ),
     service: PropertyService = Depends(get_property_service),
+    search_history_service: SearchHistoryService = Depends(get_search_history_service),
     current_user: Optional[UserEntity] = Depends(get_optional_current_user),
 ):
     items, plan = await service.search_by_keyword(
@@ -125,13 +128,33 @@ async def search_properties_by_keyword(
         map_coords=_coords_or_none(map_lat, map_lng),
         radius=radius,
     )
+    if current_user is not None:
+        try:
+            await search_history_service.record_search(
+                user_id=str(current_user.id),
+                query=query,
+                response_type=_response_type_from_plan(
+                    plan.execution_modes,
+                    plan.used_fallback,
+                ),
+                preferences=[
+                    SearchHistoryPreference(key=preference.key, label=preference.label)
+                    for preference in plan.filter_condition.preferences
+                ],
+                result_ids=[str(item.id) for item in items],
+                result_count=len(items),
+            )
+        except Exception:
+            logger.exception(
+                "Failed to record search history",
+                extra={"user_id": str(current_user.id), "query": query},
+            )
     return {
         "status": "success",
         "user_query": query,
         "response_type": _response_type_from_plan(
             plan.execution_modes,
             plan.used_fallback,
-            plan.fallback_reason,
         ),
         "preferences": plan.filter_condition.preferences,
         "results": await _attach_has_note(items, service, current_user),
@@ -331,7 +354,7 @@ async def update_property_pet_features(
     summary="Patch manual aliases for property search",
     description=(
         "Replace the manual alias list for a property. "
-        "The backend regenerates aliases, search_text, and search_embedding in the same update."
+        "The backend regenerates normalized aliases in the same update."
     ),
 )
 async def update_property_aliases(

@@ -24,10 +24,6 @@ class CaptureQueryRepo(IPropertyRepository):
         self.calls.append(("get_by_keyword", q))
         return []
 
-    async def search_by_vector(self, query_vector, limit=20, filters=None):
-        self.calls.append(("search_by_vector", query_vector, limit, filters))
-        return []
-
     async def get_nearby(self, lat, lng, radius, types, page, size):
         raise NotImplementedError
 

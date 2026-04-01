@@ -6,10 +6,9 @@ from typing import Any, List, Optional
 from application.exceptions import ConflictError, NotFoundError
 from application.property_search.hybrid import (
     rank_combined_search_results,
-    rank_keyword_hybrid_results,
     should_short_circuit_hybrid_keyword,
 )
-from application.property_search.projection import build_property_search_fields
+from application.property_search.projection import build_property_alias_fields
 from application.property_search.ranking import rank_search_results
 from domain.entities.audit import ActorInfo, PropertyAuditAction, PropertyAuditLog
 from domain.entities import PyObjectId
@@ -26,16 +25,11 @@ from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property_note import IPropertyNoteRepository
 from domain.repositories.property import IPropertyRepository
-from domain.services.embedding import IEmbeddingProvider
 from domain.services.property_enrichment import IEnrichmentProvider
 logger = logging.getLogger(__name__)
 
 
 PROMPT_INJECTION_ROUTE_REASON = "查詢包含 prompt injection 訊號，改用關鍵字搜尋"
-VECTOR_KEYWORD_LIMIT = 20
-VECTOR_SEMANTIC_FALLBACK_LIMIT = 20
-SEMANTIC_VECTOR_FALLBACK_WARNING = "semantic_vector_fallback_used"
-SEMANTIC_VECTOR_FALLBACK_REASON = "semantic_zero_results_vector_fallback"
 
 
 class PropertyService:
@@ -46,14 +40,12 @@ class PropertyService:
         audit_repo: IPropertyAuditRepository,
         enrichment_provider: IEnrichmentProvider,
         note_repo: IPropertyNoteRepository | None = None,
-        embedding_provider: IEmbeddingProvider | None = None,
     ):
         self.repo = repo
         self.raw_data_repo = raw_data_repo
         self.audit_repo = audit_repo
         self.note_repo = note_repo
         self.enrichment_provider = enrichment_provider
-        self.embedding_provider = embedding_provider
 
     async def search_nearby(
         self,
@@ -155,7 +147,7 @@ class PropertyService:
                     )
                     return keyword_items, search_plan
             else:
-                keyword_items = await self._search_keyword_hybrid(q)
+                keyword_items = await self._search_keyword(q)
                 lexical_keyword_items = keyword_items
 
         if run_semantic and semantic_ready:
@@ -182,7 +174,9 @@ class PropertyService:
             semantic_items = await self.repo.find_by_query(
                 generate_query, open_at_minutes=open_at_minutes
             )
-            if not semantic_items:
+            if semantic_items:
+                semantic_items = rank_search_results(semantic_items, generate_query)
+            else:
                 logger.info("Semantic search returned no results.")
                 logger.debug(
                     "Semantic query returned no results",
@@ -191,16 +185,6 @@ class PropertyService:
                         "mongo_query": generate_query,
                     },
                 )
-                semantic_items = await self._search_semantic_vector_fallback(
-                    q=q,
-                    mongo_query=generate_query,
-                )
-                if semantic_items:
-                    if SEMANTIC_VECTOR_FALLBACK_WARNING not in search_plan.warnings:
-                        search_plan.warnings.append(SEMANTIC_VECTOR_FALLBACK_WARNING)
-                    search_plan.fallback_reason = SEMANTIC_VECTOR_FALLBACK_REASON
-            else:
-                semantic_items = rank_search_results(semantic_items, generate_query)
 
         if run_semantic and run_keyword:
             items = rank_combined_search_results(
@@ -393,71 +377,14 @@ class PropertyService:
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)
 
-    async def _search_keyword_hybrid(self, q: str) -> list[PropertyEntity]:
-        lexical_items = await self.repo.get_by_keyword(q)
-        if lexical_items or self.embedding_provider is None:
-            return lexical_items
-
-        normalized_query = q.strip()
-        if not normalized_query:
-            return lexical_items
-
-        query_vector = self.embedding_provider.embed_query(normalized_query)
-        vector_items = await self.repo.search_by_vector(
-            query_vector,
-            limit=VECTOR_KEYWORD_LIMIT,
-        )
-        return rank_keyword_hybrid_results(
-            query_text=normalized_query,
-            lexical_items=lexical_items,
-            vector_items=vector_items,
-        )
+    async def _search_keyword(self, q: str) -> list[PropertyEntity]:
+        return await self.repo.get_by_keyword(q)
 
     async def _search_keyword_hybrid_with_metadata(
         self, q: str
     ) -> tuple[list[PropertyEntity], list[PropertyEntity]]:
         lexical_items = await self.repo.get_by_keyword(q)
-        if lexical_items or self.embedding_provider is None:
-            return lexical_items, lexical_items
-
-        normalized_query = q.strip()
-        if not normalized_query:
-            return lexical_items, lexical_items
-
-        query_vector = self.embedding_provider.embed_query(normalized_query)
-        vector_items = await self.repo.search_by_vector(
-            query_vector,
-            limit=VECTOR_KEYWORD_LIMIT,
-        )
-        ranked_items = rank_keyword_hybrid_results(
-            query_text=normalized_query,
-            lexical_items=lexical_items,
-            vector_items=vector_items,
-        )
-        return ranked_items, lexical_items
-
-    async def _search_semantic_vector_fallback(
-        self,
-        *,
-        q: str,
-        mongo_query: dict,
-    ) -> list[PropertyEntity]:
-        if self.embedding_provider is None:
-            return []
-
-        normalized_query = q.strip()
-        if not normalized_query:
-            return []
-
-        query_vector = self.embedding_provider.embed_query(normalized_query)
-        vector_items = await self.repo.search_by_vector(
-            query_vector,
-            limit=VECTOR_SEMANTIC_FALLBACK_LIMIT,
-            filters=self._build_semantic_vector_filters(mongo_query),
-        )
-        if not vector_items:
-            return []
-        return rank_search_results(vector_items, mongo_query)
+        return lexical_items, lexical_items
 
     async def get_noted_property_ids(
         self, user_id: str, property_ids: list[str]
@@ -783,11 +710,6 @@ class PropertyService:
         payload.pop("location", None)
         payload.pop("types", None)
         payload.pop("is_open", None)
-        payload.pop("search_embedding", None)
-        payload.pop("search_text", None)
-        payload.pop("embedding_version", None)
-        payload.pop("embedding_model", None)
-        payload.pop("embedding_updated_at", None)
         return payload
 
     @staticmethod
@@ -817,26 +739,7 @@ class PropertyService:
         )
 
     def _apply_search_projection(self, property_entity: PropertyEntity) -> PropertyEntity:
-        search_fields = build_property_search_fields(property_entity)
-        payload: dict[str, Any] = {
-            **search_fields,
-            "search_embedding": None,
-            "embedding_version": None,
-            "embedding_model": None,
-            "embedding_updated_at": None,
-        }
-        if self.embedding_provider is not None:
-            payload.update(
-                {
-                    "search_embedding": self.embedding_provider.embed_document(
-                        search_fields["search_text"]
-                    ),
-                    "embedding_version": "property_search_v1",
-                    "embedding_model": self.embedding_provider.model_name,
-                    "embedding_updated_at": self._now(),
-                }
-            )
-        return property_entity.model_copy(update=payload)
+        return property_entity.model_copy(update=build_property_alias_fields(property_entity))
 
     @staticmethod
     def _normalize_aliases(aliases: list[str]) -> list[str]:
@@ -852,14 +755,6 @@ class PropertyService:
             seen.add(lowered)
             normalized.append(cleaned)
         return normalized
-
-    @staticmethod
-    def _build_semantic_vector_filters(mongo_query: dict) -> dict | None:
-        filters: dict[str, Any] = {}
-        primary_type = mongo_query.get("primary_type")
-        if isinstance(primary_type, str):
-            filters["primary_type"] = primary_type
-        return filters or None
 
     @staticmethod
     def _build_changes(

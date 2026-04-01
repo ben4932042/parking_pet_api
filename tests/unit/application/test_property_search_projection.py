@@ -6,7 +6,7 @@ from domain.entities.enrichment import (
     PetService,
 )
 from domain.entities.property import PropertyEntity
-from application.property_search.projection import build_property_search_fields
+from application.property_search.projection import build_property_alias_fields
 
 
 def build_property(*, name: str, primary_type: str, venue_type: str) -> PropertyEntity:
@@ -34,96 +34,85 @@ def build_property(*, name: str, primary_type: str, venue_type: str) -> Property
     )
 
 
-def test_build_property_search_fields_strips_branch_suffix_after_at():
+def test_build_property_alias_fields_strips_branch_suffix_after_at():
     property_entity = build_property(
         name="Frankie Feels Good @______ corner",
         primary_type="food_store",
         venue_type="複合式餐飲空間",
     )
 
-    payload = build_property_search_fields(property_entity)
+    payload = build_property_alias_fields(property_entity)
 
     assert payload["aliases"] == ["Frankie Feels Good"]
-    assert (
-        payload["search_text"]
-        == "Frankie Feels Good @______ corner Frankie Feels Good food_store cafe 複合式餐飲空間"
-    )
 
 
-def test_build_property_search_fields_extracts_park_alias_and_category():
+def test_build_property_alias_fields_extracts_park_alias_and_category():
     property_entity = build_property(
         name="青埔公七公園",
         primary_type="park",
         venue_type="寵物友善公園",
     )
 
-    payload = build_property_search_fields(property_entity)
+    payload = build_property_alias_fields(property_entity)
 
     assert payload["aliases"] == ["公七公園"]
-    assert payload["search_text"] == "青埔公七公園 公七公園 park outdoor 寵物友善公園"
 
 
-def test_build_property_search_fields_merges_manual_aliases_without_duplicates():
+def test_build_property_alias_fields_merges_manual_aliases_without_duplicates():
     property_entity = build_property(
         name="青埔公七公園",
         primary_type="park",
         venue_type="寵物友善公園",
     ).model_copy(update={"manual_aliases": ["  公七公園  ", "青埔七號公園"]})
 
-    payload = build_property_search_fields(property_entity)
+    payload = build_property_alias_fields(property_entity)
 
     assert payload["aliases"] == ["公七公園", "青埔七號公園"]
-    assert (
-        payload["search_text"]
-        == "青埔公七公園 公七公園 青埔七號公園 park outdoor 寵物友善公園"
-    )
 
 
-def test_build_property_search_fields_strips_chinese_branch_suffix():
+def test_build_property_alias_fields_strips_chinese_branch_suffix():
     property_entity = build_property(
         name="肉球森林 台北101店",
         primary_type="cafe",
         venue_type="寵物友善餐飲",
     )
 
-    payload = build_property_search_fields(property_entity)
+    payload = build_property_alias_fields(property_entity)
 
     assert payload["aliases"] == ["肉球森林"]
-    assert payload["search_text"] == "肉球森林 台北101店 肉球森林 cafe 寵物友善餐飲"
 
 
-def test_build_property_search_fields_strips_separator_suffix_note():
+def test_build_property_alias_fields_strips_separator_suffix_note():
     property_entity = build_property(
         name="某某咖啡 - 審計新村店",
         primary_type="cafe",
         venue_type="寵物友善餐飲",
     )
 
-    payload = build_property_search_fields(property_entity)
+    payload = build_property_alias_fields(property_entity)
 
     assert payload["aliases"] == ["某某咖啡"]
 
 
-def test_build_property_search_fields_strips_english_location_suffix():
+def test_build_property_alias_fields_strips_english_location_suffix():
     property_entity = build_property(
         name="Brand X Taichung",
         primary_type="pet_store",
         venue_type="寵物用品空間",
     )
 
-    payload = build_property_search_fields(property_entity)
+    payload = build_property_alias_fields(property_entity)
 
     assert payload["aliases"] == ["Brand X"]
-    assert payload["search_text"] == "Brand X Taichung Brand X pet_store pet_supplies 寵物用品空間"
 
 
-def test_build_property_search_fields_strips_trailhead_suffix():
+def test_build_property_alias_fields_strips_trailhead_suffix():
     property_entity = build_property(
         name="橫嶺山步道入口",
         primary_type="hiking_area",
         venue_type="戶外步道",
     )
 
-    payload = build_property_search_fields(property_entity)
+    payload = build_property_alias_fields(property_entity)
 
     assert payload["aliases"] == ["橫嶺山步道"]

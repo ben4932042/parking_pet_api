@@ -48,3 +48,12 @@ def test_get_favorite_properties_requires_authentication_header(client):
     data = response.json()
     assert data["code"] == "FORBIDDEN"
     assert data["detail"] == "Authentication required"
+
+
+def test_get_search_history_requires_authentication_header(client):
+    response = client.get("/api/v1/user/search-history")
+
+    assert response.status_code == 403
+    data = response.json()
+    assert data["code"] == "FORBIDDEN"
+    assert data["detail"] == "Authentication required"

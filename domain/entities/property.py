@@ -127,11 +127,6 @@ class PropertyEntity(BaseModel):
     place_id: str = Field(description="Google Maps Place ID")
     aliases: List[str] = Field(default_factory=list)
     manual_aliases: List[str] = Field(default_factory=list)
-    search_text: Optional[str] = None
-    search_embedding: Optional[List[float]] = None
-    embedding_version: Optional[str] = None
-    embedding_model: Optional[str] = None
-    embedding_updated_at: Optional[datetime] = None
     latitude: float = Field(description="Latitude of the property", ge=-90, le=90)
     longitude: float = Field(description="Longitude of the property", ge=-180, le=180)
     regular_opening_hours: Optional[List[OpeningPeriod]]

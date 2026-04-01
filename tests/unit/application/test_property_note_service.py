@@ -20,9 +20,6 @@ class PropertyRepoStub(IPropertyRepository):
     async def get_nearby(self, lat, lng, radius, types, page, size):
         raise NotImplementedError
 
-    async def search_by_vector(self, query_vector, limit=20, filters=None):
-        raise NotImplementedError
-
     async def get_property_by_id(self, property_id, include_deleted=False):
         self.calls.append(
             {

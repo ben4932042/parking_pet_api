@@ -10,7 +10,7 @@ The goal of the feature is not full-text retrieval in the search-engine sense. T
 2. Decide whether to run semantic retrieval, keyword retrieval, or both.
 3. Convert semantic intent into a MongoDB filter.
 4. Apply optional geographic proximity.
-5. Merge and rerank candidates from keyword, semantic, and vector paths.
+5. Merge and rerank candidates from keyword and semantic paths.
 
 ## Main Entry Points
 
@@ -74,80 +74,35 @@ The current runtime path is easiest to read as a route-selection flow. The API m
 
 ```mermaid
 flowchart TD
-    A["GET /api/v1/property<br/>query, user/map coords, radius"] --> B["PropertyService.search_by_keyword(...)"]
-    B --> C["extract_search_plan(q)"]
-    C --> D["router + parsers"]
+    A["GET /api/v1/property<br/>query, user/map coords, radius"] --> B["extract_search_plan(q)"]
+    B --> C["SearchPlan<br/>execution_modes"]
 
-    D --> E["Nodes"]
-    E --> E1["typo_normalizer"]
-    E --> E2["route_node -> execution_modes"]
-    E --> E3["location_parser"]
-    E --> E4["category_parser"]
-    E --> E5["feature_parser"]
-    E --> E6["quality_parser"]
-    E --> E7["time_parser"]
-    E --> E8["distance_parser"]
+    C --> D{"execution_modes"}
 
-    E3 --> F["merge_plan"]
-    E4 --> F
-    E5 --> F
-    E6 --> F
-    E7 --> F
-    E8 --> F
-    E2 --> F
+    D -->|keyword| E["Run keyword lexical retrieval<br/>name / aliases / address"]
+    D -->|semantic| F["Build semantic Mongo query"]
+    D -->|semantic + keyword| G["Hybrid mode: keyword-first"]
 
-    F --> G["confidence_gate"]
-    G --> H["SearchPlan<br/>execution_modes = semantic / keyword / both"]
+    G --> H["Run keyword lexical retrieval"]
+    H --> I["If a semantic query exists,<br/>filter keyword results with semantic constraints"]
+    I --> J{"Is the top keyword result<br/>a high-confidence exact lexical match<br/>that still satisfies semantic constraints?"}
 
-    H --> I["apply radius override"]
-    I --> J{"run semantic?"}
-    I --> K{"run keyword?"}
+    J -->|yes| K["Return keyword results immediately<br/>and skip semantic retrieval"]
+    J -->|no| L["Run semantic retrieval"]
 
-    J -->|yes| L["generate_query(...)"]
-    J -->|no| Z1["skip semantic"]
+    F --> M["repo.find_by_query(...)"]
+    L --> M
 
-    K -->|yes| M["get_by_keyword(q)<br/>lexical: name / aliases / address"]
-    K -->|no| Z2["skip keyword"]
+    M --> N["rank_search_results(...)"]
 
-    M --> N{"lexical has results?"}
-    N -->|yes| O["keyword_items = lexical only"]
-    N -->|no| P{"embedding provider available?"}
-    P -->|no| Q["keyword_items = []"]
-    P -->|yes| R["search_by_vector(...)"]
-    R --> S["keyword_items = vector results"]
+    N --> O{"Did the request start in hybrid mode?"}
+    O -->|no| P["Return semantic_search"]
+    O -->|yes| Q["Merge keyword + semantic results"]
+    Q --> R["Ranking priority:<br/>keyword > semantic"]
+    R --> S["Return hybrid_search"]
 
-    L --> T{"running semantic + keyword?"}
-    T -->|yes| U["filter keyword_items by semantic query"]
-    U --> V{"top keyword is exact lexical hit<br/>and passes semantic filters?"}
-    V -->|yes| W["short-circuit<br/>return keyword results"]
-    V -->|no| X["repo.find_by_query(...)"]
-
-    T -->|no, semantic only| X
-
-    X --> Y{"semantic results found?"}
-    Y -->|yes| Y1["rank_search_results(...)"]
-    Y -->|no| Y2{"semantic vector fallback available?"}
-    Y2 -->|yes| Y3["search_by_vector(..., filters=semantic_query)"]
-    Y2 -->|no| Y4["semantic_items = []"]
-
-    Y1 --> AA
-    Y3 --> AA
-    Y4 --> AA
-    O --> AA
-    Q --> AA
-    S --> AA
-    Z1 --> AA
-    Z2 --> AA
-
-    AA{"final response path"}
-    AA -->|semantic + keyword| AB["rank_combined_search_results(...)"]
-    AA -->|semantic only| AC["return semantic_items"]
-    AA -->|keyword only| AD["return keyword_items"]
-
-    AB --> AE["ranking priority<br/>keyword > semantic > vector"]
-    AC --> AF["response_type = semantic_search"]
-    AD --> AG["response_type = keyword_search"]
-    AE --> AH["response_type = hybrid_search"]
+    E --> T["Return keyword_search"]
+    K --> S
 ```
 
 ### 1. HTTP request enters the property route
@@ -263,11 +218,13 @@ Geographic anchor precedence is:
 
 1. `CURRENT_LOCATION` -> normalized `user_coords`
 2. explicit landmark -> geocode landmark with LLM
-3. otherwise -> normalized `map_coords`
+3. otherwise, if the query is not address-first -> normalized `map_coords`
 
 If the chosen coordinates are missing or incomplete, the geo filter is skipped.
 
 If landmark geocoding fails, the search now degrades gracefully to a non-landmark query instead of raising an exception.
+
+Address-first queries such as `台北餐廳` or `中壢區咖啡廳` do not automatically receive a `location.$nearSphere` filter from the current map center. In those cases the address regex is treated as the primary geographic constraint.
 
 ### 5. Keyword retrieval path
 
@@ -279,16 +236,11 @@ The repository lexical query currently searches:
 - `aliases`
 - `address`
 
-If lexical keyword retrieval returns any results, the keyword path stops there and does not run keyword vector search.
-
-If lexical keyword retrieval returns no results and an embedding provider is available, the service performs keyword vector search as a fallback candidate source.
-
 Keyword ranking favors direct lookup behavior:
 
 - exact `name` match
 - exact `alias` match
 - partial `name` / `alias` containment
-- lexical hits over vector-only hits
 
 ### 6. MongoDB executes the structured semantic query and the application reranks the results
 
@@ -316,21 +268,17 @@ When `execution_modes` contains both `semantic` and `keyword`, the runtime does 
 The current behavior is:
 
 1. Run keyword lexical retrieval first.
-2. Only run keyword vector search if lexical retrieval is empty.
-3. Build the semantic Mongo query.
-4. Filter keyword candidates through the semantic constraints when semantic execution is also active.
-5. If the top keyword hit is a high-confidence lexical exact match and still satisfies semantic filters, short-circuit and return keyword results directly.
-6. Otherwise run semantic retrieval and merge the two result sets.
+2. Build the semantic Mongo query.
+3. Filter keyword candidates through the semantic constraints when semantic execution is also active.
+4. If the top keyword hit is a high-confidence lexical exact match and still satisfies semantic filters, short-circuit and return keyword results directly.
+5. Otherwise run semantic retrieval and merge the two result sets.
 
 The combined ranker currently uses source priority first:
 
 - keyword
 - semantic
-- vector-only
 
-This means hybrid results are intentionally lookup-first. Strong keyword matches stay above semantic and vector-only candidates.
-
-Semantic vector fallback is still available when semantic retrieval returns zero results.
+This means hybrid results are intentionally lookup-first. Strong keyword matches stay above semantic candidates.
 
 ## Where Recommendation Signals Come From
 

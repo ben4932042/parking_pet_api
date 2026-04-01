@@ -2,16 +2,14 @@ import argparse
 import asyncio
 import json
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from application.property_search.projection import build_property_search_fields
+from application.property_search.projection import build_property_alias_fields
 from domain.entities.property import PropertyEntity
-from infrastructure.embedding import VertexEmbeddingProvider
 from infrastructure.mongo import MongoDBClient
 
 
@@ -58,7 +56,6 @@ def _coerce_property_payload(raw_doc: dict) -> dict:
 async def main() -> None:
     args = parse_args()
     client = MongoDBClient()
-    embedding_provider = VertexEmbeddingProvider()
     source = client.get_collection(args.source_collection)
     target = client.get_collection(args.target_collection)
 
@@ -83,19 +80,12 @@ async def main() -> None:
 
             try:
                 property_entity = PropertyEntity(**payload)
-                search_fields = build_property_search_fields(property_entity)
-                search_embedding = embedding_provider.embed_document(
-                    search_fields["search_text"]
-                )
+                alias_fields = build_property_alias_fields(property_entity)
 
                 payload.update(
                     {
-                        **search_fields,
+                        **alias_fields,
                         "manual_aliases": payload.get("manual_aliases", []),
-                        "search_embedding": search_embedding,
-                        "embedding_version": "property_search_v1",
-                        "embedding_model": embedding_provider.model_name,
-                        "embedding_updated_at": datetime.now(UTC),
                     }
                 )
                 await target.replace_one({"_id": payload["_id"]}, payload, upsert=True)
