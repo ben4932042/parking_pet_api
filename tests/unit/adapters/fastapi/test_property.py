@@ -30,13 +30,14 @@ class CapturePropertyService:
         self.execution_modes = execution_modes
 
     async def search_by_keyword(
-        self, q, user_coords=None, map_coords=None, open_at_minutes=None
+        self, q, user_coords=None, map_coords=None, radius=None, open_at_minutes=None
     ):
         self.calls.append(
             {
                 "q": q,
                 "user_coords": user_coords,
                 "map_coords": map_coords,
+                "radius": radius,
                 "open_at_minutes": open_at_minutes,
             }
         )
@@ -186,6 +187,7 @@ def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
             "q": "dog cafe",
             "user_coords": None,
             "map_coords": (121.56, 25.03),
+            "radius": None,
             "open_at_minutes": None,
         }
     ]
@@ -231,6 +233,31 @@ def test_search_route_returns_hybrid_response_type_for_dual_execution(
     assert response.status_code == 200
     assert response.json()["user_query"] == "寵物公園"
     assert response.json()["response_type"] == "hybrid_search"
+
+
+def test_search_route_passes_radius_to_service(client, override_api_dep):
+    service = override_api_dep(get_property_service, CapturePropertyService())
+
+    response = client.get(
+        "/api/v1/property",
+        params={
+            "query": "寵物公園",
+            "map_lat": 25.03,
+            "map_lng": 121.56,
+            "radius": 2500,
+        },
+    )
+
+    assert response.status_code == 200
+    assert service.calls == [
+        {
+            "q": "寵物公園",
+            "user_coords": None,
+            "map_coords": (121.56, 25.03),
+            "radius": 2500,
+            "open_at_minutes": None,
+        }
+    ]
 
 
 def test_nearby_route_expands_category_to_primary_types(client, override_api_dep):

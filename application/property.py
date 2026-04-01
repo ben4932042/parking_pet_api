@@ -71,9 +71,11 @@ class PropertyService:
         q: str,
         user_coords: Optional[tuple[float, float]] = None,
         map_coords: Optional[tuple[float, float]] = None,
+        radius: Optional[int] = None,
         open_at_minutes: Optional[int] = None,
     ):
         search_plan = self.enrichment_provider.extract_search_plan(q)
+        self._apply_radius_override(search_plan, radius)
         logger.debug(f"Search plan: {search_plan}")
 
         execution_modes = set(search_plan.execution_modes)
@@ -211,6 +213,24 @@ class PropertyService:
         if run_semantic:
             return semantic_items, search_plan
         return keyword_items, search_plan
+
+    @staticmethod
+    def _apply_radius_override(search_plan, radius: Optional[int]) -> None:
+        if radius is None or radius <= 0:
+            return
+
+        if search_plan.filter_condition.travel_time_limit_min is not None:
+            return
+
+        if search_plan.filter_condition.landmark_context:
+            return
+
+        if "address" in search_plan.filter_condition.mongo_query:
+            return
+
+        search_plan.filter_condition.search_radius_meters = radius
+        if search_plan.semantic_extraction:
+            search_plan.semantic_extraction["search_radius_meters"] = radius
 
     def _filter_keyword_items_by_semantic_query(
         self,

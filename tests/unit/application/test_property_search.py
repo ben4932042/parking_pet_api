@@ -128,6 +128,65 @@ def test_property_filter_condition_defaults_to_neutral_rating_gate():
     assert intent.min_rating == 0.0
 
 
+def test_apply_radius_override_uses_client_radius_without_explicit_distance():
+    plan = SearchPlan(
+        route="semantic",
+        filter_condition=PropertyFilterCondition(
+            mongo_query={"primary_type": "park"},
+            search_radius_meters=10000,
+        ),
+        semantic_extraction={"category": "park", "search_radius_meters": 10000},
+    )
+
+    PropertyService._apply_radius_override(plan, 2500)
+
+    assert plan.filter_condition.search_radius_meters == 2500
+    assert plan.semantic_extraction["search_radius_meters"] == 2500
+
+
+def test_apply_radius_override_skips_client_radius_for_explicit_travel_time():
+    plan = SearchPlan(
+        route="semantic",
+        filter_condition=PropertyFilterCondition(
+            mongo_query={"primary_type": "park"},
+            travel_time_limit_min=15,
+            search_radius_meters=1125,
+        ),
+        semantic_extraction={"category": "park", "search_radius_meters": 1125},
+    )
+
+    PropertyService._apply_radius_override(plan, 2500)
+
+    assert plan.filter_condition.search_radius_meters == 1125
+    assert plan.semantic_extraction["search_radius_meters"] == 1125
+
+
+def test_apply_radius_override_skips_client_radius_for_landmark_or_address_queries():
+    landmark_plan = SearchPlan(
+        route="semantic",
+        filter_condition=PropertyFilterCondition(
+            mongo_query={"primary_type": "cafe"},
+            landmark_context="青埔",
+            search_radius_meters=10000,
+        ),
+        semantic_extraction={"landmark": "青埔", "search_radius_meters": 10000},
+    )
+    address_plan = SearchPlan(
+        route="semantic",
+        filter_condition=PropertyFilterCondition(
+            mongo_query={"address": {"$regex": "台北", "$options": "i"}},
+            search_radius_meters=10000,
+        ),
+        semantic_extraction={"address": "台北", "search_radius_meters": 10000},
+    )
+
+    PropertyService._apply_radius_override(landmark_plan, 2500)
+    PropertyService._apply_radius_override(address_plan, 2500)
+
+    assert landmark_plan.filter_condition.search_radius_meters == 10000
+    assert address_plan.filter_condition.search_radius_meters == 10000
+
+
 @pytest.mark.asyncio
 async def test_search_reranks_by_distance_when_geo_context_exists(
     property_entity_factory,

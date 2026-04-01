@@ -101,6 +101,15 @@ async def search_properties_by_keyword(
     user_lng: float = Query(default=None, description="Current user longitude."),
     map_lat: float = Query(default=None, description="Current map center latitude."),
     map_lng: float = Query(default=None, description="Current map center longitude."),
+    radius: int = Query(
+        default=None,
+        ge=1,
+        description=(
+            "Optional map-driven search radius in meters. "
+            "Used only when the query does not already express an explicit distance condition "
+            "and does not already contain an explicit landmark/address anchor."
+        ),
+    ),
     service: PropertyService = Depends(get_property_service),
     current_user: Optional[UserEntity] = Depends(get_optional_current_user),
 ):
@@ -108,6 +117,7 @@ async def search_properties_by_keyword(
         q=query,
         user_coords=_coords_or_none(user_lat, user_lng),
         map_coords=_coords_or_none(map_lat, map_lng),
+        radius=radius,
     )
     return {
         "status": "success",
