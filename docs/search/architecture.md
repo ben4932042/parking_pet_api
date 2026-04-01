@@ -177,7 +177,7 @@ The fallback query is:
 - case-insensitive regex on `name`
 - case-insensitive regex on `address`
 
-The service currently keeps only the first matched result.
+The service returns all matched results from the keyword lookup, up to the repository limit.
 
 This fallback is important because it allows direct place-name lookup when the intent parser produces filters that are too narrow or too abstract.
 
@@ -266,15 +266,11 @@ The tags are important because they are the only explicit trace of the system’
 
 The following issues are still present in the current implementation and should be understood as part of the existing behavior.
 
-### 1. Fallback only returns the first regex match
-
-When the structured query fails, the fallback truncates results to a single item. This is acceptable for exact place-name lookup, but it is weak for ambiguous place names or partial keywords.
-
-### 2. Ranking is heuristic, not learned
+### 1. Ranking is heuristic, not learned
 
 The ranking layer now blends multiple signals, but it is still a hand-tuned heuristic formula. It does not yet use click feedback, popularity history, or learned relevance signals.
 
-### 3. Search quality depends heavily on prompt behavior
+### 2. Search quality depends heavily on prompt behavior
 
 The query parser is strongly guided by prompt rules, which is practical, but it also means regressions can be introduced by prompt drift or model behavior changes unless the project maintains regression tests around expected parsed intents.
 
@@ -282,11 +278,10 @@ The query parser is strongly guided by prompt rules, which is practical, but it 
 
 If the team wants the feature to evolve beyond the current implementation, the most impactful next steps would be:
 
-1. Preserve multiple fallback matches instead of only the first one.
-2. Tune the heuristic weights with real query examples instead of keeping them static.
-3. Add more regression coverage around query parsing outputs, not just query assembly safeguards.
-4. Separate intent extraction from ranking strategy so recommendation tuning does not require prompt tuning.
-5. Add popularity or engagement signals once the project has usable behavioral data.
+1. Tune the heuristic weights with real query examples instead of keeping them static.
+2. Add more regression coverage around query parsing outputs, not just query assembly safeguards.
+3. Separate intent extraction from ranking strategy so recommendation tuning does not require prompt tuning.
+4. Add popularity or engagement signals once the project has usable behavioral data.
 
 ## Summary
 

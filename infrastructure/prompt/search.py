@@ -110,10 +110,12 @@ ADDRESS RULES
 - 只要出現行政區名稱，即使不是完整地址，也優先視為 address。
 - 例如：台北、新北、桃園、台中、台南、高雄、新竹、基隆、嘉義、宜蘭、花蓮、台東、屏東、南投、苗栗、彰化、雲林，都屬於 address。
 - 例如：大安區、中壢區、魚池鄉、北屯區、中山路、民生東路，都屬於 address。
+- 像「青埔」這種常見地理區域名稱，若不是正式行政區，請不要歸為 address。
 
 LANDMARK RULES
 - 地標、景點、車站、商場、百貨、景觀名稱 => landmark。
-- 例如：台北101、桃園機場、中壢夜市、小人國、華泰名品城 => landmark。
+- 地理區域名稱若不是正式行政區，但在使用上常被當作搜尋錨點，也歸為 landmark。
+- 例如：台北101、桃園機場、中壢夜市、小人國、華泰名品城、青埔 => landmark。
 - 若查詢是「30分鐘車程的咖啡廳」、「步行10分鐘的公園」這種相對距離搜尋，且沒有其他明確地理名稱，請回 kind=landmark, value=CURRENT_LOCATION。
 
 FAILURE BEHAVIOR
@@ -128,6 +130,7 @@ OUTPUT CONTRACT
 
 EXAMPLES
 - 「桃園 火鍋店」=> kind=address, value=桃園
+- 「青埔哪裡可以跑跑」=> kind=landmark, value=青埔
 - 「中壢區 咖啡廳」=> kind=address, value=中壢區
 - 「中山路 寵物友善餐廳」=> kind=address, value=中山路
 - 「台北101 附近餐廳」=> kind=landmark, value=台北101

@@ -15,6 +15,18 @@ class InMemorySearchFeedbackRepository(ISearchFeedbackRepository):
         self.items.append(saved)
         return saved
 
+    async def list_feedback(
+        self,
+        *,
+        query_contains=None,
+        reason_contains=None,
+        response_type=None,
+        user_id=None,
+        source=None,
+        limit=20,
+    ):
+        return self.items[:limit]
+
 
 @pytest.mark.asyncio
 async def test_create_feedback_persists_actor_and_payload():

@@ -79,6 +79,7 @@ ADDRESS_SUFFIX_PATTERN = re.compile(
 )
 
 RULE_BASED_PRIMARY_TYPE_KEYWORDS = [
+    ("公園", "park"),
     ("火鍋", "hot_pot_restaurant"),
     ("燒肉", "yakiniku_restaurant"),
     ("烤肉", "yakiniku_restaurant"),
@@ -98,10 +99,10 @@ RULE_BASED_CATEGORY_KEYWORDS = [
     ("咖啡廳", PropertyCategoryKey.CAFE),
     ("咖啡店", PropertyCategoryKey.CAFE),
     ("下午茶", PropertyCategoryKey.CAFE),
+    ("點心", PropertyCategoryKey.CAFE),
     ("甜點", PropertyCategoryKey.CAFE),
     ("餐廳", PropertyCategoryKey.RESTAURANT),
     ("美食", PropertyCategoryKey.RESTAURANT),
-    ("公園", PropertyCategoryKey.OUTDOOR),
     ("戶外", PropertyCategoryKey.OUTDOOR),
     ("住宿", PropertyCategoryKey.LODGING),
     ("民宿", PropertyCategoryKey.LODGING),
@@ -109,6 +110,7 @@ RULE_BASED_CATEGORY_KEYWORDS = [
 ]
 
 RULE_BASED_LANDMARK_KEYWORDS = [
+    "青埔",
     "台北101",
     "日月潭",
     "阿里山",
@@ -144,22 +146,29 @@ RULE_BASED_LANDMARK_SUFFIXES = (
 FEATURE_HINT_KEYWORDS = {
     "leash_required": ("牽繩",),
     "stroller_required": ("推車", "提籠"),
-    "allow_on_floor": ("可落地", "落地"),
+    "allow_on_floor": ("可落地", "落地", "空出雙手"),
     "stairs": ("樓梯",),
     "outdoor_seating": ("戶外", "露天", "戶外座位"),
     "spacious": ("空間大", "寬敞"),
-    "indoor_ac": ("冷氣", "空調"),
+    "indoor_ac": ("冷氣", "空調", "避暑"),
     "off_leash_possible": ("放繩", "奔跑"),
     "pet_friendly_floor": ("止滑", "地墊"),
     "has_shop_pet": ("有店狗", "有店貓", "店裡有狗"),
     "pet_menu": ("寵物餐",),
     "free_water": ("水碗", "飲水", "有水"),
-    "free_treats": ("零食", "點心"),
+    "free_treats": ("零食",),
     "pet_seating": ("上椅", "一起坐", "座位"),
 }
 
 NEGATIVE_FEATURE_HINT_KEYWORDS = {
-    "stroller_required": ("不用推車", "免推車", "不用提籠", "免提籠"),
+    "stroller_required": (
+        "不需要推車",
+        "不用推車",
+        "免推車",
+        "不需要提籠",
+        "不用提籠",
+        "免提籠",
+    ),
     "allow_on_floor": ("不可落地", "不能落地"),
     "has_shop_pet": ("沒有店狗",)
 }
@@ -249,6 +258,8 @@ PROMPT_INJECTION_PATTERNS = (
     "roleplay as",
     "act as",
 )
+
+NEGATION_PREFIXES = ("不", "不是", "非", "免", "不要", "不用", "無需")
 
 
 class SearchGraphState(TypedDict, total=False):
@@ -378,6 +389,15 @@ def _is_pure_landmark_query(query: str) -> bool:
     return _extract_category_by_rule(query) is None
 
 
+def _is_negated_keyword(query: str, keyword: str) -> bool:
+    index = query.find(keyword)
+    if index == -1:
+        return False
+
+    prefix = query[:index]
+    return any(prefix.endswith(negation) for negation in NEGATION_PREFIXES)
+
+
 def _has_feature_hints(query: str) -> bool:
     return any(
         keyword in query
@@ -397,17 +417,19 @@ def _extract_feature_by_rule(query: str) -> PetFeatureIntent | None:
     features: dict[str, bool] = {}
     matched_keywords: list[str] = []
 
-    for feature_name, keywords in FEATURE_HINT_KEYWORDS.items():
-        for keyword in keywords:
-            if keyword in query:
-                features[feature_name] = True
-                matched_keywords.append(keyword)
-                break
-
     for feature_name, keywords in NEGATIVE_FEATURE_HINT_KEYWORDS.items():
         for keyword in keywords:
             if keyword in query:
                 features[feature_name] = False
+                matched_keywords.append(keyword)
+                break
+
+    for feature_name, keywords in FEATURE_HINT_KEYWORDS.items():
+        if feature_name in features:
+            continue
+        for keyword in keywords:
+            if keyword in query:
+                features[feature_name] = True
                 matched_keywords.append(keyword)
                 break
 
@@ -666,6 +688,8 @@ def _extract_address_by_rule(query: str) -> str | None:
 
 def _extract_category_by_rule(query: str) -> CategoryIntent | None:
     for keyword, primary_type in RULE_BASED_PRIMARY_TYPE_KEYWORDS:
+        if _is_negated_keyword(query, keyword):
+            continue
         if keyword in query:
             return CategoryIntent(
                 primary_type=primary_type,
@@ -675,6 +699,8 @@ def _extract_category_by_rule(query: str) -> CategoryIntent | None:
             )
 
     for keyword, category_key in RULE_BASED_CATEGORY_KEYWORDS:
+        if _is_negated_keyword(query, keyword):
+            continue
         if keyword in query:
             return CategoryIntent(
                 category_key=category_key,

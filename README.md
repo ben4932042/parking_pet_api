@@ -144,7 +144,7 @@ Important ranking inputs in `PropertyService`:
 - type match bonus
 - open-now bonus
 
-For more detail, see `docs/search-recommendation.md`.
+For more detail, see `docs/search/architecture.md`.
 
 ## Main Collections
 
@@ -324,7 +324,7 @@ Main routes under `/api/v1`:
 If you are new to the project, read files in this order:
 
 1. `README.md`
-2. `docs/search-recommendation.md`
+2. `docs/search/architecture.md`
 3. `interface/api/routes/v1/property.py`
 4. `application/property.py`
 5. `domain/entities/property.py`

@@ -80,7 +80,7 @@ class PropertyService:
                 },
             )
             items = await self.repo.get_by_keyword(q)
-            return items[:1], search_plan
+            return items, search_plan
 
         if self._travel_time_requires_geo_anchor(
             search_plan, user_coords=user_coords, map_coords=map_coords

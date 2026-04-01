@@ -81,7 +81,8 @@ async def test_search_by_keyword_uses_keyword_route_directly(
     property_entity_factory,
 ):
     keyword_item = property_entity_factory(identifier="keyword-hit")
-    repo = CaptureRepo(keyword_items=[keyword_item])
+    keyword_item_2 = property_entity_factory(identifier="keyword-hit-2")
+    repo = CaptureRepo(keyword_items=[keyword_item, keyword_item_2])
     service = PropertyService(
         repo=repo,
         raw_data_repo=DummyRawDataRepo(),
@@ -93,7 +94,7 @@ async def test_search_by_keyword_uses_keyword_route_directly(
 
     results, plan = await service.search_by_keyword("肉球森林")
 
-    assert [item.id for item in results] == ["keyword-hit"]
+    assert [item.id for item in results] == ["keyword-hit", "keyword-hit-2"]
     assert plan.route == "keyword"
     assert repo.calls == [("get_by_keyword", "肉球森林")]
 
@@ -103,7 +104,8 @@ async def test_search_by_keyword_falls_back_when_semantic_plan_requests_it(
     property_entity_factory,
 ):
     keyword_item = property_entity_factory(identifier="fallback-hit")
-    repo = CaptureRepo(keyword_items=[keyword_item])
+    keyword_item_2 = property_entity_factory(identifier="fallback-hit-2")
+    repo = CaptureRepo(keyword_items=[keyword_item, keyword_item_2])
     service = PropertyService(
         repo=repo,
         raw_data_repo=DummyRawDataRepo(),
@@ -120,7 +122,7 @@ async def test_search_by_keyword_falls_back_when_semantic_plan_requests_it(
 
     results, plan = await service.search_by_keyword("推薦的店")
 
-    assert [item.id for item in results] == ["fallback-hit"]
+    assert [item.id for item in results] == ["fallback-hit", "fallback-hit-2"]
     assert plan.used_fallback is True
     assert plan.fallback_reason == "low_confidence_primary_type"
     assert repo.calls == [("get_by_keyword", "推薦的店")]
@@ -450,6 +452,7 @@ def test_rule_based_landmark_parser_recognizes_sun_moon_lake():
     assert _extract_landmark_by_rule("日月潭的民宿") == "日月潭"
     assert _extract_landmark_by_rule("日月潭附近") == "日月潭"
     assert _extract_landmark_by_rule("士林夜市") == "士林夜市"
+    assert _extract_landmark_by_rule("青埔哪裡可以跑跑") == "青埔"
     assert _is_pure_landmark_query("日月潭") is True
     assert _is_pure_landmark_query("日月潭 咖啡廳") is False
 
@@ -486,6 +489,38 @@ def test_feature_node_uses_rule_based_pet_menu_hint():
     result = _feature_node(llm=None, state={"raw_query": "有寵物餐的咖啡廳"})
 
     assert result["feature_intent"].features == {"pet_menu": True}
+
+
+def test_feature_node_prefers_negative_stroller_hint_over_positive_keyword():
+    from infrastructure.google.search import _feature_node
+
+    result = _feature_node(llm=None, state={"raw_query": "不需要推車的餐廳"})
+
+    assert result["feature_intent"].features == {"stroller_required": False}
+
+
+def test_feature_node_maps_hands_free_phrase_to_allow_on_floor():
+    from infrastructure.google.search import _feature_node
+
+    result = _feature_node(llm=None, state={"raw_query": "我想空出雙手專心吃飯"})
+
+    assert result["feature_intent"].features == {"allow_on_floor": True}
+
+
+def test_feature_node_does_not_treat_human_snack_query_as_free_treats():
+    from infrastructure.google.search import _feature_node
+
+    result = _feature_node(llm=None, state={"raw_query": "想吃點心"})
+
+    assert result["feature_intent"].features == {}
+
+
+def test_feature_node_maps_hot_weather_phrase_to_indoor_ac():
+    from infrastructure.google.search import _feature_node
+
+    result = _feature_node(llm=None, state={"raw_query": "今天好熱想避暑"})
+
+    assert result["feature_intent"].features == {"indoor_ac": True}
 
 
 def test_quality_node_skips_llm_when_query_has_no_quality_hints():
@@ -720,6 +755,24 @@ def test_rule_based_category_parser_recognizes_hot_pot_as_primary_type():
     assert intent is not None
     assert intent.primary_type == "hot_pot_restaurant"
     assert intent.matched_from == "primary_type"
+
+
+def test_rule_based_category_parser_recognizes_park_as_primary_type():
+    from infrastructure.google.search import _extract_category_by_rule
+
+    intent = _extract_category_by_rule("青埔 公園")
+
+    assert intent is not None
+    assert intent.primary_type == "park"
+    assert intent.matched_from == "primary_type"
+
+
+def test_rule_based_category_parser_skips_negated_park_keyword():
+    from infrastructure.google.search import _extract_category_by_rule
+
+    intent = _extract_category_by_rule("不是公園的地方")
+
+    assert intent is None
 
 
 def test_comma_separated_primary_type_is_normalized_by_query_rule():
