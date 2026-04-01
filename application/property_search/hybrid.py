@@ -25,6 +25,29 @@ def rank_keyword_hybrid_results(
     )
 
 
+def should_short_circuit_hybrid_keyword(
+    *,
+    query_text: str,
+    lexical_items: list[PropertyEntity],
+    ranked_keyword_items: list[PropertyEntity],
+) -> bool:
+    if not lexical_items or not ranked_keyword_items:
+        return False
+
+    top_item = ranked_keyword_items[0]
+    lexical_ids = {item.id for item in lexical_items}
+    if top_item.id not in lexical_ids:
+        return False
+
+    normalized_query = normalize_text_for_match(query_text)
+    if not normalized_query:
+        return False
+
+    normalized_name = normalize_text_for_match(top_item.name)
+    normalized_aliases = [normalize_text_for_match(alias) for alias in top_item.aliases]
+    return normalized_query == normalized_name or normalized_query in normalized_aliases
+
+
 def rank_combined_search_results(
     *,
     query_text: str,

@@ -190,10 +190,10 @@ async def test_search_by_keyword_falls_back_when_semantic_plan_requests_it(
 async def test_search_by_keyword_combines_hybrid_execution_modes(
     property_entity_factory,
 ):
-    keyword_exact = property_entity_factory(
-        identifier="keyword-exact",
-        name="寵物公園",
-        primary_type="pet_store",
+    keyword_partial = property_entity_factory(
+        identifier="keyword-partial",
+        name="寵物公園大草皮",
+        primary_type="park",
     )
     semantic_match = property_entity_factory(
         identifier="semantic-park",
@@ -202,6 +202,51 @@ async def test_search_by_keyword_combines_hybrid_execution_modes(
     )
     repo = CaptureRepo(
         query_items=[semantic_match],
+        keyword_items=[keyword_partial],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                execution_modes=["semantic", "keyword"],
+                filter_condition=PropertyFilterCondition(
+                    mongo_query={"primary_type": "park"},
+                    preferences=[{"key": "primary_type_preference", "label": "park"}],
+                ),
+                semantic_extraction={"category": "park"},
+            )
+        ),
+    )
+
+    results, plan = await service.search_by_keyword("寵物公園")
+
+    assert [item.id for item in results] == ["keyword-partial", "semantic-park"]
+    assert plan.execution_modes == ["semantic", "keyword"]
+    assert repo.calls == [
+        ("get_by_keyword", "寵物公園"),
+        ("find_by_query", {"primary_type": "park"}, None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_short_circuits_hybrid_on_exact_keyword_hit(
+    property_entity_factory,
+):
+    keyword_exact = property_entity_factory(
+        identifier="keyword-exact",
+        name="寵物公園",
+        primary_type="park",
+    )
+    repo = CaptureRepo(
+        query_items=[
+            property_entity_factory(
+                identifier="semantic-park",
+                name="青埔公七公園",
+                primary_type="park",
+            )
+        ],
         keyword_items=[keyword_exact],
     )
     service = PropertyService(
@@ -222,11 +267,54 @@ async def test_search_by_keyword_combines_hybrid_execution_modes(
 
     results, plan = await service.search_by_keyword("寵物公園")
 
-    assert [item.id for item in results] == ["keyword-exact", "semantic-park"]
+    assert [item.id for item in results] == ["keyword-exact"]
     assert plan.execution_modes == ["semantic", "keyword"]
     assert repo.calls == [
-        ("find_by_query", {"primary_type": "park"}, None),
         ("get_by_keyword", "寵物公園"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_exact_keyword_hit_must_still_match_semantic_filters(
+    property_entity_factory,
+):
+    keyword_exact_wrong_type = property_entity_factory(
+        identifier="keyword-exact",
+        name="寵物公園",
+        primary_type="pet_store",
+    )
+    semantic_match = property_entity_factory(
+        identifier="semantic-park",
+        name="青埔公七公園",
+        primary_type="park",
+    )
+    repo = CaptureRepo(
+        query_items=[semantic_match],
+        keyword_items=[keyword_exact_wrong_type],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                execution_modes=["semantic", "keyword"],
+                filter_condition=PropertyFilterCondition(
+                    mongo_query={"primary_type": "park"},
+                    preferences=[{"key": "primary_type_preference", "label": "park"}],
+                ),
+                semantic_extraction={"category": "park"},
+            )
+        ),
+    )
+
+    results, plan = await service.search_by_keyword("寵物公園")
+
+    assert [item.id for item in results] == ["semantic-park"]
+    assert plan.execution_modes == ["semantic", "keyword"]
+    assert repo.calls == [
+        ("get_by_keyword", "寵物公園"),
+        ("find_by_query", {"primary_type": "park"}, None),
     ]
 
 
