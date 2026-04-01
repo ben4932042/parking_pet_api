@@ -12,7 +12,7 @@ def rank_search_results(items: List[PropertyEntity], query: dict) -> List[Proper
 
     return sorted(
         items,
-        key=lambda item: _score_search_result(
+        key=lambda item: score_search_result(
             item=item,
             type_filter=type_filter,
             is_open_required=is_open_required,
@@ -23,7 +23,7 @@ def rank_search_results(items: List[PropertyEntity], query: dict) -> List[Proper
     )
 
 
-def _score_search_result(
+def score_search_result(
     item: PropertyEntity,
     type_filter: Any,
     is_open_required: bool,

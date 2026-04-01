@@ -2,7 +2,10 @@ import logging
 from typing import Any, List, Optional
 
 from application.exceptions import ConflictError, NotFoundError
-from application.property_search.hybrid import rank_keyword_hybrid_results
+from application.property_search.hybrid import (
+    rank_combined_search_results,
+    rank_keyword_hybrid_results,
+)
 from application.property_search.projection import build_property_search_fields
 from application.property_search.ranking import rank_search_results
 from domain.entities.audit import ActorInfo, PropertyAuditAction, PropertyAuditLog
@@ -70,7 +73,11 @@ class PropertyService:
         search_plan = self.enrichment_provider.extract_search_plan(q)
         logger.debug(f"Search plan: {search_plan}")
 
-        if search_plan.route == "keyword" or search_plan.used_fallback:
+        execution_modes = set(search_plan.execution_modes)
+        run_keyword = "keyword" in execution_modes or search_plan.used_fallback
+        run_semantic = "semantic" in execution_modes and not search_plan.used_fallback
+
+        if execution_modes == {"keyword"}:
             if search_plan.route_reason == PROMPT_INJECTION_ROUTE_REASON:
                 logger.warning(
                     "Blocked prompt-injection-like search query",
@@ -78,69 +85,88 @@ class PropertyService:
                 )
                 return [], search_plan
 
+        semantic_items: list[PropertyEntity] = []
+        keyword_items: list[PropertyEntity] = []
+        generate_query: dict[str, Any] = {}
+
+        if run_semantic:
+            if self._travel_time_requires_geo_anchor(
+                search_plan, user_coords=user_coords, map_coords=map_coords
+            ):
+                warning = "missing_geo_anchor_for_travel_time"
+                if warning not in search_plan.warnings:
+                    search_plan.warnings.append(warning)
+                logger.info(
+                    "Skipping semantic travel-time search without geo anchor",
+                    extra={
+                        "query_text": q,
+                        "travel_time_limit_min": search_plan.filter_condition.travel_time_limit_min,
+                    },
+                )
+                run_semantic = False
+                if not run_keyword:
+                    return [], search_plan
+            else:
+                generate_query = self.enrichment_provider.generate_query(
+                    search_plan.filter_condition,
+                    user_coords,
+                    map_coords,
+                )
+                logger.debug(
+                    "Generated query",
+                    extra={
+                        "query_text": q,
+                        "mongo_query": generate_query,
+                        "semantic_extraction": search_plan.semantic_extraction,
+                        "warnings": search_plan.warnings,
+                    },
+                )
+                semantic_items = await self.repo.find_by_query(
+                    generate_query, open_at_minutes=open_at_minutes
+                )
+                if not semantic_items:
+                    logger.info("Semantic search returned no results.")
+                    logger.debug(
+                        "Semantic query returned no results",
+                        extra={
+                            "query_text": q,
+                            "mongo_query": generate_query,
+                        },
+                    )
+                    semantic_items = await self._search_semantic_vector_fallback(
+                        q=q,
+                        mongo_query=generate_query,
+                    )
+                    if semantic_items:
+                        if SEMANTIC_VECTOR_FALLBACK_WARNING not in search_plan.warnings:
+                            search_plan.warnings.append(SEMANTIC_VECTOR_FALLBACK_WARNING)
+                        search_plan.fallback_reason = SEMANTIC_VECTOR_FALLBACK_REASON
+                else:
+                    semantic_items = rank_search_results(semantic_items, generate_query)
+
+        if run_keyword:
             logger.debug(
-                "Search using keyword fallback",
+                "Search using keyword execution path",
                 extra={
                     "query_text": q,
                     "fallback_reason": search_plan.fallback_reason,
                     "warnings": search_plan.warnings,
+                    "execution_modes": search_plan.execution_modes,
                 },
             )
-            items = await self._search_keyword_hybrid(q)
+            keyword_items = await self._search_keyword_hybrid(q)
+
+        if run_semantic and run_keyword:
+            items = rank_combined_search_results(
+                query_text=q,
+                keyword_items=keyword_items,
+                semantic_items=semantic_items,
+                semantic_query=generate_query,
+            )
             return items, search_plan
-
-        if self._travel_time_requires_geo_anchor(
-            search_plan, user_coords=user_coords, map_coords=map_coords
-        ):
-            warning = "missing_geo_anchor_for_travel_time"
-            if warning not in search_plan.warnings:
-                search_plan.warnings.append(warning)
-            logger.info(
-                "Skipping semantic travel-time search without geo anchor",
-                extra={
-                    "query_text": q,
-                    "travel_time_limit_min": search_plan.filter_condition.travel_time_limit_min,
-                },
-            )
-            return [], search_plan
-
-        generate_query = self.enrichment_provider.generate_query(
-            search_plan.filter_condition,
-            user_coords,
-            map_coords,
-        )
-        logger.debug(
-            "Generated query",
-            extra={
-                "query_text": q,
-                "mongo_query": generate_query,
-                "semantic_extraction": search_plan.semantic_extraction,
-                "warnings": search_plan.warnings,
-            },
-        )
-        items = await self.repo.find_by_query(
-            generate_query, open_at_minutes=open_at_minutes
-        )
-        if not items:
-            logger.info("Semantic search returned no results.")
-            logger.debug(
-                "Semantic query returned no results",
-                extra={
-                    "query_text": q,
-                    "mongo_query": generate_query,
-                },
-            )
-            items = await self._search_semantic_vector_fallback(
-                q=q,
-                mongo_query=generate_query,
-            )
-            if items:
-                if SEMANTIC_VECTOR_FALLBACK_WARNING not in search_plan.warnings:
-                    search_plan.warnings.append(SEMANTIC_VECTOR_FALLBACK_WARNING)
-                search_plan.fallback_reason = SEMANTIC_VECTOR_FALLBACK_REASON
-        else:
-            items = rank_search_results(items, generate_query)
-        return items, search_plan
+        if run_semantic:
+            return semantic_items, search_plan
+        return keyword_items, search_plan
 
     @staticmethod
     def _travel_time_requires_geo_anchor(

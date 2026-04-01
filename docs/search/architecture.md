@@ -150,7 +150,7 @@ The concrete implementation is `GoogleEnrichmentProvider.extract_search_plan(...
 
 The pipeline produces a structured `SearchPlan` containing:
 
-- `route`: whether the query should use keyword or semantic retrieval
+- `execution_modes`: whether the query should run keyword retrieval, semantic retrieval, or both
 - `filter_condition`: the normalized `PropertyFilterCondition`
 - `semantic_extraction`: summarized address/category/feature/quality extraction
 - `warnings`: low-confidence parsing signals

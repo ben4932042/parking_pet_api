@@ -8,6 +8,7 @@ from domain.entities.search import (
     QualityIntent,
     SearchPlan,
     SearchRouteDecision,
+    TimeIntent,
     TypoCorrectionIntent,
 )
 
@@ -21,5 +22,6 @@ class SearchGraphState(TypedDict, total=False):
     category_intent: CategoryIntent
     feature_intent: PetFeatureIntent
     quality_intent: QualityIntent
+    time_intent: TimeIntent
     distance_intent: DistanceIntent
     plan: SearchPlan

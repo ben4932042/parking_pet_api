@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 
+from application.property_search.rules import current_taiwan_day_of_week
+
 
 @dataclass(frozen=True)
 class QueryChecks:
@@ -7,6 +9,8 @@ class QueryChecks:
     max_distance: int | None = None
     address_regex: str | None = None
     is_open: bool | None = None
+    op_window_start: int | None = None
+    op_window_end: int | None = None
     feature_equals: dict[str, bool] = field(default_factory=dict)
 
 
@@ -102,6 +106,17 @@ SEARCH_CONDITION_CASES = [
         query_checks=QueryChecks(primary_type_includes="cafe", max_distance=10000),
     ),
     SearchConditionCase(
+        query="寵物公園",
+        params={},
+        response_type="hybrid_search",
+        preferences=("primary_type_preference",),
+        landmark_context=None,
+        travel_time_limit_min=None,
+        search_radius_meters=10000,
+        transport_mode=None,
+        query_checks=QueryChecks(primary_type_includes="park"),
+    ),
+    SearchConditionCase(
         query="台北101附近咖啡廳",
         params={},
         response_type="semantic_search",
@@ -126,6 +141,36 @@ SEARCH_CONDITION_CASES = [
         search_radius_meters=10000,
         transport_mode=None,
         query_checks=QueryChecks(address_regex="台北", is_open=True),
+    ),
+    SearchConditionCase(
+        query="禮拜五開的咖啡廳",
+        params={},
+        response_type="semantic_search",
+        preferences=("category_preference", "opening_time_preference"),
+        landmark_context=None,
+        travel_time_limit_min=None,
+        search_radius_meters=10000,
+        transport_mode=None,
+        query_checks=QueryChecks(
+            primary_type_includes="cafe",
+            op_window_start=5 * 1440,
+            op_window_end=(5 * 1440) + 1439,
+        ),
+    ),
+    SearchConditionCase(
+        query="下午有開的咖啡廳",
+        params={},
+        response_type="semantic_search",
+        preferences=("category_preference", "opening_time_preference"),
+        landmark_context=None,
+        travel_time_limit_min=None,
+        search_radius_meters=10000,
+        transport_mode=None,
+        query_checks=QueryChecks(
+            primary_type_includes="cafe",
+            op_window_start=(current_taiwan_day_of_week() * 1440) + (12 * 60),
+            op_window_end=(current_taiwan_day_of_week() * 1440) + (17 * 60) + 59,
+        ),
     ),
     SearchConditionCase(
         query="沒有店狗 寵物可落地的咖啡廳",

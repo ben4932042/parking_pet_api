@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from domain.entities import PyObjectId
 
-SearchResponseType = Literal["semantic_search", "keyword_search"]
+SearchResponseType = Literal["semantic_search", "keyword_search", "hybrid_search"]
 
 
 class SearchFeedbackPreference(BaseModel):

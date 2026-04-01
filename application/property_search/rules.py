@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timedelta, timezone
 
 from domain.entities.property_category import PropertyCategoryKey, PROPERTY_CATEGORIES
 from domain.entities.search import (
@@ -6,6 +7,7 @@ from domain.entities.search import (
     DistanceIntent,
     PetFeatureIntent,
     QualityIntent,
+    TimeIntent,
 )
 
 
@@ -238,10 +240,85 @@ PROMPT_INJECTION_PATTERNS = (
 )
 
 NEGATION_PREFIXES = ("不", "不是", "非", "免", "不要", "不用", "無需")
+SEMANTIC_SEARCH_INTENT_PHRASES = (
+    "想",
+    "找",
+    "推薦",
+    "附近",
+    "哪裡",
+    "有沒有",
+    "可以",
+)
+WEEKDAY_KEYWORDS = {
+    0: ("週日", "星期日", "禮拜日", "周日"),
+    1: ("週一", "星期一", "禮拜一", "周一"),
+    2: ("週二", "星期二", "禮拜二", "周二"),
+    3: ("週三", "星期三", "禮拜三", "周三"),
+    4: ("週四", "星期四", "禮拜四", "周四"),
+    5: ("週五", "星期五", "禮拜五", "周五"),
+    6: ("週六", "星期六", "禮拜六", "周六"),
+}
+TIME_OF_DAY_WINDOWS = {
+    "上午": (6, 0, 11, 59),
+    "早上": (6, 0, 11, 59),
+    "中午": (11, 0, 13, 59),
+    "下午": (12, 0, 17, 59),
+    "傍晚": (17, 0, 18, 59),
+    "晚上": (18, 0, 22, 59),
+}
 
 
 def normalize_text_for_match(value: str) -> str:
     return re.sub(r"\s+", "", value).strip()
+
+
+def current_taiwan_day_of_week() -> int:
+    tz_taiwan = timezone(timedelta(hours=8))
+    now = datetime.now(tz_taiwan)
+    return (now.weekday() + 1) % 7
+
+
+def should_run_keyword_with_semantic(query: str) -> bool:
+    normalized_query = normalize_text_for_match(query)
+    if not normalized_query or len(normalized_query) > 8:
+        return False
+
+    if any(phrase in query for phrase in SEMANTIC_SEARCH_INTENT_PHRASES):
+        return False
+
+    if (
+        extract_address_by_rule(query)
+        or extract_landmark_by_rule(query)
+        or extract_feature_by_rule(query)
+        or extract_quality_by_rule(query)
+        or extract_time_by_rule(query)
+        or extract_distance_by_rule(query)
+    ):
+        return False
+
+    category_intent = extract_category_by_rule(query)
+    if category_intent is None:
+        return False
+
+    category_keywords = [keyword for keyword, _ in RULE_BASED_PRIMARY_TYPE_KEYWORDS] + [
+        keyword for keyword, _ in RULE_BASED_CATEGORY_KEYWORDS
+    ]
+    normalized_without_category = normalized_query
+    for keyword in sorted(category_keywords, key=len, reverse=True):
+        normalized_keyword = normalize_text_for_match(keyword)
+        if normalized_keyword and normalized_keyword in normalized_without_category:
+            normalized_without_category = normalized_without_category.replace(
+                normalized_keyword, "", 1
+            )
+            break
+
+    return bool(normalized_without_category)
+
+
+def has_time_hints(query: str) -> bool:
+    return any(keyword in query for keywords in WEEKDAY_KEYWORDS.values() for keyword in keywords) or any(
+        phrase in query for phrase in TIME_OF_DAY_WINDOWS
+    )
 
 
 def is_basic_prompt_injection(query: str) -> bool:
@@ -423,21 +500,90 @@ def extract_quality_by_rule(query: str) -> QualityIntent | None:
             [keyword for keyword in ("推薦", "評價", "熱門") if keyword in query]
         )
 
-    if any(keyword in query for keyword in QUALITY_HINT_KEYWORDS["is_open"]):
+    open_now_keywords = ("現在有開", "營業中", "現在營業", "開著", "不想白跑")
+    generic_open_keywords = ("有開", "有開的")
+    if any(keyword in query for keyword in open_now_keywords):
         is_open = True
         matched_keywords.extend(
-            [
-                keyword
-                for keyword in QUALITY_HINT_KEYWORDS["is_open"]
-                if keyword in query
-            ]
+            [keyword for keyword in open_now_keywords if keyword in query]
         )
+    elif not has_time_hints(query) and any(keyword in query for keyword in generic_open_keywords):
+        is_open = True
+        matched_keywords.extend(
+            [keyword for keyword in generic_open_keywords if keyword in query]
+        )
+
+    if min_rating is None and is_open is None:
+        return None
 
     return QualityIntent(
         min_rating=min_rating,
         is_open=is_open,
         confidence=0.98,
         evidence=f"matched quality keywords by rule: {', '.join(dict.fromkeys(matched_keywords))}",
+    )
+
+
+def _detect_weekday(query: str) -> int | None:
+    for day, keywords in WEEKDAY_KEYWORDS.items():
+        if any(keyword in query for keyword in keywords):
+            return day
+    return None
+
+
+def _detect_time_of_day(query: str) -> tuple[str, tuple[int, int, int, int]] | None:
+    for label, window in TIME_OF_DAY_WINDOWS.items():
+        if label in query:
+            return label, window
+    return None
+
+
+def _window_to_minutes(day_of_week: int, window: tuple[int, int, int, int]) -> tuple[int, int]:
+    start_hour, start_minute, end_hour, end_minute = window
+    start = day_of_week * 1440 + start_hour * 60 + start_minute
+    end = day_of_week * 1440 + end_hour * 60 + end_minute
+    return start, end
+
+
+def extract_time_by_rule(query: str) -> TimeIntent | None:
+    weekday = _detect_weekday(query)
+    time_of_day = _detect_time_of_day(query)
+
+    if weekday is None and time_of_day is None:
+        return None
+
+    target_day = weekday if weekday is not None else current_taiwan_day_of_week()
+    if time_of_day is not None:
+        label, window = time_of_day
+        start, end = _window_to_minutes(target_day, window)
+        prefix = next(
+            (
+                keyword
+                for keyword in WEEKDAY_KEYWORDS.get(target_day, ())
+                if keyword in query
+            ),
+            None,
+        )
+        final_label = f"{prefix}{label}" if prefix else label
+        return TimeIntent(
+            open_window_start_minutes=start,
+            open_window_end_minutes=end,
+            label=final_label,
+            confidence=0.98,
+            evidence=f"matched opening time window by rule: {final_label}",
+        )
+
+    start = target_day * 1440
+    end = start + 1439
+    label = next(
+        keyword for keyword in WEEKDAY_KEYWORDS[target_day] if keyword in query
+    )
+    return TimeIntent(
+        open_window_start_minutes=start,
+        open_window_end_minutes=end,
+        label=label,
+        confidence=0.98,
+        evidence=f"matched opening weekday by rule: {label}",
     )
 
 

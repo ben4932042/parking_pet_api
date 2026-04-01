@@ -20,11 +20,14 @@ from interface.api.exceptions.error import ConflictError
 
 
 class CapturePropertyService:
-    def __init__(self, route="semantic", used_fallback=False, items=None):
+    def __init__(
+        self, route="semantic", used_fallback=False, items=None, execution_modes=None
+    ):
         self.calls = []
         self.route = route
         self.used_fallback = used_fallback
         self.items = items or []
+        self.execution_modes = execution_modes
 
     async def search_by_keyword(
         self, q, user_coords=None, map_coords=None, open_at_minutes=None
@@ -38,7 +41,7 @@ class CapturePropertyService:
             }
         )
         plan = SearchPlan(
-            route=self.route,
+            execution_modes=self.execution_modes or [self.route],
             filter_condition=PropertyFilterCondition(preferences=[]),
             used_fallback=self.used_fallback,
         )
@@ -213,6 +216,21 @@ def test_search_route_returns_keyword_response_type_for_fallback_retrieval(
     assert response.status_code == 200
     assert response.json()["user_query"] == "推薦的店"
     assert response.json()["response_type"] == "keyword_search"
+
+
+def test_search_route_returns_hybrid_response_type_for_dual_execution(
+    client, override_api_dep
+):
+    override_api_dep(
+        get_property_service,
+        CapturePropertyService(execution_modes=["semantic", "keyword"]),
+    )
+
+    response = client.get("/api/v1/property", params={"query": "寵物公園"})
+
+    assert response.status_code == 200
+    assert response.json()["user_query"] == "寵物公園"
+    assert response.json()["response_type"] == "hybrid_search"
 
 
 def test_nearby_route_expands_category_to_primary_types(client, override_api_dep):

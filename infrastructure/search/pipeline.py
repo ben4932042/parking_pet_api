@@ -8,12 +8,15 @@ from application.property_search.rules import (
     extract_feature_by_rule,
     extract_landmark_by_rule,
     extract_quality_by_rule,
+    extract_time_by_rule,
     has_feature_hints,
     has_quality_hints,
+    has_time_hints,
     is_basic_prompt_injection,
     is_obviously_non_search_query,
     normalize_category_intent,
     normalize_text_for_match,
+    should_run_keyword_with_semantic,
     should_run_typo_normalizer,
     should_use_current_location_context,
 )
@@ -30,6 +33,7 @@ from domain.entities.search import (
     QualityIntent,
     SearchPlan,
     SearchRouteDecision,
+    TimeIntent,
     TypoCorrectionIntent,
 )
 from infrastructure.search.merge import (
@@ -114,7 +118,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     if is_basic_prompt_injection(query):
         return {
             "route_decision": SearchRouteDecision(
-                route="keyword",
+                execution_modes=["keyword"],
                 confidence=0.99,
                 reason="查詢包含 prompt injection 訊號，改用關鍵字搜尋",
             )
@@ -123,7 +127,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     if is_obviously_non_search_query(query):
         return {
             "route_decision": SearchRouteDecision(
-                route="keyword",
+                execution_modes=["keyword"],
                 confidence=0.98,
                 reason="查詢內容不像搜尋條件，改用關鍵字搜尋",
             )
@@ -133,12 +137,13 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     rule_based_category = extract_category_by_rule(query)
     rule_based_feature = extract_feature_by_rule(query)
     rule_based_quality = extract_quality_by_rule(query)
+    rule_based_time = extract_time_by_rule(query)
     rule_based_distance = extract_distance_by_rule(query)
     normalized_query = normalize_text_for_match(query)
     if rule_based_address and normalized_query == rule_based_address:
         return {
             "route_decision": SearchRouteDecision(
-                route="semantic",
+                execution_modes=["semantic"],
                 confidence=0.98,
                 reason="查詢本身就是行政區或地址條件",
             )
@@ -147,7 +152,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     if rule_based_address and rule_based_category:
         return {
             "route_decision": SearchRouteDecision(
-                route="semantic",
+                execution_modes=["semantic"],
                 confidence=0.98,
                 reason="包含地點和分類條件",
             )
@@ -157,7 +162,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     if rule_based_landmark:
         return {
             "route_decision": SearchRouteDecision(
-                route="semantic",
+                execution_modes=["semantic"],
                 confidence=0.98,
                 reason="查詢本身就是地標條件",
             ),
@@ -173,12 +178,16 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
         rule_based_category
         or rule_based_feature
         or rule_based_quality
+        or rule_based_time
         or rule_based_distance
         or should_use_current_location_context(query)
     ):
+        execution_modes = ["semantic"]
+        if should_run_keyword_with_semantic(query):
+            execution_modes.append("keyword")
         return {
             "route_decision": SearchRouteDecision(
-                route="semantic",
+                execution_modes=execution_modes,
                 confidence=0.95,
                 reason="查詢包含分類或偏好條件",
             )
@@ -204,7 +213,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     ):
         return {
             "route_decision": SearchRouteDecision(
-                route="semantic",
+                execution_modes=["semantic"],
                 confidence=location_intent.confidence,
                 reason="查詢本身就是地標條件",
             ),
@@ -262,6 +271,7 @@ def location_node(llm, state: SearchGraphState) -> dict[str, Any]:
         extract_category_by_rule(query)
         or extract_feature_by_rule(query)
         or extract_quality_by_rule(query)
+        or extract_time_by_rule(query)
         or extract_distance_by_rule(query)
     ):
         return {"location_intent": LocationIntent()}
@@ -330,6 +340,9 @@ def quality_node(llm, state: SearchGraphState) -> dict[str, Any]:
     if rule_based_intent:
         return {"quality_intent": rule_based_intent}
 
+    if has_time_hints(query):
+        return {"quality_intent": QualityIntent()}
+
     if not has_quality_hints(query):
         return {"quality_intent": QualityIntent()}
 
@@ -342,6 +355,18 @@ def quality_node(llm, state: SearchGraphState) -> dict[str, Any]:
     return {"quality_intent": intent}
 
 
+def time_node(state: SearchGraphState) -> dict[str, Any]:
+    query = current_query(state)
+    rule_based_intent = extract_time_by_rule(query)
+    if rule_based_intent:
+        return {"time_intent": rule_based_intent}
+
+    if not has_time_hints(query):
+        return {"time_intent": TimeIntent()}
+
+    return {"time_intent": TimeIntent()}
+
+
 def distance_node(state: SearchGraphState) -> dict[str, Any]:
     query = current_query(state)
     rule_based_intent = extract_distance_by_rule(query)
@@ -352,7 +377,7 @@ def distance_node(state: SearchGraphState) -> dict[str, Any]:
 
 
 def next_after_router(state: SearchGraphState) -> str:
-    return state["route_decision"].route
+    return "semantic" if "semantic" in state["route_decision"].execution_modes else "keyword"
 
 
 def next_after_gate(state: SearchGraphState) -> str:
@@ -369,6 +394,7 @@ def extract_search_plan(llm, user_input: str) -> SearchPlan:
     graph.add_node("category_parser", lambda state: category_node(llm, state))
     graph.add_node("feature_parser", lambda state: feature_node(llm, state))
     graph.add_node("quality_parser", lambda state: quality_node(llm, state))
+    graph.add_node("time_parser", time_node)
     graph.add_node("distance_parser", distance_node)
     graph.add_node("merge_plan", merge_plan_node)
     graph.add_node("confidence_gate", confidence_gate_node)
@@ -385,11 +411,13 @@ def extract_search_plan(llm, user_input: str) -> SearchPlan:
     graph.add_edge("semantic_fanout", "category_parser")
     graph.add_edge("semantic_fanout", "feature_parser")
     graph.add_edge("semantic_fanout", "quality_parser")
+    graph.add_edge("semantic_fanout", "time_parser")
     graph.add_edge("semantic_fanout", "distance_parser")
     graph.add_edge("location_parser", "merge_plan")
     graph.add_edge("category_parser", "merge_plan")
     graph.add_edge("feature_parser", "merge_plan")
     graph.add_edge("quality_parser", "merge_plan")
+    graph.add_edge("time_parser", "merge_plan")
     graph.add_edge("distance_parser", "merge_plan")
     graph.add_edge("merge_plan", "confidence_gate")
     graph.add_conditional_edges(

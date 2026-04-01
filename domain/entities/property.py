@@ -309,5 +309,7 @@ class PropertyFilterCondition(BaseModel):
     min_rating: float = Field(default=0.0)
     landmark_context: Optional[str] = Field(default=None)
     travel_time_limit_min: Optional[int] = Field(default=None)
+    open_window_start_minutes: Optional[int] = Field(default=None)
+    open_window_end_minutes: Optional[int] = Field(default=None)
     search_radius_meters: int = Field(default=DEFAULT_SEARCH_RADIUS_METERS)
     explanation: str = Field(default="")

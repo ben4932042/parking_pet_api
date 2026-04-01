@@ -7,7 +7,7 @@ from domain.entities.search_feedback import SearchFeedbackPreference
 
 class SearchFeedbackCreateRequest(BaseModel):
     query: str = Field(min_length=1)
-    response_type: Literal["semantic_search", "keyword_search"]
+    response_type: Literal["semantic_search", "keyword_search", "hybrid_search"]
     reason: str = ""
     preferences: list[SearchFeedbackPreference] = Field(default_factory=list)
     result_ids: list[str] = Field(default_factory=list)

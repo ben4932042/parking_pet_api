@@ -157,6 +157,10 @@ def _assert_mongo_query_matches_case(mongo_query: dict, case: SearchConditionCas
     if case.query_checks.is_open is not None:
         assert mongo_query["is_open"] is case.query_checks.is_open
 
+    if case.query_checks.op_window_start is not None:
+        assert mongo_query["op_segments"]["$elemMatch"]["s"]["$lte"] == case.query_checks.op_window_end
+        assert mongo_query["op_segments"]["$elemMatch"]["e"]["$gte"] == case.query_checks.op_window_start
+
     for field_name, field_value in case.query_checks.feature_equals.items():
         assert mongo_query[field_name] is field_value
 
@@ -190,5 +194,10 @@ def test_search_api_exposes_expected_langgraph_conditions(
     assert plan.semantic_extraction.get("transport_mode") == case.transport_mode
 
     assert repo.calls
-    mongo_query = repo.calls[-1][1]
+    semantic_call = next(
+        (call for call in repo.calls if call[0] == "find_by_query"),
+        None,
+    )
+    assert semantic_call is not None
+    mongo_query = semantic_call[1]
     _assert_mongo_query_matches_case(mongo_query, case)

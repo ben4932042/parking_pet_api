@@ -187,6 +187,50 @@ async def test_search_by_keyword_falls_back_when_semantic_plan_requests_it(
 
 
 @pytest.mark.asyncio
+async def test_search_by_keyword_combines_hybrid_execution_modes(
+    property_entity_factory,
+):
+    keyword_exact = property_entity_factory(
+        identifier="keyword-exact",
+        name="寵物公園",
+        primary_type="pet_store",
+    )
+    semantic_match = property_entity_factory(
+        identifier="semantic-park",
+        name="青埔公七公園",
+        primary_type="park",
+    )
+    repo = CaptureRepo(
+        query_items=[semantic_match],
+        keyword_items=[keyword_exact],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                execution_modes=["semantic", "keyword"],
+                filter_condition=PropertyFilterCondition(
+                    mongo_query={"primary_type": "park"},
+                    preferences=[{"key": "primary_type_preference", "label": "park"}],
+                ),
+                semantic_extraction={"category": "park"},
+            )
+        ),
+    )
+
+    results, plan = await service.search_by_keyword("寵物公園")
+
+    assert [item.id for item in results] == ["keyword-exact", "semantic-park"]
+    assert plan.execution_modes == ["semantic", "keyword"]
+    assert repo.calls == [
+        ("find_by_query", {"primary_type": "park"}, None),
+        ("get_by_keyword", "寵物公園"),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_search_by_keyword_returns_empty_when_semantic_query_has_no_results():
     repo = CaptureRepo(
         query_items=[],
@@ -617,6 +661,15 @@ def test_route_node_treats_prompt_injection_query_as_keyword():
     )
 
 
+def test_route_node_enables_hybrid_execution_for_ambiguous_short_category_query():
+    from infrastructure.search.pipeline import route_node
+
+    result = route_node(llm=None, state={"raw_query": "寵物公園"})
+
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+
+
 def test_rule_based_landmark_parser_recognizes_sun_moon_lake():
     from application.property_search.rules import (
         extract_landmark_by_rule,
@@ -724,6 +777,40 @@ def test_quality_node_uses_rule_based_open_hint_for_you_kai_de():
     assert result["quality_intent"].is_open is True
 
 
+def test_quality_node_does_not_force_open_now_when_query_targets_afternoon_window():
+    from infrastructure.search.pipeline import quality_node
+
+    result = quality_node(llm=None, state={"raw_query": "下午有開的咖啡廳"})
+
+    assert result["quality_intent"].is_open is None
+
+
+def test_time_node_extracts_weekday_window():
+    from infrastructure.search.pipeline import time_node
+
+    result = time_node(state={"raw_query": "禮拜五開的咖啡廳"})
+
+    assert result["time_intent"].label == "禮拜五"
+    assert result["time_intent"].open_window_start_minutes == 5 * 1440
+    assert result["time_intent"].open_window_end_minutes == (5 * 1440) + 1439
+
+
+def test_time_node_extracts_current_day_afternoon_window():
+    from application.property_search import rules as rules_module
+    from infrastructure.search.pipeline import time_node
+
+    original = rules_module.current_taiwan_day_of_week
+    rules_module.current_taiwan_day_of_week = lambda: 3
+    try:
+        result = time_node(state={"raw_query": "下午有開的"})
+    finally:
+        rules_module.current_taiwan_day_of_week = original
+
+    assert result["time_intent"].label == "下午"
+    assert result["time_intent"].open_window_start_minutes == (3 * 1440) + (12 * 60)
+    assert result["time_intent"].open_window_end_minutes == (3 * 1440) + (17 * 60) + 59
+
+
 def test_quality_only_semantic_query_is_allowed_without_fallback():
     from domain.entities.search import (
         CategoryIntent,
@@ -766,6 +853,70 @@ def test_quality_only_semantic_query_is_allowed_without_fallback():
     assert plan.fallback_reason is None
     assert plan.filter_condition.mongo_query == {"is_open": True}
     assert plan.semantic_extraction == {"is_open": True}
+
+
+def test_time_only_semantic_query_is_allowed_without_fallback():
+    from domain.entities.search import (
+        CategoryIntent,
+        DistanceIntent,
+        LocationIntent,
+        PetFeatureIntent,
+        QualityIntent,
+        SearchRouteDecision,
+        TimeIntent,
+    )
+    from infrastructure.search.merge import confidence_gate_node, merge_plan_node
+
+    merged = merge_plan_node(
+        {
+            "route_decision": SearchRouteDecision(
+                execution_modes=["semantic"],
+                confidence=0.95,
+                reason="query is an opening time condition",
+            ),
+            "location_intent": LocationIntent(),
+            "category_intent": CategoryIntent(primary_type="cafe", confidence=0.95),
+            "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
+            "quality_intent": QualityIntent(),
+            "time_intent": TimeIntent(
+                open_window_start_minutes=(5 * 1440),
+                open_window_end_minutes=(5 * 1440) + 1439,
+                label="禮拜五",
+                confidence=0.98,
+            ),
+            "distance_intent": DistanceIntent(),
+        }
+    )
+
+    result = confidence_gate_node(
+        {
+            "plan": merged["plan"],
+            "location_intent": LocationIntent(),
+            "category_intent": CategoryIntent(primary_type="cafe", confidence=0.95),
+            "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
+            "quality_intent": QualityIntent(),
+            "time_intent": TimeIntent(
+                open_window_start_minutes=(5 * 1440),
+                open_window_end_minutes=(5 * 1440) + 1439,
+                label="禮拜五",
+                confidence=0.98,
+            ),
+            "distance_intent": DistanceIntent(),
+        }
+    )
+
+    plan = result["plan"]
+    assert plan.used_fallback is False
+    assert plan.filter_condition.mongo_query == {
+        "primary_type": "cafe",
+        "op_segments": {
+            "$elemMatch": {
+                "s": {"$lte": (5 * 1440) + 1439},
+                "e": {"$gte": 5 * 1440},
+            }
+        },
+    }
+    assert plan.semantic_extraction["opening_time"] == "禮拜五"
 
 
 def test_feature_only_semantic_query_is_allowed_without_fallback():

@@ -1,15 +1,38 @@
 from typing import Any, Dict, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.property import PropertyFilterCondition
 
 
+SearchExecutionMode = Literal["keyword", "semantic"]
+
+
 class SearchRouteDecision(BaseModel):
-    route: Literal["keyword", "semantic"]
+    execution_modes: list[SearchExecutionMode] = Field(default_factory=list)
     confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     reason: str = Field(default="")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_route(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "execution_modes" not in value and "route" in value:
+            route = value.get("route")
+            if route:
+                value = {**value, "execution_modes": [route]}
+        return value
+
+    @model_validator(mode="after")
+    def _normalize_execution_modes(self):
+        self.execution_modes = list(dict.fromkeys(self.execution_modes))
+        if not self.execution_modes:
+            raise ValueError("execution_modes cannot be empty.")
+        return self
+
+    @property
+    def route(self) -> SearchExecutionMode:
+        return self.execution_modes[0]
 
 
 class TypoCorrectionIntent(BaseModel):
@@ -47,6 +70,14 @@ class QualityIntent(BaseModel):
     evidence: str = Field(default="")
 
 
+class TimeIntent(BaseModel):
+    open_window_start_minutes: Optional[int] = Field(default=None, ge=0, le=10079)
+    open_window_end_minutes: Optional[int] = Field(default=None, ge=0, le=10079)
+    label: Optional[str] = None
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    evidence: str = Field(default="")
+
+
 class DistanceIntent(BaseModel):
     transport_mode: Literal["driving", "bicycling", "walking"] = "driving"
     travel_time_limit_min: Optional[int] = Field(default=None, ge=0)
@@ -56,7 +87,7 @@ class DistanceIntent(BaseModel):
 
 
 class SearchPlan(BaseModel):
-    route: Literal["keyword", "semantic"]
+    execution_modes: list[SearchExecutionMode] = Field(default_factory=list)
     route_reason: str = Field(default="")
     route_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     filter_condition: PropertyFilterCondition = Field(
@@ -66,3 +97,23 @@ class SearchPlan(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     used_fallback: bool = False
     fallback_reason: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_route(cls, value: Any) -> Any:
+        if isinstance(value, dict) and "execution_modes" not in value and "route" in value:
+            route = value.get("route")
+            if route:
+                value = {**value, "execution_modes": [route]}
+        return value
+
+    @model_validator(mode="after")
+    def _normalize_execution_modes(self):
+        self.execution_modes = list(dict.fromkeys(self.execution_modes))
+        if not self.execution_modes:
+            raise ValueError("execution_modes cannot be empty.")
+        return self
+
+    @property
+    def route(self) -> SearchExecutionMode:
+        return self.execution_modes[0]

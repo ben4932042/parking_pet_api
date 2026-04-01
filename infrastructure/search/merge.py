@@ -13,6 +13,7 @@ from domain.entities.search import (
     PetFeatureIntent,
     QualityIntent,
     SearchPlan,
+    TimeIntent,
 )
 from infrastructure.search.state import SearchGraphState
 
@@ -22,6 +23,7 @@ def build_semantic_summary(
     category_intent: CategoryIntent,
     feature_intent: PetFeatureIntent,
     quality_intent: QualityIntent,
+    time_intent: TimeIntent,
     distance_intent: DistanceIntent,
 ) -> dict[str, Any]:
     summary: dict[str, Any] = {}
@@ -49,6 +51,15 @@ def build_semantic_summary(
     if quality_intent.is_open is not None:
         summary["is_open"] = quality_intent.is_open
 
+    if (
+        time_intent.open_window_start_minutes is not None
+        and time_intent.open_window_end_minutes is not None
+    ):
+        summary["open_window_start_minutes"] = time_intent.open_window_start_minutes
+        summary["open_window_end_minutes"] = time_intent.open_window_end_minutes
+        if time_intent.label:
+            summary["opening_time"] = time_intent.label
+
     if distance_intent.travel_time_limit_min is not None:
         summary["travel_time_limit_min"] = distance_intent.travel_time_limit_min
 
@@ -66,6 +77,7 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
     category_intent = state.get("category_intent", CategoryIntent())
     feature_intent = state.get("feature_intent", PetFeatureIntent())
     quality_intent = state.get("quality_intent", QualityIntent())
+    time_intent = state.get("time_intent", TimeIntent())
     distance_intent = state.get("distance_intent", DistanceIntent())
 
     mongo_query: dict[str, Any] = {}
@@ -119,7 +131,24 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
             }
         )
 
-    if quality_intent.is_open is not None:
+    if (
+        time_intent.open_window_start_minutes is not None
+        and time_intent.open_window_end_minutes is not None
+    ):
+        mongo_query["op_segments"] = {
+            "$elemMatch": {
+                "s": {"$lte": time_intent.open_window_end_minutes},
+                "e": {"$gte": time_intent.open_window_start_minutes},
+            }
+        }
+        matched_fields.append("opening_time")
+        preferences.append(
+            {
+                "key": "opening_time_preference",
+                "label": time_intent.label or "指定時段營業",
+            }
+        )
+    elif quality_intent.is_open is not None:
         mongo_query["is_open"] = quality_intent.is_open
         matched_fields.append("is_open")
         preferences.append({"key": "is_open_preference", "label": "營業中"})
@@ -148,6 +177,7 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
         category_intent.evidence,
         feature_intent.evidence,
         quality_intent.evidence,
+        time_intent.evidence,
         distance_intent.evidence,
     ]
     explanation = " | ".join(part for part in explanation_parts if part)
@@ -159,6 +189,8 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
         min_rating=quality_intent.min_rating or 0.0,
         landmark_context=landmark_context,
         travel_time_limit_min=distance_intent.travel_time_limit_min,
+        open_window_start_minutes=time_intent.open_window_start_minutes,
+        open_window_end_minutes=time_intent.open_window_end_minutes,
         search_radius_meters=(
             distance_intent.search_radius_meters
             if distance_intent.search_radius_meters is not None
@@ -168,7 +200,7 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
     )
 
     plan = SearchPlan(
-        route="semantic",
+        execution_modes=state["route_decision"].execution_modes,
         route_reason=state["route_decision"].reason,
         route_confidence=state["route_decision"].confidence,
         filter_condition=filter_condition,
@@ -177,6 +209,7 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
             category_intent=category_intent,
             feature_intent=feature_intent,
             quality_intent=quality_intent,
+            time_intent=time_intent,
             distance_intent=distance_intent,
         ),
     )
@@ -189,6 +222,7 @@ def confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
     category_intent = state.get("category_intent", CategoryIntent())
     feature_intent = state.get("feature_intent", PetFeatureIntent())
     quality_intent = state.get("quality_intent", QualityIntent())
+    time_intent = state.get("time_intent", TimeIntent())
     distance_intent = state.get("distance_intent", DistanceIntent())
 
     fallback_reason = None
@@ -198,6 +232,7 @@ def confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
         or plan.filter_condition.mongo_query
         or plan.filter_condition.landmark_context
         or plan.filter_condition.travel_time_limit_min is not None
+        or plan.filter_condition.open_window_start_minutes is not None
     )
 
     if not recognized_any:
@@ -209,6 +244,7 @@ def confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
         and not plan.filter_condition.landmark_context
         and not feature_intent.features
         and quality_intent.is_open is None
+        and time_intent.open_window_start_minutes is None
         and quality_intent.min_rating is None
         and distance_intent.travel_time_limit_min is None
     ):
@@ -266,7 +302,7 @@ def confidence_gate_node(state: SearchGraphState) -> dict[str, Any]:
 def keyword_plan_node(state: SearchGraphState) -> dict[str, Any]:
     decision = state["route_decision"]
     plan = SearchPlan(
-        route="keyword",
+        execution_modes=["keyword"],
         route_reason=decision.reason,
         route_confidence=decision.confidence,
         filter_condition=PropertyFilterCondition(explanation=decision.reason),
