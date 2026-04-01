@@ -65,6 +65,70 @@ Relevant files:
 
 ## Runtime Search Flow
 
+The current runtime path is easiest to read as a route-selection flow. `keyword_search` in the API response can mean either:
+
+- the router selected `keyword` directly, or
+- the semantic path later marked `used_fallback = true`
+
+```mermaid
+flowchart TD
+    A["GET /api/v1/property<br/>query, user/map coords"] --> B["PropertyService.search_by_keyword(...)"]
+
+    B --> C["extract_search_plan(q)<br/>infrastructure/search/pipeline.py"]
+
+    C --> D["typo_normalizer"]
+    D --> E{"router decides route"}
+
+    E -->|keyword| F["keyword_plan<br/>SearchPlan.route = keyword"]
+    E -->|semantic| G["semantic_fanout"]
+
+    G --> H["location_parser"]
+    G --> I["category_parser"]
+    G --> J["feature_parser"]
+    G --> K["quality_parser"]
+    G --> L["distance_parser"]
+
+    H --> M["merge_plan"]
+    I --> M
+    J --> M
+    K --> M
+    L --> M
+
+    M --> N["confidence_gate"]
+
+    N -->|used_fallback = true| F
+    N -->|used_fallback = false| O["generate_query(...)"]
+
+    O --> P["repo.find_by_query(...)<br/>Mongo semantic query"]
+    P --> Q{"semantic results found?"}
+
+    Q -->|yes| R["rank_search_results(...)"]
+    Q -->|no| S["semantic vector fallback<br/>search_by_vector(...)"]
+
+    S --> T{"vector fallback results found?"}
+    T -->|yes| U["rank_search_results(...)"]
+    T -->|no| V["return empty results"]
+
+    F --> W["_search_keyword_hybrid(q)"]
+
+    W --> X["repo.get_by_keyword(q)<br/>name/address regex"]
+    W --> Y{"embedding provider available?"}
+
+    Y -->|no| Z["return lexical results"]
+    Y -->|yes| AA["embed_query(q)"]
+    AA --> AB["repo.search_by_vector(...)"]
+    AB --> AC["rank_keyword_hybrid_results(...)"]
+
+    R --> AD["API response"]
+    U --> AD
+    V --> AD
+    Z --> AD
+    AC --> AD
+
+    AD --> AE["response_type = keyword_search<br/>if route=keyword or used_fallback=true"]
+    AD --> AF["response_type = semantic_search<br/>otherwise"]
+```
+
 ### 1. HTTP request enters the property route
 
 `GET /api/v1/property` receives the free-text query plus two optional coordinate sources:
