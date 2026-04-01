@@ -20,7 +20,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--reason-contains", help="Filter feedback reason text.")
     parser.add_argument(
         "--response-type",
-        choices=["semantic_search", "keyword_search"],
+        choices=[
+            "semantic_search",
+            "keyword_search",
+            "hybrid_search",
+            "fallback_search",
+        ],
         help="Filter by response type.",
     )
     parser.add_argument("--user-id", help="Filter by user id.")

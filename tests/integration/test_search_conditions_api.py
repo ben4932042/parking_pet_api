@@ -141,6 +141,9 @@ def integration_search_setup(api_app):
     api_app.dependency_overrides.pop(get_optional_current_user, None)
 
 def _assert_mongo_query_matches_case(mongo_query: dict, case: SearchConditionCase) -> None:
+    if case.query_checks.has_location is not None:
+        assert ("location" in mongo_query) is case.query_checks.has_location
+
     if case.query_checks.max_distance is not None:
         assert mongo_query["location"]["$nearSphere"]["$maxDistance"] == case.query_checks.max_distance
 

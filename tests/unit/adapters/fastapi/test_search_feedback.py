@@ -120,3 +120,38 @@ def test_create_search_feedback_rejects_empty_query(
     )
 
     assert response.status_code == 422
+
+
+def test_create_search_feedback_accepts_fallback_search_response_type(
+    client, override_api_dep, user_entity_factory
+):
+    feedback = SearchFeedbackEntity(
+        _id="feedback-2",
+        query="台北餐廳",
+        response_type="fallback_search",
+        reason="結果太散",
+        user_id="u1",
+        user_name="Ben",
+    )
+    service = override_api_dep(
+        get_search_feedback_service,
+        SearchFeedbackServiceStub(feedback=feedback),
+    )
+    override_api_dep(
+        get_user_repository,
+        UserRepositoryStub(user=user_entity_factory(identifier="u1", name="Ben")),
+    )
+
+    response = client.post(
+        "/api/v1/search-feedback",
+        headers={"x-user-id": "u1"},
+        json={
+            "query": "台北餐廳",
+            "response_type": "fallback_search",
+            "reason": "結果太散",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "feedback_id": "feedback-2"}
+    assert service.calls[0]["response_type"] == "fallback_search"

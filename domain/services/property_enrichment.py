@@ -51,7 +51,7 @@ class IEnrichmentProvider(ABC):
         elif intent.landmark_context:
             _, landmark_coords = self.geocode_landmark(intent.landmark_context)
             target_coordinates = self._normalize_coordinates(landmark_coords)
-        else:
+        elif "address" not in final_query:
             target_coordinates = self._normalize_coordinates(map_coords)
 
         if target_coordinates:

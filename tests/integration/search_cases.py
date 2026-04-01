@@ -7,6 +7,7 @@ from application.property_search.rules import current_taiwan_day_of_week
 class QueryChecks:
     primary_type_includes: str | None = None
     max_distance: int | None = None
+    has_location: bool | None = None
     address_regex: str | None = None
     is_open: bool | None = None
     op_window_start: int | None = None
@@ -126,6 +127,21 @@ SEARCH_CONDITION_CASES = [
         search_radius_meters=10000,
         transport_mode=None,
         query_checks=QueryChecks(primary_type_includes="cafe", max_distance=10000),
+    ),
+    SearchConditionCase(
+        query="台北餐廳",
+        params={"map_lat": 25.011705336264292, "map_lng": 121.221859793306},
+        response_type="semantic_search",
+        preferences=("address_preference", "category_preference"),
+        landmark_context=None,
+        travel_time_limit_min=None,
+        search_radius_meters=10000,
+        transport_mode=None,
+        query_checks=QueryChecks(
+            primary_type_includes="restaurant",
+            address_regex="台北",
+            has_location=False,
+        ),
     ),
     SearchConditionCase(
         query="現在有開的台北咖啡廳",

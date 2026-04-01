@@ -49,12 +49,18 @@ def _coords_or_none(
     return lng, lat
 
 
-def _response_type_from_plan(execution_modes: list[str], used_fallback: bool) -> str:
+def _response_type_from_plan(
+    execution_modes: list[str],
+    used_fallback: bool,
+    fallback_reason: str | None = None,
+) -> str:
     modes = set(execution_modes)
     if modes == {"semantic", "keyword"}:
         return "hybrid_search"
     if modes == {"keyword"}:
         return "keyword_search"
+    if fallback_reason == "semantic_zero_results_vector_fallback":
+        return "fallback_search"
     if used_fallback:
         return "keyword_search"
     return "semantic_search"
@@ -123,7 +129,9 @@ async def search_properties_by_keyword(
         "status": "success",
         "user_query": query,
         "response_type": _response_type_from_plan(
-            plan.execution_modes, plan.used_fallback
+            plan.execution_modes,
+            plan.used_fallback,
+            plan.fallback_reason,
         ),
         "preferences": plan.filter_condition.preferences,
         "results": await _attach_has_note(items, service, current_user),

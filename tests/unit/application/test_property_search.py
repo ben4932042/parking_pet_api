@@ -122,6 +122,111 @@ def test_generate_query_skips_location_when_landmark_geocode_fails():
     assert query == {"primary_type": "cafe"}
 
 
+def test_generate_query_does_not_apply_map_geo_for_address_queries():
+    provider = DummyEnrichmentProvider()
+    condition = PropertyFilterCondition(
+        mongo_query={
+            "address": {"$regex": "台北", "$options": "i"},
+            "primary_type": {"$in": ["restaurant", "bistro"]},
+        },
+        search_radius_meters=10000,
+    )
+
+    query = provider.generate_query(
+        condition,
+        user_coords=(121.221859793306, 25.011705336264292),
+        map_coords=(121.221859793306, 25.011705336264292),
+    )
+
+    assert query == {
+        "address": {"$regex": "台北", "$options": "i"},
+        "primary_type": {"$in": ["restaurant", "bistro"]},
+    }
+
+
+def test_generate_query_uses_map_geo_for_browse_queries_without_address_or_landmark():
+    provider = DummyEnrichmentProvider()
+    condition = PropertyFilterCondition(
+        mongo_query={"primary_type": "park"},
+        search_radius_meters=2500,
+    )
+
+    query = provider.generate_query(
+        condition,
+        user_coords=(121.221859793306, 25.011705336264292),
+        map_coords=(121.25874722747007, 24.951597027520226),
+    )
+
+    assert query == {
+        "primary_type": "park",
+        "location": {
+            "$nearSphere": {
+                "$geometry": {
+                    "type": "Point",
+                    "coordinates": [121.25874722747007, 24.951597027520226],
+                },
+                "$maxDistance": 2500,
+            }
+        },
+    }
+
+
+def test_generate_query_uses_current_location_for_current_location_landmark_context():
+    provider = DummyEnrichmentProvider()
+    condition = PropertyFilterCondition(
+        mongo_query={"primary_type": "cafe"},
+        landmark_context="CURRENT_LOCATION",
+        search_radius_meters=3000,
+    )
+
+    query = provider.generate_query(
+        condition,
+        user_coords=(121.5645, 25.0339),
+        map_coords=(121.221859793306, 25.011705336264292),
+    )
+
+    assert query == {
+        "primary_type": "cafe",
+        "location": {
+            "$nearSphere": {
+                "$geometry": {
+                    "type": "Point",
+                    "coordinates": [121.5645, 25.0339],
+                },
+                "$maxDistance": 3000,
+            }
+        },
+    }
+
+
+def test_generate_query_uses_geocoded_landmark_instead_of_map_coords():
+    provider = DummyEnrichmentProvider(geocode_result=("台北101", (121.5645, 25.0339)))
+    condition = PropertyFilterCondition(
+        mongo_query={"primary_type": "cafe"},
+        landmark_context="台北101",
+        search_radius_meters=5000,
+    )
+
+    query = provider.generate_query(
+        condition,
+        user_coords=(121.221859793306, 25.011705336264292),
+        map_coords=(121.221859793306, 25.011705336264292),
+    )
+
+    assert query == {
+        "primary_type": "cafe",
+        "location": {
+            "$nearSphere": {
+                "$geometry": {
+                    "type": "Point",
+                    "coordinates": [121.5645, 25.0339],
+                },
+                "$maxDistance": 5000,
+            }
+        },
+    }
+
+
 def test_property_filter_condition_defaults_to_neutral_rating_gate():
     intent = PropertyFilterCondition(mongo_query={})
 

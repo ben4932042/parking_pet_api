@@ -21,13 +21,19 @@ from interface.api.exceptions.error import ConflictError
 
 class CapturePropertyService:
     def __init__(
-        self, route="semantic", used_fallback=False, items=None, execution_modes=None
+        self,
+        route="semantic",
+        used_fallback=False,
+        items=None,
+        execution_modes=None,
+        fallback_reason=None,
     ):
         self.calls = []
         self.route = route
         self.used_fallback = used_fallback
         self.items = items or []
         self.execution_modes = execution_modes
+        self.fallback_reason = fallback_reason
 
     async def search_by_keyword(
         self, q, user_coords=None, map_coords=None, radius=None, open_at_minutes=None
@@ -45,6 +51,7 @@ class CapturePropertyService:
             execution_modes=self.execution_modes or [self.route],
             filter_condition=PropertyFilterCondition(preferences=[]),
             used_fallback=self.used_fallback,
+            fallback_reason=self.fallback_reason,
         )
         return self.items, plan
 
@@ -233,6 +240,24 @@ def test_search_route_returns_hybrid_response_type_for_dual_execution(
     assert response.status_code == 200
     assert response.json()["user_query"] == "寵物公園"
     assert response.json()["response_type"] == "hybrid_search"
+
+
+def test_search_route_returns_fallback_response_type_for_semantic_vector_fallback(
+    client, override_api_dep
+):
+    override_api_dep(
+        get_property_service,
+        CapturePropertyService(
+            route="semantic",
+            fallback_reason="semantic_zero_results_vector_fallback",
+        ),
+    )
+
+    response = client.get("/api/v1/property", params={"query": "台北餐廳"})
+
+    assert response.status_code == 200
+    assert response.json()["user_query"] == "台北餐廳"
+    assert response.json()["response_type"] == "fallback_search"
 
 
 def test_search_route_passes_radius_to_service(client, override_api_dep):
