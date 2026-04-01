@@ -6,6 +6,7 @@ from domain.entities.search import SearchPlan
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
+from domain.services.embedding import IEmbeddingProvider
 from domain.services.property_enrichment import IEnrichmentProvider
 
 
@@ -34,6 +35,9 @@ class DummyRepo(IPropertyRepository):
         return list(self.items)
 
     async def get_by_keyword(self, q):
+        return []
+
+    async def search_by_vector(self, query_vector, limit=20, filters=None):
         return []
 
     async def get_nearby(self, lat, lng, radius, types, page, size):
@@ -78,6 +82,16 @@ class DummyAuditRepo(IPropertyAuditRepository):
 
     async def list_by_property_id(self, property_id, limit=50):
         return []
+
+
+class DummyEmbeddingProvider(IEmbeddingProvider):
+    model_name = "dummy"
+
+    def embed_document(self, text: str) -> list[float]:
+        return [1.0]
+
+    def embed_query(self, text: str) -> list[float]:
+        return [1.0]
 
 
 def test_generate_query_skips_current_location_when_user_coords_missing():

@@ -106,6 +106,18 @@ class PropertyMutationService:
         )
         return self.property_entity
 
+    async def update_aliases(self, property_id, manual_aliases, actor, reason=None):
+        self.calls.append(
+            {
+                "fn": "update_aliases",
+                "property_id": property_id,
+                "manual_aliases": manual_aliases,
+                "actor": actor,
+                "reason": reason,
+            }
+        )
+        return self.property_entity
+
     async def soft_delete_property(self, property_id, actor, reason=None):
         self.calls.append(
             {
@@ -376,6 +388,43 @@ def test_soft_delete_route_returns_deleted_status(
     assert data["status"] == "deleted"
     assert data["is_deleted"] is True
     assert service.calls[0]["reason"] == "duplicate"
+
+
+def test_update_aliases_route_returns_aliases(
+    client,
+    override_api_dep,
+    property_entity_factory,
+    request_actor_override,
+):
+    property_entity = property_entity_factory(
+        identifier="p1", place_id="place-1", name="青埔公七公園"
+    ).model_copy(
+        update={
+            "aliases": ["公七公園", "青埔七號公園"],
+            "manual_aliases": ["青埔七號公園"],
+            "updated_by": request_actor_override,
+        }
+    )
+    service = override_api_dep(
+        get_property_service, PropertyMutationService(property_entity=property_entity)
+    )
+    override_api_dep(get_request_actor, request_actor_override)
+
+    response = client.patch(
+        "/api/v1/property/p1/aliases",
+        json={
+            "manual_aliases": ["青埔七號公園"],
+            "reason": "search tuning",
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["property_id"] == "p1"
+    assert data["aliases"] == ["公七公園", "青埔七號公園"]
+    assert data["manual_aliases"] == ["青埔七號公園"]
+    assert service.calls[0]["fn"] == "update_aliases"
+    assert service.calls[0]["reason"] == "search tuning"
 
 
 def test_restore_route_returns_restored_status(

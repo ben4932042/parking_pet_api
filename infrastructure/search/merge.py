@@ -1,7 +1,10 @@
 from typing import Any
 
 from application.property_search.rules import FEATURE_FIELD_MAP, TRANSPORT_LABELS
-from domain.entities.property import PropertyFilterCondition
+from domain.entities.property import (
+    DEFAULT_SEARCH_RADIUS_METERS,
+    PropertyFilterCondition,
+)
 from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.search import (
     CategoryIntent,
@@ -73,6 +76,12 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
         mongo_query["address"] = {"$regex": location_intent.value, "$options": "i"}
         matched_fields.append("address")
         preferences.append({"key": "address_preference", "label": location_intent.value})
+    elif location_intent.kind == "landmark" and location_intent.value:
+        matched_fields.append("landmark")
+        if location_intent.value != "CURRENT_LOCATION":
+            preferences.append(
+                {"key": "landmark_preference", "label": location_intent.value}
+            )
 
     if category_intent.primary_type:
         mongo_query["primary_type"] = category_intent.primary_type
@@ -153,7 +162,7 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
         search_radius_meters=(
             distance_intent.search_radius_meters
             if distance_intent.search_radius_meters is not None
-            else 100000
+            else DEFAULT_SEARCH_RADIUS_METERS
         ),
         explanation=explanation,
     )

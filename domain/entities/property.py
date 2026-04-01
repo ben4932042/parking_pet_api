@@ -125,6 +125,13 @@ class PropertyEntity(BaseModel):
     id: str = Field(alias="_id")
     name: str = Field(description="Name of the property")
     place_id: str = Field(description="Google Maps Place ID")
+    aliases: List[str] = Field(default_factory=list)
+    manual_aliases: List[str] = Field(default_factory=list)
+    search_text: Optional[str] = None
+    search_embedding: Optional[List[float]] = None
+    embedding_version: Optional[str] = None
+    embedding_model: Optional[str] = None
+    embedding_updated_at: Optional[datetime] = None
     latitude: float = Field(description="Latitude of the property", ge=-90, le=90)
     longitude: float = Field(description="Longitude of the property", ge=-180, le=180)
     regular_opening_hours: Optional[List[OpeningPeriod]]
@@ -264,6 +271,8 @@ class PropertyEntity(BaseModel):
 class PropertyDetailEntity(BaseModel):
     id: str
     name: str
+    aliases: List[str] = Field(default_factory=list)
+    manual_aliases: List[str] = Field(default_factory=list)
     address: str
     latitude: float
     longitude: float
@@ -290,6 +299,9 @@ class PropertySearchResultEntity(BaseModel):
     results: List[PropertyEntity] = Field(default_factory=list)
 
 
+DEFAULT_SEARCH_RADIUS_METERS = 10000
+
+
 class PropertyFilterCondition(BaseModel):
     mongo_query: dict = Field(default_factory=dict)
     matched_fields: List[str] = Field(default_factory=list)
@@ -297,5 +309,5 @@ class PropertyFilterCondition(BaseModel):
     min_rating: float = Field(default=0.0)
     landmark_context: Optional[str] = Field(default=None)
     travel_time_limit_min: Optional[int] = Field(default=None)
-    search_radius_meters: int = Field(default=100000)
+    search_radius_meters: int = Field(default=DEFAULT_SEARCH_RADIUS_METERS)
     explanation: str = Field(default="")

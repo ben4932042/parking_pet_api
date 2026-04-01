@@ -2,6 +2,8 @@ import logging
 from typing import Any, List, Optional
 
 from application.exceptions import ConflictError, NotFoundError
+from application.property_search.hybrid import rank_keyword_hybrid_results
+from application.property_search.projection import build_property_search_fields
 from application.property_search.ranking import rank_search_results
 from domain.entities.audit import ActorInfo, PropertyAuditAction, PropertyAuditLog
 from domain.entities import PyObjectId
@@ -18,11 +20,16 @@ from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property_note import IPropertyNoteRepository
 from domain.repositories.property import IPropertyRepository
+from domain.services.embedding import IEmbeddingProvider
 from domain.services.property_enrichment import IEnrichmentProvider
 logger = logging.getLogger(__name__)
 
 
 PROMPT_INJECTION_ROUTE_REASON = "查詢包含 prompt injection 訊號，改用關鍵字搜尋"
+VECTOR_KEYWORD_LIMIT = 20
+VECTOR_SEMANTIC_FALLBACK_LIMIT = 20
+SEMANTIC_VECTOR_FALLBACK_WARNING = "semantic_vector_fallback_used"
+SEMANTIC_VECTOR_FALLBACK_REASON = "semantic_zero_results_vector_fallback"
 
 
 class PropertyService:
@@ -33,12 +40,14 @@ class PropertyService:
         audit_repo: IPropertyAuditRepository,
         enrichment_provider: IEnrichmentProvider,
         note_repo: IPropertyNoteRepository | None = None,
+        embedding_provider: IEmbeddingProvider | None = None,
     ):
         self.repo = repo
         self.raw_data_repo = raw_data_repo
         self.audit_repo = audit_repo
         self.note_repo = note_repo
         self.enrichment_provider = enrichment_provider
+        self.embedding_provider = embedding_provider
 
     async def search_nearby(
         self,
@@ -77,7 +86,7 @@ class PropertyService:
                     "warnings": search_plan.warnings,
                 },
             )
-            items = await self.repo.get_by_keyword(q)
+            items = await self._search_keyword_hybrid(q)
             return items, search_plan
 
         if self._travel_time_requires_geo_anchor(
@@ -121,6 +130,14 @@ class PropertyService:
                     "mongo_query": generate_query,
                 },
             )
+            items = await self._search_semantic_vector_fallback(
+                q=q,
+                mongo_query=generate_query,
+            )
+            if items:
+                if SEMANTIC_VECTOR_FALLBACK_WARNING not in search_plan.warnings:
+                    search_plan.warnings.append(SEMANTIC_VECTOR_FALLBACK_WARNING)
+                search_plan.fallback_reason = SEMANTIC_VECTOR_FALLBACK_REASON
         else:
             items = rank_search_results(items, generate_query)
         return items, search_plan
@@ -145,6 +162,49 @@ class PropertyService:
 
     async def get_overviews_by_ids(self, property_ids: list[str]):
         return await self.repo.get_properties_by_ids(property_ids)
+
+    async def _search_keyword_hybrid(self, q: str) -> list[PropertyEntity]:
+        lexical_items = await self.repo.get_by_keyword(q)
+        if self.embedding_provider is None:
+            return lexical_items
+
+        normalized_query = q.strip()
+        if not normalized_query:
+            return lexical_items
+
+        query_vector = self.embedding_provider.embed_query(normalized_query)
+        vector_items = await self.repo.search_by_vector(
+            query_vector,
+            limit=VECTOR_KEYWORD_LIMIT,
+        )
+        return rank_keyword_hybrid_results(
+            query_text=normalized_query,
+            lexical_items=lexical_items,
+            vector_items=vector_items,
+        )
+
+    async def _search_semantic_vector_fallback(
+        self,
+        *,
+        q: str,
+        mongo_query: dict,
+    ) -> list[PropertyEntity]:
+        if self.embedding_provider is None:
+            return []
+
+        normalized_query = q.strip()
+        if not normalized_query:
+            return []
+
+        query_vector = self.embedding_provider.embed_query(normalized_query)
+        vector_items = await self.repo.search_by_vector(
+            query_vector,
+            limit=VECTOR_SEMANTIC_FALLBACK_LIMIT,
+            filters=self._build_semantic_vector_filters(mongo_query),
+        )
+        if not vector_items:
+            return []
+        return rank_search_results(vector_items, mongo_query)
 
     async def get_noted_property_ids(
         self, user_id: str, property_ids: list[str]
@@ -198,6 +258,7 @@ class PropertyService:
             action = PropertyAuditAction.CREATE
             before = None
 
+        final_property = self._apply_search_projection(final_property)
         saved_property = await self.repo.save(final_property)
         await self._create_audit_log(
             property_id=saved_property.id,
@@ -208,6 +269,37 @@ class PropertyService:
         )
         logging.info(f"Property {name} created successfully")
         return saved_property
+
+    async def update_aliases(
+        self,
+        property_id: PyObjectId,
+        manual_aliases: list[str],
+        actor: ActorInfo,
+        reason: Optional[str] = None,
+    ) -> PropertyDetailEntity:
+        existing = await self.repo.get_property_by_id(property_id)
+        if existing is None:
+            raise NotFoundError("Property not found")
+
+        updated_property = existing.model_copy(
+            update={
+                "manual_aliases": self._normalize_aliases(manual_aliases),
+                "updated_by": actor,
+                "updated_at": self._now(),
+            }
+        )
+        updated_property = self._apply_search_projection(updated_property)
+        updated_property = PropertyEntity(**updated_property.model_dump(by_alias=True))
+        saved_property = await self.repo.save(updated_property)
+        await self._create_audit_log(
+            property_id=saved_property.id,
+            action=PropertyAuditAction.ALIASES_UPDATE,
+            actor=actor,
+            before=existing,
+            after=saved_property,
+            reason=reason,
+        )
+        return self._to_detail_entity(saved_property)
 
     async def update_pet_features(
         self,
@@ -438,6 +530,11 @@ class PropertyService:
         payload.pop("location", None)
         payload.pop("types", None)
         payload.pop("is_open", None)
+        payload.pop("search_embedding", None)
+        payload.pop("search_text", None)
+        payload.pop("embedding_version", None)
+        payload.pop("embedding_model", None)
+        payload.pop("embedding_updated_at", None)
         return payload
 
     @staticmethod
@@ -445,6 +542,8 @@ class PropertyService:
         return PropertyDetailEntity(
             id=output.id,
             name=output.name,
+            aliases=output.aliases,
+            manual_aliases=output.manual_aliases,
             address=output.address,
             latitude=output.latitude,
             longitude=output.longitude,
@@ -463,6 +562,51 @@ class PropertyService:
             deleted_at=output.deleted_at,
             is_deleted=output.is_deleted,
         )
+
+    def _apply_search_projection(self, property_entity: PropertyEntity) -> PropertyEntity:
+        search_fields = build_property_search_fields(property_entity)
+        payload: dict[str, Any] = {
+            **search_fields,
+            "search_embedding": None,
+            "embedding_version": None,
+            "embedding_model": None,
+            "embedding_updated_at": None,
+        }
+        if self.embedding_provider is not None:
+            payload.update(
+                {
+                    "search_embedding": self.embedding_provider.embed_document(
+                        search_fields["search_text"]
+                    ),
+                    "embedding_version": "property_search_v1",
+                    "embedding_model": self.embedding_provider.model_name,
+                    "embedding_updated_at": self._now(),
+                }
+            )
+        return property_entity.model_copy(update=payload)
+
+    @staticmethod
+    def _normalize_aliases(aliases: list[str]) -> list[str]:
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for alias in aliases:
+            cleaned = " ".join(alias.split()).strip()
+            if not cleaned:
+                continue
+            lowered = cleaned.casefold()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            normalized.append(cleaned)
+        return normalized
+
+    @staticmethod
+    def _build_semantic_vector_filters(mongo_query: dict) -> dict | None:
+        filters: dict[str, Any] = {}
+        primary_type = mongo_query.get("primary_type")
+        if isinstance(primary_type, str):
+            filters["primary_type"] = primary_type
+        return filters or None
 
     @staticmethod
     def _build_changes(

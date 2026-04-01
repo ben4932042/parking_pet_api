@@ -26,6 +26,8 @@ from interface.api.schemas.property_note import (
 )
 from interface.api.schemas.property import (
     PropertyAuditLogResponse,
+    PropertyAliasesPatchRequest,
+    PropertyAliasesResponse,
     PropertyCreateResponse,
     PropertyDetailResponse,
     PropertyMutationResponse,
@@ -294,6 +296,38 @@ async def update_property_pet_features(
         reason=updated_property.manual_overrides.reason
         if updated_property.manual_overrides
         else None,
+    )
+
+
+@router.patch(
+    "/{property_id}/aliases",
+    status_code=status.HTTP_200_OK,
+    response_model=PropertyAliasesResponse,
+    summary="Patch manual aliases for property search",
+    description=(
+        "Replace the manual alias list for a property. "
+        "The backend regenerates aliases, search_text, and search_embedding in the same update."
+    ),
+)
+async def update_property_aliases(
+    property_id: PyObjectId,
+    payload: PropertyAliasesPatchRequest,
+    service: PropertyService = Depends(get_property_service),
+    actor: ActorInfo = Depends(get_request_actor),
+):
+    updated_property = await service.update_aliases(
+        property_id=property_id,
+        manual_aliases=payload.manual_aliases,
+        actor=actor,
+        reason=payload.reason,
+    )
+    return PropertyAliasesResponse(
+        property_id=updated_property.id,
+        aliases=updated_property.aliases,
+        manual_aliases=updated_property.manual_aliases,
+        updated_by=updated_property.updated_by,
+        updated_at=updated_property.updated_at,
+        reason=payload.reason,
     )
 
 

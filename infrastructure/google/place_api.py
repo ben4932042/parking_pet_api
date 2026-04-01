@@ -64,6 +64,15 @@ def search_basic_information_by_name(name: str) -> PlaceCandidate:
     )
 
 
+def geocode_landmark_by_name(name: str) -> tuple[str, tuple[float, float] | None]:
+    place = search_basic_information_by_name(name)
+    if place is None:
+        return name, None
+    if place.longitude is None or place.latitude is None:
+        return place.display_name or name, None
+    return place.display_name or name, (place.longitude, place.latitude)
+
+
 def get_place_details(basic_info: PlaceCandidate) -> PlaceDetail | None:
     headers = {
         "Content-Type": "application/json",

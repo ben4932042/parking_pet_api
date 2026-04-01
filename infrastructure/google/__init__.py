@@ -5,11 +5,13 @@ import vertexai
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from domain.entities.enrichment import AnalysisSource
+from domain.entities.landmark_cache import LandmarkCacheEntity
 from domain.entities.property import PropertyEntity
+from domain.repositories.landmark_cache import ILandmarkCacheRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from infrastructure.config import settings
-from infrastructure.google.langchain import geocode_landmark_with_llm
 from infrastructure.google.place_api import (
+    geocode_landmark_by_name,
     get_place_details,
     search_basic_information_by_name,
 )
@@ -20,7 +22,12 @@ apply_runtime_warning_filters()
 
 
 class GoogleEnrichmentProvider(IEnrichmentProvider):
-    def __init__(self, client, collection_name):
+    def __init__(
+        self,
+        client,
+        collection_name,
+        landmark_cache_repo: ILandmarkCacheRepository | None = None,
+    ):
         creds = service_account.Credentials.from_service_account_file(
             settings.google.service_account_file,
             scopes=["https://www.googleapis.com/auth/cloud-platform"],
@@ -40,6 +47,11 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
             temperature=0,
             response_mime_type="application/json",
         )
+        self.landmark_cache_repo = landmark_cache_repo
+
+    @staticmethod
+    def _build_landmark_cache_key(landmark_name: str) -> str:
+        return " ".join(landmark_name.split()).strip().casefold()
 
     def create_property_by_name(self, property_name: str) -> AnalysisSource:
         basic_info = search_basic_information_by_name(property_name)
@@ -53,5 +65,29 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
         return extract_search_plan(self.llm, query)
 
     def geocode_landmark(self, landmark_name: str):
-        display_name, coordinates = geocode_landmark_with_llm(self.llm, landmark_name)
+        normalized_name = " ".join(landmark_name.split()).strip()
+        if not normalized_name:
+            return landmark_name, None
+
+        cache_key = self._build_landmark_cache_key(normalized_name)
+        if self.landmark_cache_repo is not None:
+            cached = self.landmark_cache_repo.get_by_key(cache_key)
+            if cached is not None:
+                return cached.display_name, cached.coordinates
+
+        display_name, coordinates = geocode_landmark_by_name(normalized_name)
+
+        if self.landmark_cache_repo is not None:
+            longitude = coordinates[0] if coordinates is not None else None
+            latitude = coordinates[1] if coordinates is not None else None
+            self.landmark_cache_repo.save(
+                LandmarkCacheEntity(
+                    cache_key=cache_key,
+                    query_text=normalized_name,
+                    display_name=display_name,
+                    longitude=longitude,
+                    latitude=latitude,
+                )
+            )
+
         return display_name, coordinates

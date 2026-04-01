@@ -9,6 +9,13 @@ class IPropertyRepository(ABC):
     @abstractmethod
     async def get_by_keyword(self, q: str) -> List[PropertyEntity]: ...
     @abstractmethod
+    async def search_by_vector(
+        self,
+        query_vector: List[float],
+        limit: int = 20,
+        filters: dict | None = None,
+    ) -> List[PropertyEntity]: ...
+    @abstractmethod
     async def get_nearby(
         self,
         lat: float,

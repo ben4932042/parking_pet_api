@@ -101,11 +101,25 @@ class PropertyPetFeaturesPatchRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class PropertyAliasesPatchRequest(BaseModel):
+    manual_aliases: List[str] = Field(default_factory=list)
+    reason: Optional[str] = None
+
+
 class PropertyPetFeaturesResponse(BaseModel):
     property_id: str
     inferred_pet_features: PetFeatures
     manual_pet_features: Optional[PetFeaturesOverride] = None
     effective_pet_features: PetFeatures
+    updated_by: Optional[ActorInfo] = None
+    updated_at: Optional[datetime] = None
+    reason: Optional[str] = None
+
+
+class PropertyAliasesResponse(BaseModel):
+    property_id: str
+    aliases: List[str] = Field(default_factory=list)
+    manual_aliases: List[str] = Field(default_factory=list)
     updated_by: Optional[ActorInfo] = None
     updated_at: Optional[datetime] = None
     reason: Optional[str] = None

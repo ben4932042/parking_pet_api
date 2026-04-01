@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SEARCH_LIMIT = 100
 DEFAULT_QUERY_MAX_TIME_MS = 5000
+DEFAULT_VECTOR_SEARCH_LIMIT = 20
+DEFAULT_VECTOR_NUM_CANDIDATES = 100
+PROPERTY_VECTOR_INDEX_NAME = "property_v3_vector_idx"
 
 
 class PropertyRepository(IPropertyRepository):
@@ -103,6 +106,37 @@ class PropertyRepository(IPropertyRepository):
         docs = await cursor.to_list(length=DEFAULT_SEARCH_LIMIT)
         items = [PropertyEntity(**doc) for doc in docs]
         return items
+
+    async def search_by_vector(
+        self,
+        query_vector: List[float],
+        limit: int = DEFAULT_VECTOR_SEARCH_LIMIT,
+        filters: dict | None = None,
+    ) -> List[PropertyEntity]:
+        if not query_vector:
+            return []
+
+        vector_filter = {"is_deleted": False}
+        if filters:
+            vector_filter.update(filters)
+
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": PROPERTY_VECTOR_INDEX_NAME,
+                    "path": "search_embedding",
+                    "queryVector": query_vector,
+                    "numCandidates": max(limit * 5, DEFAULT_VECTOR_NUM_CANDIDATES),
+                    "limit": limit,
+                    "filter": vector_filter,
+                }
+            }
+        ]
+        docs = await self.collection.aggregate(
+            pipeline,
+            maxTimeMS=DEFAULT_QUERY_MAX_TIME_MS,
+        ).to_list(length=limit)
+        return [PropertyEntity(**doc) for doc in docs]
 
     async def find_by_query(
         self, query: dict, open_at_minutes: Optional[int] = None

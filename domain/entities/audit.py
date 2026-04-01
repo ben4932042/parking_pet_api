@@ -19,6 +19,7 @@ class ActorInfo(BaseModel):
 class PropertyAuditAction(StrEnum):
     CREATE = "create"
     SYNC = "sync"
+    ALIASES_UPDATE = "aliases_update"
     PET_FEATURES_OVERRIDE = "pet_features_override"
     SOFT_DELETE = "soft_delete"
     RESTORE = "restore"

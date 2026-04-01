@@ -6,6 +6,7 @@ from domain.entities.property import PropertyFilterCondition
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
+from domain.services.embedding import IEmbeddingProvider
 from domain.services.property_enrichment import IEnrichmentProvider
 
 
@@ -40,6 +41,10 @@ class CaptureRepo(IPropertyRepository):
     async def get_by_keyword(self, q):
         self.calls.append(("get_by_keyword", q))
         return list(self.keyword_items)
+
+    async def search_by_vector(self, query_vector, limit=20, filters=None):
+        self.calls.append(("search_by_vector", query_vector, limit, filters))
+        return []
 
     async def get_nearby(self, lat, lng, radius, types, page, size):
         raise NotImplementedError
@@ -76,6 +81,21 @@ class DummyAuditRepo(IPropertyAuditRepository):
         return []
 
 
+class QueryEmbeddingProvider(IEmbeddingProvider):
+    model_name = "dummy-query-embedding"
+
+    def __init__(self, query_vector=None):
+        self.query_vector = query_vector or [0.5, 0.2]
+        self.calls = []
+
+    def embed_document(self, text: str) -> list[float]:
+        return [0.1]
+
+    def embed_query(self, text: str) -> list[float]:
+        self.calls.append(text)
+        return list(self.query_vector)
+
+
 @pytest.mark.asyncio
 async def test_search_by_keyword_uses_keyword_route_directly(
     property_entity_factory,
@@ -97,6 +117,44 @@ async def test_search_by_keyword_uses_keyword_route_directly(
     assert [item.id for item in results] == ["keyword-hit", "keyword-hit-2"]
     assert plan.route == "keyword"
     assert repo.calls == [("get_by_keyword", "肉球森林")]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_uses_hybrid_vector_candidates_when_embedding_available(
+    property_entity_factory,
+):
+    keyword_item = property_entity_factory(identifier="keyword-hit", name="肉球森林")
+    vector_only_item = property_entity_factory(
+        identifier="vector-hit",
+        name="森林咖啡",
+    )
+    repo = CaptureRepo(keyword_items=[keyword_item])
+    repo.search_by_vector = lambda query_vector, limit=20, filters=None: None
+    embedding_provider = QueryEmbeddingProvider(query_vector=[0.9, 0.1])
+
+    async def _search_by_vector(query_vector, limit=20, filters=None):
+        repo.calls.append(("search_by_vector", query_vector, limit, filters))
+        return [keyword_item, vector_only_item]
+
+    repo.search_by_vector = _search_by_vector
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(route="keyword", route_reason="looks like a place name")
+        ),
+        embedding_provider=embedding_provider,
+    )
+
+    results, _ = await service.search_by_keyword("肉球森林")
+
+    assert [item.id for item in results] == ["keyword-hit", "vector-hit"]
+    assert embedding_provider.calls == ["肉球森林"]
+    assert repo.calls == [
+        ("get_by_keyword", "肉球森林"),
+        ("search_by_vector", [0.9, 0.1], 20, None),
+    ]
 
 
 @pytest.mark.asyncio
@@ -154,6 +212,53 @@ async def test_search_by_keyword_returns_empty_when_semantic_query_has_no_result
     assert updated_plan.used_fallback is False
     assert updated_plan.fallback_reason is None
     assert repo.calls == [("find_by_query", {"primary_type": "cafe"}, None)]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_uses_semantic_vector_fallback_when_semantic_returns_no_results(
+    property_entity_factory,
+):
+    vector_item = property_entity_factory(
+        identifier="vector-semantic-hit",
+        name="森林咖啡",
+        primary_type="cafe",
+    )
+    repo = CaptureRepo(query_items=[])
+    embedding_provider = QueryEmbeddingProvider(query_vector=[0.3, 0.7])
+
+    async def _search_by_vector(query_vector, limit=20, filters=None):
+        repo.calls.append(("search_by_vector", query_vector, limit, filters))
+        return [vector_item]
+
+    repo.search_by_vector = _search_by_vector
+    plan = SearchPlan(
+        route="semantic",
+        filter_condition=PropertyFilterCondition(
+            mongo_query={"primary_type": "cafe"},
+            preferences=[{"key": "primary_type_preference", "label": "cafe"}],
+        ),
+        semantic_extraction={"category": "cafe"},
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(plan),
+        embedding_provider=embedding_provider,
+    )
+
+    results, updated_plan = await service.search_by_keyword("咖啡廳")
+
+    assert [item.id for item in results] == ["vector-semantic-hit"]
+    assert embedding_provider.calls == ["咖啡廳"]
+    assert updated_plan.route == "semantic"
+    assert updated_plan.used_fallback is False
+    assert updated_plan.fallback_reason == "semantic_zero_results_vector_fallback"
+    assert "semantic_vector_fallback_used" in updated_plan.warnings
+    assert repo.calls == [
+        ("find_by_query", {"primary_type": "cafe"}, None),
+        ("search_by_vector", [0.3, 0.7], 20, {"primary_type": "cafe"}),
+    ]
 
 
 @pytest.mark.asyncio
@@ -264,6 +369,48 @@ def test_semantic_summary_and_query_include_false_feature_preferences():
         "pet_menu_preference",
         "free_water_preference",
         "allow_on_floor_preference",
+    ]
+
+
+def test_merge_plan_includes_landmark_preference_for_landmark_plus_category_query():
+    from domain.entities.property_category import PropertyCategoryKey
+    from domain.entities.search import (
+        CategoryIntent,
+        LocationIntent,
+        PetFeatureIntent,
+        QualityIntent,
+        SearchRouteDecision,
+    )
+    from infrastructure.search.merge import merge_plan_node
+
+    result = merge_plan_node(
+        {
+            "route_decision": SearchRouteDecision(
+                route="semantic",
+                confidence=0.98,
+                reason="landmark plus category",
+            ),
+            "location_intent": LocationIntent(
+                kind="landmark",
+                value="青埔",
+                confidence=0.98,
+                evidence="matched landmark keyword by rule",
+            ),
+            "category_intent": CategoryIntent(
+                category_key=PropertyCategoryKey.CAFE,
+                confidence=0.95,
+                evidence="matched category keyword by rule: 咖啡廳",
+            ),
+            "feature_intent": PetFeatureIntent(),
+            "quality_intent": QualityIntent(),
+        }
+    )
+
+    plan = result["plan"]
+    assert plan.filter_condition.landmark_context == "青埔"
+    assert [item["key"] for item in plan.filter_condition.preferences] == [
+        "landmark_preference",
+        "category_preference",
     ]
 
 
