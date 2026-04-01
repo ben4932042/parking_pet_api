@@ -25,6 +25,17 @@ class SearchConditionCase:
 
 SEARCH_CONDITION_CASES = [
     SearchConditionCase(
+        query="想吃點心",
+        params={},
+        response_type="semantic_search",
+        preferences=("category_preference",),
+        landmark_context=None,
+        travel_time_limit_min=None,
+        search_radius_meters=100000,
+        transport_mode=None,
+        query_checks=QueryChecks(primary_type_includes="cafe"),
+    ),
+    SearchConditionCase(
         query="距離30分鐘車程的咖啡廳",
         params={"user_lat": 25.0339, "user_lng": 121.5645},
         response_type="semantic_search",
@@ -39,7 +50,7 @@ SEARCH_CONDITION_CASES = [
         query="步行15分鐘的公園",
         params={"user_lat": 25.0339, "user_lng": 121.5645},
         response_type="semantic_search",
-        preferences=("category_preference", "travel_time_preference"),
+        preferences=("primary_type_preference", "travel_time_preference"),
         landmark_context="CURRENT_LOCATION",
         travel_time_limit_min=15,
         search_radius_meters=1125,
@@ -50,7 +61,7 @@ SEARCH_CONDITION_CASES = [
         query="開車十分鐘的公園",
         params={"user_lat": 25.0339, "user_lng": 121.5645},
         response_type="semantic_search",
-        preferences=("category_preference", "travel_time_preference"),
+        preferences=("primary_type_preference", "travel_time_preference"),
         landmark_context="CURRENT_LOCATION",
         travel_time_limit_min=10,
         search_radius_meters=7500,
@@ -67,6 +78,17 @@ SEARCH_CONDITION_CASES = [
         search_radius_meters=375,
         transport_mode="walking",
         query_checks=QueryChecks(primary_type_includes="cafe", max_distance=375),
+    ),
+    SearchConditionCase(
+        query="青埔哪裡可以跑跑",
+        params={},
+        response_type="semantic_search",
+        preferences=(),
+        landmark_context="青埔",
+        travel_time_limit_min=None,
+        search_radius_meters=100000,
+        transport_mode=None,
+        query_checks=QueryChecks(max_distance=100000),
     ),
     SearchConditionCase(
         query="台北101附近咖啡廳",

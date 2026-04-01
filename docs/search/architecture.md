@@ -51,8 +51,11 @@ Relevant files:
 
 - `interface/api/routes/v1/property.py`
 - `application/property.py`
+- `application/property_search.py`
+- `application/property_search_rules.py`
 - `domain/services/property_enrichment.py`
-- `infrastructure/google/search.py`
+- `infrastructure/search/pipeline.py`
+- `infrastructure/search/prompts.py`
 - `infrastructure/google/__init__.py`
 - `infrastructure/mongo/property.py`
 - `domain/entities/property.py`
@@ -79,7 +82,7 @@ Important detail: the route now normalizes coordinates before calling the servic
 
 - `enrichment_provider.extract_search_plan(q)`
 
-The concrete implementation is `GoogleEnrichmentProvider.extract_search_plan(...)`, which uses the LangGraph-based search pipeline defined in `infrastructure/google/search.py`.
+The concrete implementation is `GoogleEnrichmentProvider.extract_search_plan(...)`, which uses the LangGraph-based search pipeline defined in `infrastructure/search/pipeline.py`.
 
 The pipeline produces a structured `SearchPlan` containing:
 

@@ -96,7 +96,7 @@ class LangGraphEnrichmentProvider(IEnrichmentProvider):
         raise NotImplementedError
 
     def extract_search_plan(self, query: str) -> SearchPlan:
-        from infrastructure.google.search import extract_search_plan
+        from infrastructure.search.pipeline import extract_search_plan
 
         self.last_plan = extract_search_plan(self.llm, query)
         return self.last_plan
@@ -109,7 +109,10 @@ class LangGraphEnrichmentProvider(IEnrichmentProvider):
 def integration_search_setup(api_app):
     repo = CaptureQueryRepo()
     provider = LangGraphEnrichmentProvider(
-        geocode_map={"台北101": (121.5645, 25.0339)}
+        geocode_map={
+            "台北101": (121.5645, 25.0339),
+            "青埔": (121.2141, 25.0086),
+        }
     )
     service = PropertyService(
         repo=repo,

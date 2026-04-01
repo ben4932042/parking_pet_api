@@ -13,7 +13,7 @@ from infrastructure.google.place_api import (
     get_place_details,
     search_basic_information_by_name,
 )
-from infrastructure.google.search import extract_search_plan
+from infrastructure.search.pipeline import extract_search_plan
 from infrastructure.google.vertex import distill_property_insights
 
 apply_runtime_warning_filters()

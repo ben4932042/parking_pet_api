@@ -1,4 +1,4 @@
-from infrastructure.prompt.search import (
+from infrastructure.search.prompts import (
     CATEGORY_PARSER_PROMPT,
     FEATURE_PARSER_PROMPT,
     GEOCODE_LANDMARK_PROMPT,

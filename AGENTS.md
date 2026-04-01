@@ -5,13 +5,9 @@ Repository-wide instructions for coding agents working in this project.
 ## Index
 
 - [Testing Rules](#testing-rules)
-- [Search Feedback Workflow](#search-feedback-workflow)
-- [Search Optimization Priority](#search-optimization-priority)
-
-## Related Docs
-
-- `docs/search/workflow-feedback.md`
-- `docs/search/workflow-optimization.md`
+- [Architecture Guardrails](#architecture-guardrails)
+- [Development Docs](#development-docs)
+- [Feature Docs](#feature-docs)
 
 ## Testing Rules
 
@@ -20,27 +16,25 @@ Repository-wide instructions for coding agents working in this project.
 - Do not stop after running only targeted tests when the change can affect shared contracts; run the relevant full unit test suite before finishing.
 - A task is not complete if unit tests are broken.
 
-## Search Feedback Workflow
+## Architecture Guardrails
 
-- When a task involves search quality, search flow optimization, or user feedback analysis, retrieve search feedback through the reusable project script instead of issuing ad hoc MongoDB queries.
-- Use `poetry run python interface/script/get_user_feedback.py` to fetch search feedback from MongoDB.
-- The script prints standardized JSON to stdout and includes only:
-  - `query`
-  - `response_type`
-  - `preference`
-  - `reason`
-- Use the supported script filters when needed:
-  - `--query-contains`
-  - `--reason-contains`
-  - `--response-type`
-  - `--user-id`
-  - `--source`
-  - `--limit`
-- If new feedback retrieval behavior is needed, extend the domain repository, MongoDB repository, and script within the existing project architecture instead of bypassing them.
+- Keep business logic out of framework orchestration layers.
+- Rules that encode product behavior, query interpretation, heuristics, or decision policy belong in `application/` or `domain-adjacent` modules, not in framework adapters.
+- `infrastructure/` should focus on adapters, prompts, external integrations, persistence details, and orchestration glue.
+- If a function would still be meaningful without LangGraph, FastAPI, MongoDB, or vendor SDKs, treat it as business logic first and place it outside infrastructure unless there is a strong reason not to.
 
-## Search Optimization Priority
+## Development Docs
 
-- When optimizing search, prefer prompt optimization first and keyword or rule supplementation second.
-- Use real user feedback to decide which path to take.
-- Only move to repository, ranking, or larger retrieval changes after prompt and rule-based fixes are clearly insufficient.
-- Follow `docs/search/workflow-optimization.md` for the standard optimization loop.
+- Keep `AGENTS.md` minimal. Detailed workflows and conventions should live in `docs/`.
+- For documentation structure and naming conventions, read `docs/documentation/architecture.md`.
+- When working with user feedback during development, read `docs/development/workflow-user-feedback.md`.
+- Before changing development workflow, tooling behavior, or documentation structure, read the relevant development docs first.
+
+## Feature Docs
+
+- Before changing a feature, read the relevant feature docs first and follow their validation rules.
+- When working on search, read `docs/search/workflow-optimization.md`.
+- When working on property architecture or shared property behavior, read `docs/property/architecture.md`.
+- When working on property creation, read `docs/property/workflow-creation.md`.
+- When working on property management, read `docs/property/workflow-management.md`.
+- When working on property favorite flows, read `docs/property/workflow-favorite.md`.

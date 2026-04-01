@@ -91,7 +91,9 @@ This covers:
 
 ### Search interpretation
 
-- `infrastructure/google/search.py`
+- `infrastructure/search/pipeline.py`
+- `infrastructure/search/prompts.py`
+- `application/property_search_rules.py`
 - `domain/entities/search.py`
 - `domain/services/property_enrichment.py`
 
@@ -328,7 +330,7 @@ If you are new to the project, read files in this order:
 3. `interface/api/routes/v1/property.py`
 4. `application/property.py`
 5. `domain/entities/property.py`
-6. `infrastructure/google/search.py`
+6. `infrastructure/search/pipeline.py`
 7. `infrastructure/mongo/property.py`
 
 ## Future README Improvements

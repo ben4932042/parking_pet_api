@@ -1,6 +1,19 @@
 # Search Optimization Workflow
 
+## Scope
+
 Use this workflow when improving search relevance, intent parsing, or feedback-driven search behavior.
+
+## When To Read This Doc
+
+Read this document when:
+
+- changing search logic
+- changing search prompts
+- adding or adjusting search rules
+- tuning feedback-driven search behavior
+
+Read `docs/search/architecture.md` when you need the structural view of the search system.
 
 This project should optimize search in this order:
 
@@ -10,7 +23,17 @@ This project should optimize search in this order:
 
 The goal is to keep improvements cheap, explainable, and easy to regression-test before changing deeper system behavior.
 
-## Optimization Principles
+## Entry Points
+
+- Route path: `interface/api/routes/v1/property.py`
+- Search application flow: `application/property.py`
+- Search ranking helpers: `application/property_search.py`
+- Search rules: `application/property_search_rules.py`
+- Search pipeline and prompts: `infrastructure/search/`
+
+## Rules
+
+### Optimization Principles
 
 - Start from real user feedback, not intuition alone.
 - Prefer fixing intent interpretation before changing database behavior.
@@ -22,7 +45,11 @@ The goal is to keep improvements cheap, explainable, and easy to regression-test
 
 ### 1. Retrieve feedback
 
-Always begin with the shared feedback script:
+Always begin with the shared feedback workflow:
+
+- `docs/development/workflow-user-feedback.md`
+
+The standard entry point uses the shared feedback script:
 
 ```bash
 poetry run python interface/script/get_user_feedback.py --limit 100
@@ -65,7 +92,7 @@ Choose prompt updates when:
 
 Typical files:
 
-- `infrastructure/prompt/search.py`
+- `infrastructure/search/prompts.py`
 
 #### Keyword / rule second
 
@@ -79,7 +106,7 @@ Choose keyword or rule updates when:
 
 Typical files:
 
-- `infrastructure/google/search.py`
+- `application/property_search_rules.py`
 
 Examples:
 
@@ -98,6 +125,7 @@ Choose repository, ranking, or retrieval changes only when:
 Typical files:
 
 - `application/property.py`
+- `application/property_search.py`
 - `infrastructure/mongo/property.py`
 - retrieval architecture modules added in the future
 
@@ -130,7 +158,7 @@ When adding rules:
 - make sure rule-based behavior does not contradict prompt instructions
 - update tests for both the positive and negative cases
 
-## Regression Expectations
+## Validation
 
 Every search optimization change should include regression coverage close to the behavior being changed.
 
@@ -158,6 +186,12 @@ For each optimization batch:
 7. Run the relevant search tests, then the full unit suite if shared behavior changed.
 8. Record the reasoning in the PR or work summary so future tuning has context.
 
+If a change touches search logic or search prompts:
+
+1. Run the search integration tests before finishing.
+2. If the integration tests fail, do not stop at reporting the failure.
+3. Analyze the error cause and either fix it or clearly explain the blocker.
+
 ## Current Project Preference
 
 For this repository:
@@ -167,3 +201,13 @@ For this repository:
 - keyword search itself is currently fallback behavior, so avoid over-investing in it unless feedback clearly points there
 
 This preference should guide future search-quality work unless product requirements change.
+
+## Related Files
+
+- `interface/api/routes/v1/property.py`
+- `application/property.py`
+- `application/property_search.py`
+- `application/property_search_rules.py`
+- `infrastructure/search/`
+- `tests/unit/application/test_property_search_pipeline.py`
+- `tests/integration/search_cases.py`

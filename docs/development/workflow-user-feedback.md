@@ -1,8 +1,8 @@
-# Search Feedback Workflow
+# User Feedback Workflow
 
-Use this workflow when working on search quality, search flow optimization, or user feedback analysis.
+Use this workflow when retrieving and analyzing user feedback during development.
 
-For the full optimization loop and priority order, see `docs/search/workflow-optimization.md`.
+Feature-specific optimization rules should live in their own feature folders.
 
 ## Standard Entry Point
 
