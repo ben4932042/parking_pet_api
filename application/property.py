@@ -206,6 +206,7 @@ class PropertyService:
             items = rank_combined_search_results(
                 query_text=q,
                 keyword_items=keyword_items,
+                lexical_keyword_items=lexical_keyword_items,
                 semantic_items=semantic_items,
                 semantic_query=generate_query,
             )
@@ -394,7 +395,7 @@ class PropertyService:
 
     async def _search_keyword_hybrid(self, q: str) -> list[PropertyEntity]:
         lexical_items = await self.repo.get_by_keyword(q)
-        if self.embedding_provider is None:
+        if lexical_items or self.embedding_provider is None:
             return lexical_items
 
         normalized_query = q.strip()
@@ -416,7 +417,7 @@ class PropertyService:
         self, q: str
     ) -> tuple[list[PropertyEntity], list[PropertyEntity]]:
         lexical_items = await self.repo.get_by_keyword(q)
-        if self.embedding_provider is None:
+        if lexical_items or self.embedding_provider is None:
             return lexical_items, lexical_items
 
         normalized_query = q.strip()

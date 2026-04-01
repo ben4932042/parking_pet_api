@@ -88,6 +88,7 @@ class PropertyRepository(IPropertyRepository):
         filters = {
             "$or": [
                 {"name": {"$regex": regex, "$options": "i"}},
+                {"aliases": {"$regex": regex, "$options": "i"}},
                 {"address": {"$regex": regex, "$options": "i"}},
             ]
         }

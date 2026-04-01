@@ -120,7 +120,44 @@ async def test_search_by_keyword_uses_keyword_route_directly(
 
 
 @pytest.mark.asyncio
-async def test_search_by_keyword_uses_hybrid_vector_candidates_when_embedding_available(
+async def test_search_by_keyword_uses_vector_candidates_only_when_lexical_results_are_empty(
+    property_entity_factory,
+):
+    vector_only_item = property_entity_factory(
+        identifier="vector-hit",
+        name="森林咖啡",
+    )
+    repo = CaptureRepo(keyword_items=[])
+    repo.search_by_vector = lambda query_vector, limit=20, filters=None: None
+    embedding_provider = QueryEmbeddingProvider(query_vector=[0.9, 0.1])
+
+    async def _search_by_vector(query_vector, limit=20, filters=None):
+        repo.calls.append(("search_by_vector", query_vector, limit, filters))
+        return [vector_only_item]
+
+    repo.search_by_vector = _search_by_vector
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(route="keyword", route_reason="looks like a place name")
+        ),
+        embedding_provider=embedding_provider,
+    )
+
+    results, _ = await service.search_by_keyword("肉球森林")
+
+    assert [item.id for item in results] == ["vector-hit"]
+    assert embedding_provider.calls == ["肉球森林"]
+    assert repo.calls == [
+        ("get_by_keyword", "肉球森林"),
+        ("search_by_vector", [0.9, 0.1], 20, None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_skips_vector_candidates_when_lexical_results_exist(
     property_entity_factory,
 ):
     keyword_item = property_entity_factory(identifier="keyword-hit", name="肉球森林")
@@ -149,11 +186,10 @@ async def test_search_by_keyword_uses_hybrid_vector_candidates_when_embedding_av
 
     results, _ = await service.search_by_keyword("肉球森林")
 
-    assert [item.id for item in results] == ["keyword-hit", "vector-hit"]
-    assert embedding_provider.calls == ["肉球森林"]
+    assert [item.id for item in results] == ["keyword-hit"]
+    assert embedding_provider.calls == []
     assert repo.calls == [
         ("get_by_keyword", "肉球森林"),
-        ("search_by_vector", [0.9, 0.1], 20, None),
     ]
 
 

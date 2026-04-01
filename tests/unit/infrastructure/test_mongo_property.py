@@ -189,3 +189,76 @@ async def test_search_by_vector_uses_property_v3_vector_index():
             }
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_get_by_keyword_searches_aliases_in_lexical_query():
+    find_cursor = MagicMock()
+    find_cursor.limit.return_value = find_cursor
+    find_cursor.max_time_ms.return_value = find_cursor
+    find_cursor.to_list = AsyncMock(return_value=[
+        {
+            "_id": "place-1",
+            "place_id": "place-1",
+            "name": "青埔公七公園",
+            "aliases": ["公七公園"],
+            "latitude": 25.03,
+            "longitude": 121.56,
+            "regular_opening_hours": [],
+            "address": "Test address",
+            "primary_type": "park",
+            "ai_analysis": {
+                "venue_type": "park",
+                "ai_summary": "summary",
+                "pet_features": {
+                    "rules": {
+                        "leash_required": False,
+                        "stroller_required": False,
+                        "allow_on_floor": False,
+                    },
+                    "environment": {
+                        "stairs": False,
+                        "outdoor_seating": False,
+                        "spacious": False,
+                        "indoor_ac": False,
+                        "off_leash_possible": False,
+                        "pet_friendly_floor": False,
+                        "has_shop_pet": False,
+                    },
+                    "services": {
+                        "pet_menu": False,
+                        "free_water": False,
+                        "free_treats": False,
+                        "pet_seating": False,
+                    },
+                },
+                "highlights": [],
+                "warnings": [],
+                "rating": 4.0,
+            },
+        }
+    ])
+    collection = MagicMock()
+    collection.find.return_value = find_cursor
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = PropertyRepository(client=ClientStub(), collection_name="property_v3")
+
+    items = await repo.get_by_keyword("公七公園")
+
+    assert [item.id for item in items] == ["place-1"]
+    assert collection.find.call_args.args[0] == {
+        "$and": [
+            {"is_deleted": {"$ne": True}},
+            {
+                "$or": [
+                    {"name": {"$regex": "公七公園", "$options": "i"}},
+                    {"aliases": {"$regex": "公七公園", "$options": "i"}},
+                    {"address": {"$regex": "公七公園", "$options": "i"}},
+                ]
+            },
+        ]
+    }

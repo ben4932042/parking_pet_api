@@ -52,11 +52,13 @@ def rank_combined_search_results(
     *,
     query_text: str,
     keyword_items: list[PropertyEntity],
+    lexical_keyword_items: list[PropertyEntity],
     semantic_items: list[PropertyEntity],
     semantic_query: dict,
 ) -> list[PropertyEntity]:
     merged = _merge_unique_properties(keyword_items, semantic_items)
     keyword_ids = {item.id for item in keyword_items}
+    lexical_keyword_ids = {item.id for item in lexical_keyword_items}
     semantic_ids = {item.id for item in semantic_items}
     normalized_query = normalize_text_for_match(query_text)
 
@@ -75,6 +77,7 @@ def rank_combined_search_results(
             item=item,
             normalized_query=normalized_query,
             from_keyword=item.id in keyword_ids,
+            from_lexical_keyword=item.id in lexical_keyword_ids,
             from_semantic=item.id in semantic_ids,
             type_filter=type_filter,
             is_open_required=is_open_required,
@@ -119,12 +122,13 @@ def _combined_score(
     *,
     normalized_query: str,
     from_keyword: bool,
+    from_lexical_keyword: bool,
     from_semantic: bool,
     type_filter,
     is_open_required: bool,
     requested_feature_paths: list[str],
     geo_context,
-) -> float:
+) -> tuple[int, float]:
     keyword_match_score = _keyword_match_score(item, normalized_query)
     semantic_score = score_search_result(
         item=item,
@@ -134,8 +138,18 @@ def _combined_score(
         geo_context=geo_context,
     )
 
+    source_priority = 0
+    if from_lexical_keyword:
+        source_priority = 3
+    elif from_semantic:
+        source_priority = 2
+    elif from_keyword:
+        source_priority = 1
+
     score = 0.0
-    if from_keyword:
+    if from_lexical_keyword:
+        score += 1.25
+    elif from_keyword:
         score += 1.0
     if from_semantic:
         score += 0.75 + (semantic_score * 2.0)
@@ -143,7 +157,7 @@ def _combined_score(
         score += (item.rating or 0.0) * 0.05
 
     score += keyword_match_score
-    return score
+    return (source_priority, score)
 
 
 def _keyword_match_score(item: PropertyEntity, normalized_query: str) -> float:

@@ -7,10 +7,10 @@ This document describes how the current project implements search and recommenda
 The goal of the feature is not full-text retrieval in the search-engine sense. The current implementation is closer to an AI-assisted structured filter pipeline:
 
 1. Interpret a natural-language query.
-2. Convert it into a MongoDB filter.
-3. Apply optional geographic proximity.
-4. Sort matching documents by internal rating.
-5. Fall back to a simple keyword lookup only when the search plan explicitly requests it.
+2. Decide whether to run semantic retrieval, keyword retrieval, or both.
+3. Convert semantic intent into a MongoDB filter.
+4. Apply optional geographic proximity.
+5. Merge and rerank candidates from keyword, semantic, and vector paths.
 
 ## Main Entry Points
 
@@ -23,6 +23,7 @@ Accepted query parameters:
 - `query`: natural-language search text.
 - `user_lat`, `user_lng`: current user location.
 - `map_lat`, `map_lng`: map center location.
+- `radius`: optional map-driven search radius in meters when the query does not already express an explicit distance and is not anchored by a landmark or address.
 
 Response shape:
 
@@ -73,68 +74,80 @@ The current runtime path is easiest to read as a route-selection flow. The API m
 
 ```mermaid
 flowchart TD
-    A["GET /api/v1/property<br/>query, user/map coords"] --> B["PropertyService.search_by_keyword(...)"]
+    A["GET /api/v1/property<br/>query, user/map coords, radius"] --> B["PropertyService.search_by_keyword(...)"]
+    B --> C["extract_search_plan(q)"]
+    C --> D["router + parsers"]
 
-    B --> C["extract_search_plan(q)<br/>infrastructure/search/pipeline.py"]
+    D --> E["Nodes"]
+    E --> E1["typo_normalizer"]
+    E --> E2["route_node -> execution_modes"]
+    E --> E3["location_parser"]
+    E --> E4["category_parser"]
+    E --> E5["feature_parser"]
+    E --> E6["quality_parser"]
+    E --> E7["time_parser"]
+    E --> E8["distance_parser"]
 
-    C --> D["typo_normalizer"]
-    D --> E{"router decides execution_modes"}
+    E3 --> F["merge_plan"]
+    E4 --> F
+    E5 --> F
+    E6 --> F
+    E7 --> F
+    E8 --> F
+    E2 --> F
 
-    E -->|keyword only| F["keyword_plan<br/>SearchPlan.execution_modes = [keyword]"]
-    E -->|semantic| G["semantic_fanout"]
+    F --> G["confidence_gate"]
+    G --> H["SearchPlan<br/>execution_modes = semantic / keyword / both"]
 
-    G --> H["location_parser"]
-    G --> I["category_parser"]
-    G --> J["feature_parser"]
-    G --> K["quality_parser"]
-    G --> L["time_parser"]
-    G --> MM["distance_parser"]
+    H --> I["apply radius override"]
+    I --> J{"run semantic?"}
+    I --> K{"run keyword?"}
 
-    H --> M["merge_plan"]
-    I --> M
-    J --> M
-    K --> M
-    L --> M
-    MM --> M
+    J -->|yes| L["generate_query(...)"]
+    J -->|no| Z1["skip semantic"]
 
-    M --> N["confidence_gate"]
+    K -->|yes| M["get_by_keyword(q)<br/>lexical: name / aliases / address"]
+    K -->|no| Z2["skip keyword"]
 
-    N -->|used_fallback = true| F
-    N -->|used_fallback = false| O["generate_query(...)"]
+    M --> N{"lexical has results?"}
+    N -->|yes| O["keyword_items = lexical only"]
+    N -->|no| P{"embedding provider available?"}
+    P -->|no| Q["keyword_items = []"]
+    P -->|yes| R["search_by_vector(...)"]
+    R --> S["keyword_items = vector results"]
 
-    O --> P["repo.find_by_query(...)<br/>Mongo semantic query"]
-    P --> Q{"semantic results found?"}
+    L --> T{"running semantic + keyword?"}
+    T -->|yes| U["filter keyword_items by semantic query"]
+    U --> V{"top keyword is exact lexical hit<br/>and passes semantic filters?"}
+    V -->|yes| W["short-circuit<br/>return keyword results"]
+    V -->|no| X["repo.find_by_query(...)"]
 
-    Q -->|yes| R["rank_search_results(...)"]
-    Q -->|no| S["semantic vector fallback<br/>search_by_vector(...)"]
+    T -->|no, semantic only| X
 
-    S --> T{"vector fallback results found?"}
-    T -->|yes| U["rank_search_results(...)"]
-    T -->|no| V["return empty results"]
+    X --> Y{"semantic results found?"}
+    Y -->|yes| Y1["rank_search_results(...)"]
+    Y -->|no| Y2{"semantic vector fallback available?"}
+    Y2 -->|yes| Y3["search_by_vector(..., filters=semantic_query)"]
+    Y2 -->|no| Y4["semantic_items = []"]
 
-    F --> W["_search_keyword_hybrid(q)"]
+    Y1 --> AA
+    Y3 --> AA
+    Y4 --> AA
+    O --> AA
+    Q --> AA
+    S --> AA
+    Z1 --> AA
+    Z2 --> AA
 
-    W --> X["repo.get_by_keyword(q)<br/>name/address regex"]
-    W --> Y{"embedding provider available?"}
+    AA{"final response path"}
+    AA -->|semantic + keyword| AB["rank_combined_search_results(...)"]
+    AA -->|semantic only| AC["return semantic_items"]
+    AA -->|keyword only| AD["return keyword_items"]
 
-    Y -->|no| Z["return lexical results"]
-    Y -->|yes| AA["embed_query(q)"]
-    AA --> AB["repo.search_by_vector(...)"]
-    AB --> AC["rank_keyword_hybrid_results(...)"]
-
-    R --> AH{"keyword also requested?"}
-    AH -->|no| AD["API response"]
-    AH -->|yes| AI["_search_keyword_hybrid(q)"]
-    AI --> AJ["rank_combined_search_results(...)"]
-    U --> AD
-    V --> AD
-    Z --> AD
-    AC --> AD
-    AJ --> AD
-
-    AD --> AE["response_type = keyword_search<br/>if keyword only or fallback"]
-    AD --> AF["response_type = semantic_search<br/>if semantic only"]
-    AD --> AG["response_type = hybrid_search<br/>if semantic + keyword"]
+    AB --> AE["ranking priority<br/>keyword > semantic > vector"]
+    AC --> AF["response_type = semantic_search"]
+    AD --> AG["response_type = keyword_search"]
+    AE --> AH["response_type = hybrid_search"]
 ```
 
 ### 1. HTTP request enters the property route
@@ -163,6 +176,8 @@ The pipeline produces a structured `SearchPlan` containing:
 - `semantic_extraction`: summarized address/category/feature/quality/time extraction
 - `warnings`: low-confidence parsing signals
 - `used_fallback` and `fallback_reason`
+
+Important detail: the runtime still supports semantic fallback to keyword in some low-confidence cases, but the primary execution model is no longer a strict binary route. The router may intentionally select both execution modes for ambiguous queries such as `寵物公園`.
 
 ### 3. Intent generation rules
 
@@ -242,6 +257,7 @@ This step:
 - preserves explicit opening-window filters on `op_segments` when the query targets a weekday or time-of-day window
 - chooses a geographic anchor
 - injects a geospatial `location` filter using `$nearSphere`
+- optionally applies the frontend-provided `radius` override when the query does not already contain an explicit distance and is not anchored by landmark or address
 
 Geographic anchor precedence is:
 
@@ -253,7 +269,28 @@ If the chosen coordinates are missing or incomplete, the geo filter is skipped.
 
 If landmark geocoding fails, the search now degrades gracefully to a non-landmark query instead of raising an exception.
 
-### 5. MongoDB executes the structured query and the application reranks the results
+### 5. Keyword retrieval path
+
+Keyword retrieval is now a first-class execution mode rather than only a last-ditch fallback.
+
+The repository lexical query currently searches:
+
+- `name`
+- `aliases`
+- `address`
+
+If lexical keyword retrieval returns any results, the keyword path stops there and does not run keyword vector search.
+
+If lexical keyword retrieval returns no results and an embedding provider is available, the service performs keyword vector search as a fallback candidate source.
+
+Keyword ranking favors direct lookup behavior:
+
+- exact `name` match
+- exact `alias` match
+- partial `name` / `alias` containment
+- lexical hits over vector-only hits
+
+### 6. MongoDB executes the structured semantic query and the application reranks the results
 
 `PropertyRepository.find_by_query(...)` runs:
 
@@ -272,18 +309,28 @@ The current rerank combines:
 
 This is still a heuristic ranker rather than a learned recommendation model, but it is no longer pure `rating desc`.
 
-### 6. Fallback to regex keyword search
+### 7. Hybrid merge and short-circuit behavior
 
-If the structured query returns zero documents, the service falls back to `get_by_keyword(q)`.
+When `execution_modes` contains both `semantic` and `keyword`, the runtime does not blindly merge everything.
 
-The fallback query is:
+The current behavior is:
 
-- case-insensitive regex on `name`
-- case-insensitive regex on `address`
+1. Run keyword lexical retrieval first.
+2. Only run keyword vector search if lexical retrieval is empty.
+3. Build the semantic Mongo query.
+4. Filter keyword candidates through the semantic constraints when semantic execution is also active.
+5. If the top keyword hit is a high-confidence lexical exact match and still satisfies semantic filters, short-circuit and return keyword results directly.
+6. Otherwise run semantic retrieval and merge the two result sets.
 
-The service returns all matched results from the keyword lookup, up to the repository limit.
+The combined ranker currently uses source priority first:
 
-This fallback is important because it allows direct place-name lookup when the intent parser produces filters that are too narrow or too abstract.
+- keyword
+- semantic
+- vector-only
+
+This means hybrid results are intentionally lookup-first. Strong keyword matches stay above semantic and vector-only candidates.
+
+Semantic vector fallback is still available when semantic retrieval returns zero results.
 
 ## Where Recommendation Signals Come From
 

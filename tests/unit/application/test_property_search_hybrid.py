@@ -1,4 +1,5 @@
 from application.property_search.hybrid import (
+    rank_combined_search_results,
     rank_keyword_hybrid_results,
     should_short_circuit_hybrid_keyword,
 )
@@ -52,3 +53,37 @@ def test_should_not_short_circuit_hybrid_keyword_for_vector_only_top_hit(
         )
         is False
     )
+
+
+def test_rank_combined_search_results_orders_keyword_then_semantic_then_vector(
+    property_entity_factory,
+):
+    lexical_keyword = property_entity_factory(
+        identifier="lexical-keyword",
+        name="寵物公園",
+        primary_type="park",
+    )
+    semantic_match = property_entity_factory(
+        identifier="semantic-match",
+        name="青埔公七公園",
+        primary_type="park",
+    )
+    vector_only = property_entity_factory(
+        identifier="vector-only",
+        name="寵物友善大草原",
+        primary_type="park",
+    )
+
+    ranked = rank_combined_search_results(
+        query_text="寵物公園",
+        keyword_items=[lexical_keyword, vector_only],
+        lexical_keyword_items=[lexical_keyword],
+        semantic_items=[semantic_match],
+        semantic_query={"primary_type": "park"},
+    )
+
+    assert [item.id for item in ranked] == [
+        "lexical-keyword",
+        "semantic-match",
+        "vector-only",
+    ]
