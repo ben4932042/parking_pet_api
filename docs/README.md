@@ -12,6 +12,7 @@ Use these documents for repository-wide development rules, tooling workflows, an
 
 - `docs/documentation/architecture.md`
 - `docs/development/workflow-user-feedback.md`
+- `docs/development/workflow-subagent-collaboration.md`
 
 ### Feature Docs
 
