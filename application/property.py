@@ -21,6 +21,7 @@ from domain.entities.property import (
     PropertyEntity,
     PropertyManualOverrides,
 )
+from domain.entities.property_category import PropertyCategoryKey
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property_note import IPropertyNoteRepository
@@ -32,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 PROMPT_INJECTION_ROUTE_REASON = "查詢包含 prompt injection 訊號，改用關鍵字搜尋"
 NON_SEARCH_ROUTE_REASON = "查詢內容不像搜尋條件，直接回傳空結果"
+HYBRID_KEYWORD_NEAREST_RADIUS_METERS = 100000
 
 
 class PropertyService:
@@ -63,12 +65,15 @@ class PropertyService:
     async def search_by_keyword(
         self,
         q: str,
+        category: Optional[PropertyCategoryKey] = None,
         user_coords: Optional[tuple[float, float]] = None,
         map_coords: Optional[tuple[float, float]] = None,
         radius: Optional[int] = None,
         open_at_minutes: Optional[int] = None,
     ):
         search_plan = self.enrichment_provider.extract_search_plan(q)
+        if category is not None:
+            search_plan.execution_modes = ["keyword"]
         self._apply_radius_override(search_plan, radius)
         logger.debug(f"Search plan: {search_plan}")
 
@@ -136,33 +141,47 @@ class PropertyService:
                     keyword_items,
                     lexical_keyword_items,
                 ) = await self._search_keyword_hybrid_with_metadata(q)
-                exact_lexical_keyword_items = [
-                    item
-                    for item in lexical_keyword_items
-                    if is_exact_lexical_match(query_text=q, item=item)
-                ]
-                if generate_query:
-                    keyword_items = self._filter_keyword_items_by_semantic_query(
+                if self._should_use_nearest_keyword_hybrid_result(
+                    search_plan, map_coords=map_coords
+                ):
+                    keyword_items = self._nearest_keyword_items(
                         keyword_items,
-                        generate_query,
-                        open_at_minutes=open_at_minutes,
+                        map_coords=map_coords,
+                        radius_meters=HYBRID_KEYWORD_NEAREST_RADIUS_METERS,
                     )
-                    lexical_keyword_items = (
-                        self._filter_keyword_items_by_semantic_query(
-                            lexical_keyword_items,
+                    lexical_keyword_items = self._nearest_keyword_items(
+                        lexical_keyword_items,
+                        map_coords=map_coords,
+                        radius_meters=HYBRID_KEYWORD_NEAREST_RADIUS_METERS,
+                    )
+                else:
+                    exact_lexical_keyword_items = [
+                        item
+                        for item in lexical_keyword_items
+                        if is_exact_lexical_match(query_text=q, item=item)
+                    ]
+                    if generate_query:
+                        keyword_items = self._filter_keyword_items_by_semantic_query(
+                            keyword_items,
                             generate_query,
                             open_at_minutes=open_at_minutes,
                         )
-                    )
-                    if exact_lexical_keyword_items:
-                        keyword_items = self._merge_unique_items(
-                            exact_lexical_keyword_items,
-                            keyword_items,
+                        lexical_keyword_items = (
+                            self._filter_keyword_items_by_semantic_query(
+                                lexical_keyword_items,
+                                generate_query,
+                                open_at_minutes=open_at_minutes,
+                            )
                         )
-                        lexical_keyword_items = self._merge_unique_items(
-                            exact_lexical_keyword_items,
-                            lexical_keyword_items,
-                        )
+                        if exact_lexical_keyword_items:
+                            keyword_items = self._merge_unique_items(
+                                exact_lexical_keyword_items,
+                                keyword_items,
+                            )
+                            lexical_keyword_items = self._merge_unique_items(
+                                exact_lexical_keyword_items,
+                                lexical_keyword_items,
+                            )
             else:
                 keyword_items = await self._search_keyword(q)
                 lexical_keyword_items = keyword_items
@@ -239,6 +258,55 @@ class PropertyService:
                 open_at_minutes=open_at_minutes,
             )
         ]
+
+    @staticmethod
+    def _should_use_nearest_keyword_hybrid_result(
+        search_plan,
+        *,
+        map_coords: Optional[tuple[float, float]] = None,
+    ) -> bool:
+        if map_coords is None:
+            return False
+
+        condition = search_plan.filter_condition
+        if condition.landmark_context:
+            return False
+        if condition.travel_time_limit_min is not None:
+            return False
+        if "address" in condition.mongo_query:
+            return False
+        return True
+
+    @classmethod
+    def _nearest_keyword_items(
+        cls,
+        items: list[PropertyEntity],
+        *,
+        map_coords: Optional[tuple[float, float]],
+        radius_meters: int,
+    ) -> list[PropertyEntity]:
+        if map_coords is None:
+            return items
+
+        candidates: list[tuple[float, PropertyEntity]] = []
+        map_lng, map_lat = map_coords
+        for item in items:
+            if item.latitude is None or item.longitude is None:
+                continue
+            distance = cls._haversine_meters(
+                map_lat,
+                map_lng,
+                item.latitude,
+                item.longitude,
+            )
+            if distance <= radius_meters:
+                candidates.append((distance, item))
+
+        if not candidates:
+            return []
+
+        candidates.sort(key=lambda candidate: candidate[0])
+        return [candidates[0][1]]
 
     @staticmethod
     def _merge_unique_items(

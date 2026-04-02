@@ -37,11 +37,18 @@ class CapturePropertyService:
         self.fallback_reason = fallback_reason
 
     async def search_by_keyword(
-        self, q, user_coords=None, map_coords=None, radius=None, open_at_minutes=None
+        self,
+        q,
+        category=None,
+        user_coords=None,
+        map_coords=None,
+        radius=None,
+        open_at_minutes=None,
     ):
         self.calls.append(
             {
                 "q": q,
+                "category": category,
                 "user_coords": user_coords,
                 "map_coords": map_coords,
                 "radius": radius,
@@ -222,6 +229,7 @@ def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
     assert service.calls == [
         {
             "q": "dog cafe",
+            "category": None,
             "user_coords": None,
             "map_coords": (121.56, 25.03),
             "radius": None,
@@ -289,6 +297,7 @@ def test_search_route_passes_radius_to_service(client, override_api_dep):
     assert service.calls == [
         {
             "q": "寵物公園",
+            "category": None,
             "user_coords": None,
             "map_coords": (121.56, 25.03),
             "radius": 2500,
@@ -323,6 +332,30 @@ def test_nearby_route_expands_category_to_primary_types(client, override_api_dep
     assert "restaurant" in call["types"]
     assert "brunch_restaurant" in call["types"]
     assert "bar" in call["types"]
+
+
+def test_search_route_passes_category_and_returns_keyword_search_when_present(
+    client, override_api_dep
+):
+    service = override_api_dep(get_property_service, CapturePropertyService(route="keyword"))
+
+    response = client.get(
+        "/api/v1/property",
+        params={"query": "寵物公園", "category": PropertyCategoryKey.OUTDOOR},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["response_type"] == "keyword_search"
+    assert service.calls == [
+        {
+            "q": "寵物公園",
+            "category": PropertyCategoryKey.OUTDOOR,
+            "user_coords": None,
+            "map_coords": None,
+            "radius": None,
+            "open_at_minutes": None,
+        }
+    ]
 
 
 def test_search_route_includes_has_note_for_authenticated_user(

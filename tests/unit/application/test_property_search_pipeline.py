@@ -1,6 +1,7 @@
 import pytest
 
 from application.property import PropertyService
+from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.search import SearchPlan
 from domain.entities.property import PropertyFilterCondition
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
@@ -97,6 +98,40 @@ async def test_search_by_keyword_uses_keyword_route_directly(
     assert [item.id for item in results] == ["keyword-hit", "keyword-hit-2"]
     assert plan.route == "keyword"
     assert repo.calls == [("get_by_keyword", "肉球森林")]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_forces_keyword_only_when_category_is_provided(
+    property_entity_factory,
+):
+    keyword_item = property_entity_factory(identifier="keyword-hit")
+    repo = CaptureRepo(
+        query_items=[property_entity_factory(identifier="semantic-hit", primary_type="park")],
+        keyword_items=[keyword_item],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                execution_modes=["semantic", "keyword"],
+                filter_condition=PropertyFilterCondition(
+                    mongo_query={"primary_type": "park"},
+                ),
+                semantic_extraction={"category": "park"},
+            )
+        ),
+    )
+
+    results, plan = await service.search_by_keyword(
+        "寵物公園",
+        category=PropertyCategoryKey.OUTDOOR,
+    )
+
+    assert [item.id for item in results] == ["keyword-hit"]
+    assert plan.execution_modes == ["keyword"]
+    assert repo.calls == [("get_by_keyword", "寵物公園")]
 
 
 @pytest.mark.asyncio
@@ -269,8 +304,8 @@ async def test_search_by_keyword_filters_far_keyword_hits_by_map_radius(
         identifier="far-keyword-partial",
         name="寵物公園大草皮",
         primary_type="park",
-        latitude=25.1617,
-        longitude=121.7644,
+        latitude=24.1477,
+        longitude=120.6736,
     )
     near_semantic_match = property_entity_factory(
         identifier="near-semantic-park",
@@ -320,6 +355,80 @@ async def test_search_by_keyword_filters_far_keyword_hits_by_map_radius(
                             "coordinates": [121.25874722747007, 24.951597027520226],
                         },
                         "$maxDistance": 2949,
+                    }
+                },
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_uses_nearest_single_keyword_item_for_hybrid_map_browse(
+    property_entity_factory,
+):
+    nearer_keyword = property_entity_factory(
+        identifier="nearer-keyword-store",
+        name="寵物公園(桃園青埔店)",
+        primary_type="store",
+        latitude=25.0019989,
+        longitude=121.20246470000001,
+    )
+    farther_keyword = property_entity_factory(
+        identifier="farther-keyword-store",
+        name="寵物公園(台北店)",
+        primary_type="store",
+        latitude=25.047924,
+        longitude=121.517081,
+    )
+    semantic_match = property_entity_factory(
+        identifier="semantic-park",
+        name="青埔公七公園",
+        primary_type="park",
+        latitude=25.0085,
+        longitude=121.2197,
+    )
+    repo = CaptureRepo(
+        query_items=[semantic_match],
+        keyword_items=[farther_keyword, nearer_keyword],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                execution_modes=["semantic", "keyword"],
+                filter_condition=PropertyFilterCondition(
+                    mongo_query={"primary_type": "park"},
+                    preferences=[{"key": "primary_type_preference", "label": "park"}],
+                ),
+                semantic_extraction={"category": "park"},
+            )
+        ),
+    )
+
+    results, plan = await service.search_by_keyword(
+        "寵物公園",
+        map_coords=(121.22185847124682, 25.01170560999932),
+        radius=100000,
+    )
+
+    assert [item.id for item in results] == ["nearer-keyword-store", "semantic-park"]
+    assert plan.execution_modes == ["semantic", "keyword"]
+    assert repo.calls == [
+        ("get_by_keyword", "寵物公園"),
+        (
+            "find_by_query",
+            {
+                "primary_type": "park",
+                "location": {
+                    "$nearSphere": {
+                        "$geometry": {
+                            "type": "Point",
+                            "coordinates": [121.22185847124682, 25.01170560999932],
+                        },
+                        "$maxDistance": 100000,
                     }
                 },
             },

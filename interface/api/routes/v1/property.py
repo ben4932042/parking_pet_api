@@ -11,6 +11,7 @@ from application.user import UserService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
 from domain.entities.property_category import get_primary_types_by_category_key
+from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.user import UserEntity
 from interface.api.exceptions.error import AppError, from_application_error
 from interface.api.dependencies.property_note import get_property_note_service
@@ -104,6 +105,10 @@ async def _attach_has_note(
 )
 async def search_properties_by_keyword(
     query: str = Query(..., description="Natural-language search query."),
+    category: PropertyCategoryKey | None = Query(
+        default=None,
+        description="Optional frontend category selector. When provided, search uses keyword-only mode.",
+    ),
     user_lat: float = Query(default=None, description="Current user latitude."),
     user_lng: float = Query(default=None, description="Current user longitude."),
     map_lat: float = Query(default=None, description="Current map center latitude."),
@@ -123,6 +128,7 @@ async def search_properties_by_keyword(
 ):
     items, plan = await service.search_by_keyword(
         q=query,
+        category=category,
         user_coords=_coords_or_none(user_lat, user_lng),
         map_coords=_coords_or_none(map_lat, map_lng),
         radius=radius,
