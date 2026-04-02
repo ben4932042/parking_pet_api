@@ -20,7 +20,9 @@ def _build_provider(cache_repo):
     return provider
 
 
-def test_geocode_landmark_returns_cached_coordinates_without_calling_google(monkeypatch):
+def test_geocode_landmark_returns_cached_coordinates_without_calling_google(
+    monkeypatch,
+):
     cache_repo = InMemoryLandmarkCacheRepository()
     cache_repo.save(
         LandmarkCacheEntity(

@@ -216,9 +216,7 @@ async def test_delete_note_delegates_after_property_check(property_entity_factor
             "include_deleted": False,
         }
     ]
-    assert note_repo.calls == [
-        {"fn": "delete", "user_id": "u1", "property_id": "p1"}
-    ]
+    assert note_repo.calls == [{"fn": "delete", "user_id": "u1", "property_id": "p1"}]
 
 
 @pytest.mark.asyncio

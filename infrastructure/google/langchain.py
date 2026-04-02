@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 def geocode_landmark_with_llm(llm: ChatGoogleGenerativeAI, landmark_name: str):
-
     geo_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", GEOCODE_LANDMARK_PROMPT),

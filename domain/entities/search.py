@@ -17,7 +17,11 @@ class SearchRouteDecision(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy_route(cls, value: Any) -> Any:
-        if isinstance(value, dict) and "execution_modes" not in value and "route" in value:
+        if (
+            isinstance(value, dict)
+            and "execution_modes" not in value
+            and "route" in value
+        ):
             route = value.get("route")
             if route:
                 value = {**value, "execution_modes": [route]}
@@ -101,7 +105,11 @@ class SearchPlan(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy_route(cls, value: Any) -> Any:
-        if isinstance(value, dict) and "execution_modes" not in value and "route" in value:
+        if (
+            isinstance(value, dict)
+            and "execution_modes" not in value
+            and "route" in value
+        ):
             route = value.get("route")
             if route:
                 value = {**value, "execution_modes": [route]}

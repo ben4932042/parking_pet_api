@@ -24,7 +24,9 @@ def test_should_not_short_circuit_hybrid_keyword_for_non_lexical_top_hit(
     property_entity_factory,
 ):
     lexical = property_entity_factory(identifier="lexical", name="寵物樂園")
-    semantic_top = property_entity_factory(identifier="semantic-top", name="寵物公園大草原")
+    semantic_top = property_entity_factory(
+        identifier="semantic-top", name="寵物公園大草原"
+    )
 
     assert (
         should_short_circuit_hybrid_keyword(

@@ -26,6 +26,7 @@ from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property_note import IPropertyNoteRepository
 from domain.repositories.property import IPropertyRepository
 from domain.services.property_enrichment import IEnrichmentProvider
+
 logger = logging.getLogger(__name__)
 
 
@@ -131,17 +132,22 @@ class PropertyService:
                 },
             )
             if run_semantic:
-                keyword_items, lexical_keyword_items = await self._search_keyword_hybrid_with_metadata(q)
+                (
+                    keyword_items,
+                    lexical_keyword_items,
+                ) = await self._search_keyword_hybrid_with_metadata(q)
                 if generate_query:
                     keyword_items = self._filter_keyword_items_by_semantic_query(
                         keyword_items,
                         generate_query,
                         open_at_minutes=open_at_minutes,
                     )
-                    lexical_keyword_items = self._filter_keyword_items_by_semantic_query(
-                        lexical_keyword_items,
-                        generate_query,
-                        open_at_minutes=open_at_minutes,
+                    lexical_keyword_items = (
+                        self._filter_keyword_items_by_semantic_query(
+                            lexical_keyword_items,
+                            generate_query,
+                            open_at_minutes=open_at_minutes,
+                        )
                     )
                 if should_short_circuit_hybrid_keyword(
                     query_text=q,
@@ -287,7 +293,9 @@ class PropertyService:
         return current
 
     @staticmethod
-    def _matches_location_query(item: PropertyEntity, location_query: dict[str, Any]) -> bool:
+    def _matches_location_query(
+        item: PropertyEntity, location_query: dict[str, Any]
+    ) -> bool:
         near_query = location_query.get("$nearSphere", {})
         geometry = near_query.get("$geometry", {})
         coordinates = geometry.get("coordinates")
@@ -310,7 +318,9 @@ class PropertyService:
         return distance <= max_distance
 
     @staticmethod
-    def _matches_op_segments(item: PropertyEntity, op_segment_query: dict[str, Any]) -> bool:
+    def _matches_op_segments(
+        item: PropertyEntity, op_segment_query: dict[str, Any]
+    ) -> bool:
         elem_match = op_segment_query.get("$elemMatch", {})
         max_start = elem_match.get("s", {}).get("$lte")
         min_end = elem_match.get("e", {}).get("$gte")
@@ -745,8 +755,12 @@ class PropertyService:
             is_deleted=output.is_deleted,
         )
 
-    def _apply_search_projection(self, property_entity: PropertyEntity) -> PropertyEntity:
-        return property_entity.model_copy(update=build_property_alias_fields(property_entity))
+    def _apply_search_projection(
+        self, property_entity: PropertyEntity
+    ) -> PropertyEntity:
+        return property_entity.model_copy(
+            update=build_property_alias_fields(property_entity)
+        )
 
     @staticmethod
     def _normalize_aliases(aliases: list[str]) -> list[str]:

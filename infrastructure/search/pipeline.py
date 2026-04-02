@@ -14,6 +14,7 @@ from application.property_search.rules import (
     has_time_hints,
     is_basic_prompt_injection,
     is_obviously_non_search_query,
+    normalize_llm_execution_modes,
     normalize_category_intent,
     normalize_text_for_match,
     should_run_keyword_with_semantic,
@@ -226,6 +227,10 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
         user_input=query,
         schema=SearchRouteDecision,
     )
+    decision.execution_modes = normalize_llm_execution_modes(
+        query,
+        decision.execution_modes,
+    )
     return {"route_decision": decision}
 
 
@@ -377,7 +382,11 @@ def distance_node(state: SearchGraphState) -> dict[str, Any]:
 
 
 def next_after_router(state: SearchGraphState) -> str:
-    return "semantic" if "semantic" in state["route_decision"].execution_modes else "keyword"
+    return (
+        "semantic"
+        if "semantic" in state["route_decision"].execution_modes
+        else "keyword"
+    )
 
 
 def next_after_gate(state: SearchGraphState) -> str:

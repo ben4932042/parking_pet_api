@@ -1,4 +1,7 @@
-from domain.entities.search_feedback import SearchFeedbackEntity, SearchFeedbackPreference
+from domain.entities.search_feedback import (
+    SearchFeedbackEntity,
+    SearchFeedbackPreference,
+)
 from interface.api.dependencies.db import get_user_repository
 from interface.api.dependencies.search_feedback import get_search_feedback_service
 

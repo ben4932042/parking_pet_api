@@ -17,7 +17,9 @@ async def test_create_search_feedback_inserts_document_and_returns_saved_entity(
             assert collection_name == "search_feedback"
             return collection
 
-    repo = SearchFeedbackRepository(client=ClientStub(), collection_name="search_feedback")
+    repo = SearchFeedbackRepository(
+        client=ClientStub(), collection_name="search_feedback"
+    )
 
     saved = await repo.create(
         SearchFeedbackEntity(
@@ -62,7 +64,9 @@ async def test_list_feedback_builds_expected_filters_and_returns_entities():
             assert collection_name == "search_feedback"
             return collection
 
-    repo = SearchFeedbackRepository(client=ClientStub(), collection_name="search_feedback")
+    repo = SearchFeedbackRepository(
+        client=ClientStub(), collection_name="search_feedback"
+    )
 
     items = await repo.list_feedback(
         query_contains=" 點心 ",

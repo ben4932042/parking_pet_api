@@ -55,6 +55,8 @@ class SearchFeedbackRepository(ISearchFeedbackRepository):
             filters["response_type"] = response_type
 
         capped_limit = max(1, min(limit, 200))
-        cursor = self.collection.find(filters).sort("created_at", -1).limit(capped_limit)
+        cursor = (
+            self.collection.find(filters).sort("created_at", -1).limit(capped_limit)
+        )
         docs = await cursor.to_list(length=capped_limit)
         return [SearchFeedbackEntity(**doc) for doc in docs]

@@ -201,7 +201,9 @@ async def test_create_property_rejects_unknown_primary_type_for_new_record(
         repo=repo,
         raw_data_repo=raw_data_repo,
         audit_repo=audit_repo,
-        enrichment_provider=SyncEnrichmentProvider(build_source("place-unknown"), synced),
+        enrichment_provider=SyncEnrichmentProvider(
+            build_source("place-unknown"), synced
+        ),
     )
 
     with pytest.raises(ValueError, match="unknown primary_type"):
@@ -382,7 +384,9 @@ async def test_update_aliases_merges_manual_aliases_and_writes_audit_log(
     property_entity_factory, actor_factory
 ):
     repo = InMemoryPropertyRepo(
-        property_entity_factory(identifier="p1", place_id="place-1", name="青埔公七公園")
+        property_entity_factory(
+            identifier="p1", place_id="place-1", name="青埔公七公園"
+        )
     )
     audit_repo = InMemoryAuditRepo()
     service = PropertyService(

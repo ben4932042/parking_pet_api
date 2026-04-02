@@ -64,6 +64,8 @@ def rank_combined_search_results(
         ),
         reverse=True,
     )
+
+
 def _combined_score(
     item: PropertyEntity,
     *,
@@ -118,7 +120,9 @@ def _keyword_match_score(item: PropertyEntity, normalized_query: str) -> float:
         score += 10.0
     if normalized_query and normalized_query in normalized_name:
         score += 6.0
-    if normalized_query and any(normalized_query in alias for alias in normalized_aliases):
+    if normalized_query and any(
+        normalized_query in alias for alias in normalized_aliases
+    ):
         score += 4.5
     return score
 
@@ -141,7 +145,10 @@ def _extract_geo_context(query: dict):
     ):
         return None
 
-    return {"coordinates": (coordinates[0], coordinates[1]), "max_distance": max_distance}
+    return {
+        "coordinates": (coordinates[0], coordinates[1]),
+        "max_distance": max_distance,
+    }
 
 
 def _merge_unique_properties(

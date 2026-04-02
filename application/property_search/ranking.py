@@ -4,7 +4,9 @@ from typing import Any, List, Optional
 from domain.entities.property import PropertyEntity
 
 
-def rank_search_results(items: List[PropertyEntity], query: dict) -> List[PropertyEntity]:
+def rank_search_results(
+    items: List[PropertyEntity], query: dict
+) -> List[PropertyEntity]:
     type_filter = query.get("primary_type")
     is_open_required = query.get("is_open") is True
     requested_feature_paths = _requested_feature_paths(query)
@@ -58,7 +60,9 @@ def _type_score(item: PropertyEntity, type_filter: Any) -> float:
 
 
 def _pet_feature_score(item: PropertyEntity) -> float:
-    pet_features = (item.effective_pet_features or item.ai_analysis.pet_features).model_dump()
+    pet_features = (
+        item.effective_pet_features or item.ai_analysis.pet_features
+    ).model_dump()
     bool_values: List[bool] = []
 
     def _collect(values: Any) -> None:
@@ -83,12 +87,16 @@ def _requested_feature_paths(query: dict) -> List[str]:
     ]
 
 
-def _requested_feature_score(item: PropertyEntity, requested_feature_paths: List[str]) -> float:
+def _requested_feature_score(
+    item: PropertyEntity, requested_feature_paths: List[str]
+) -> float:
     if not requested_feature_paths:
         return 0.0
 
     matched = sum(
-        1 for path in requested_feature_paths if _get_nested_value(item.model_dump(), path) is True
+        1
+        for path in requested_feature_paths
+        if _get_nested_value(item.model_dump(), path) is True
     )
     return matched / len(requested_feature_paths)
 
@@ -111,10 +119,15 @@ def _extract_geo_context(query: dict) -> Optional[dict[str, Any]]:
     ):
         return None
 
-    return {"coordinates": (coordinates[0], coordinates[1]), "max_distance": max_distance}
+    return {
+        "coordinates": (coordinates[0], coordinates[1]),
+        "max_distance": max_distance,
+    }
 
 
-def _distance_score(item: PropertyEntity, geo_context: Optional[dict[str, Any]]) -> float:
+def _distance_score(
+    item: PropertyEntity, geo_context: Optional[dict[str, Any]]
+) -> float:
     if not geo_context:
         return 0.0
 

@@ -69,10 +69,14 @@ class DummyNoteRepo(IPropertyNoteRepository):
     async def delete(self, user_id: str, property_id: str) -> bool:
         raise NotImplementedError
 
-    async def list_by_user(self, user_id: str, page: int, size: int, query: str | None = None):
+    async def list_by_user(
+        self, user_id: str, page: int, size: int, query: str | None = None
+    ):
         raise NotImplementedError
 
-    async def get_noted_property_ids(self, user_id: str, property_ids: list[str]) -> set[str]:
+    async def get_noted_property_ids(
+        self, user_id: str, property_ids: list[str]
+    ) -> set[str]:
         return set()
 
 
@@ -136,12 +140,18 @@ def integration_search_setup(api_app):
     api_app.dependency_overrides.pop(get_property_service, None)
     api_app.dependency_overrides.pop(get_optional_current_user, None)
 
-def _assert_mongo_query_matches_case(mongo_query: dict, case: SearchConditionCase) -> None:
+
+def _assert_mongo_query_matches_case(
+    mongo_query: dict, case: SearchConditionCase
+) -> None:
     if case.query_checks.has_location is not None:
         assert ("location" in mongo_query) is case.query_checks.has_location
 
     if case.query_checks.max_distance is not None:
-        assert mongo_query["location"]["$nearSphere"]["$maxDistance"] == case.query_checks.max_distance
+        assert (
+            mongo_query["location"]["$nearSphere"]["$maxDistance"]
+            == case.query_checks.max_distance
+        )
 
     if case.query_checks.primary_type_includes is not None:
         primary_type_query = mongo_query["primary_type"]
@@ -157,8 +167,14 @@ def _assert_mongo_query_matches_case(mongo_query: dict, case: SearchConditionCas
         assert mongo_query["is_open"] is case.query_checks.is_open
 
     if case.query_checks.op_window_start is not None:
-        assert mongo_query["op_segments"]["$elemMatch"]["s"]["$lte"] == case.query_checks.op_window_end
-        assert mongo_query["op_segments"]["$elemMatch"]["e"]["$gte"] == case.query_checks.op_window_start
+        assert (
+            mongo_query["op_segments"]["$elemMatch"]["s"]["$lte"]
+            == case.query_checks.op_window_end
+        )
+        assert (
+            mongo_query["op_segments"]["$elemMatch"]["e"]["$gte"]
+            == case.query_checks.op_window_start
+        )
 
     for field_name, field_value in case.query_checks.feature_equals.items():
         assert mongo_query[field_name] is field_value
@@ -177,7 +193,9 @@ def test_search_api_exposes_expected_langgraph_conditions(
 ):
     repo, provider = integration_search_setup
 
-    response = client.get("/api/v1/property", params={"query": case.query, **case.params})
+    response = client.get(
+        "/api/v1/property", params={"query": case.query, **case.params}
+    )
 
     assert response.status_code == 200
     payload = response.json()

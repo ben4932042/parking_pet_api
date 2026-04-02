@@ -224,4 +224,6 @@ def test_get_user_property_notes_passes_query_and_handles_empty_results(
     assert note_service.calls == [
         {"fn": "list_notes", "user_id": "u1", "page": 1, "size": 20, "query": "cat"}
     ]
-    assert property_service.calls == [{"fn": "get_overviews_by_ids", "property_ids": []}]
+    assert property_service.calls == [
+        {"fn": "get_overviews_by_ids", "property_ids": []}
+    ]

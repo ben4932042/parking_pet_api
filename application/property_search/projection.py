@@ -67,7 +67,9 @@ def _build_generated_aliases(name: str) -> list[str]:
     return aliases
 
 
-def _merge_aliases(generated_aliases: list[str], manual_aliases: list[str]) -> list[str]:
+def _merge_aliases(
+    generated_aliases: list[str], manual_aliases: list[str]
+) -> list[str]:
     aliases: list[str] = []
     seen: set[str] = set()
 
@@ -82,6 +84,8 @@ def _merge_aliases(generated_aliases: list[str], manual_aliases: list[str]) -> l
         aliases.append(cleaned)
 
     return aliases
+
+
 def _normalize_space(value: str | None) -> str:
     if not value:
         return ""

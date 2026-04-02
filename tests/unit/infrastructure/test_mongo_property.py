@@ -118,48 +118,50 @@ async def test_get_by_keyword_searches_aliases_in_lexical_query():
     find_cursor = MagicMock()
     find_cursor.limit.return_value = find_cursor
     find_cursor.max_time_ms.return_value = find_cursor
-    find_cursor.to_list = AsyncMock(return_value=[
-        {
-            "_id": "place-1",
-            "place_id": "place-1",
-            "name": "青埔公七公園",
-            "aliases": ["公七公園"],
-            "latitude": 25.03,
-            "longitude": 121.56,
-            "regular_opening_hours": [],
-            "address": "Test address",
-            "primary_type": "park",
-            "ai_analysis": {
-                "venue_type": "park",
-                "ai_summary": "summary",
-                "pet_features": {
-                    "rules": {
-                        "leash_required": False,
-                        "stroller_required": False,
-                        "allow_on_floor": False,
+    find_cursor.to_list = AsyncMock(
+        return_value=[
+            {
+                "_id": "place-1",
+                "place_id": "place-1",
+                "name": "青埔公七公園",
+                "aliases": ["公七公園"],
+                "latitude": 25.03,
+                "longitude": 121.56,
+                "regular_opening_hours": [],
+                "address": "Test address",
+                "primary_type": "park",
+                "ai_analysis": {
+                    "venue_type": "park",
+                    "ai_summary": "summary",
+                    "pet_features": {
+                        "rules": {
+                            "leash_required": False,
+                            "stroller_required": False,
+                            "allow_on_floor": False,
+                        },
+                        "environment": {
+                            "stairs": False,
+                            "outdoor_seating": False,
+                            "spacious": False,
+                            "indoor_ac": False,
+                            "off_leash_possible": False,
+                            "pet_friendly_floor": False,
+                            "has_shop_pet": False,
+                        },
+                        "services": {
+                            "pet_menu": False,
+                            "free_water": False,
+                            "free_treats": False,
+                            "pet_seating": False,
+                        },
                     },
-                    "environment": {
-                        "stairs": False,
-                        "outdoor_seating": False,
-                        "spacious": False,
-                        "indoor_ac": False,
-                        "off_leash_possible": False,
-                        "pet_friendly_floor": False,
-                        "has_shop_pet": False,
-                    },
-                    "services": {
-                        "pet_menu": False,
-                        "free_water": False,
-                        "free_treats": False,
-                        "pet_seating": False,
-                    },
+                    "highlights": [],
+                    "warnings": [],
+                    "rating": 4.0,
                 },
-                "highlights": [],
-                "warnings": [],
-                "rating": 4.0,
-            },
-        }
-    ])
+            }
+        ]
+    )
     collection = MagicMock()
     collection.find.return_value = find_cursor
 

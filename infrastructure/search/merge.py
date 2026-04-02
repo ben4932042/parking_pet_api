@@ -87,7 +87,9 @@ def merge_plan_node(state: SearchGraphState) -> dict[str, Any]:
     if location_intent.kind == "address" and location_intent.value:
         mongo_query["address"] = {"$regex": location_intent.value, "$options": "i"}
         matched_fields.append("address")
-        preferences.append({"key": "address_preference", "label": location_intent.value})
+        preferences.append(
+            {"key": "address_preference", "label": location_intent.value}
+        )
     elif location_intent.kind == "landmark" and location_intent.value:
         matched_fields.append("landmark")
         if location_intent.value != "CURRENT_LOCATION":

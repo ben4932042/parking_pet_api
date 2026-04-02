@@ -36,7 +36,9 @@ class UserServiceStub:
 class FavoritePropertyServiceStub:
     def __init__(self, properties=None, noted_property_ids=None):
         self.properties = properties or []
-        self.noted_property_ids = noted_property_ids if noted_property_ids is not None else {"p1"}
+        self.noted_property_ids = (
+            noted_property_ids if noted_property_ids is not None else {"p1"}
+        )
         self.calls = []
 
     async def get_overviews_by_ids(self, property_ids):
@@ -52,6 +54,7 @@ class FavoritePropertyServiceStub:
             }
         )
         return self.noted_property_ids
+
 
 def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben")
@@ -140,7 +143,9 @@ def test_update_user_favorite_property_can_remove_favorite(
     current_user = user_entity_factory(
         identifier="u1", name="Ben", favorite_property_ids=["p1"]
     )
-    updated_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=[])
+    updated_user = user_entity_factory(
+        identifier="u1", name="Ben", favorite_property_ids=[]
+    )
     service = override_api_dep(get_user_service, UserServiceStub(user=updated_user))
     override_api_dep(get_current_user, current_user)
 
@@ -175,7 +180,9 @@ def test_get_user_favorite_property_status_returns_boolean(
 def test_get_user_favorite_property_status_returns_false_when_not_favorited(
     client, override_api_dep, user_entity_factory
 ):
-    current_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=[])
+    current_user = user_entity_factory(
+        identifier="u1", name="Ben", favorite_property_ids=[]
+    )
     override_api_dep(get_current_user, current_user)
 
     response = client.get("/api/v1/user/favorite/p1")
@@ -256,7 +263,9 @@ def test_get_user_favorite_properties_sorts_noted_items_first(
 def test_get_user_favorite_properties_returns_empty_list(
     client, override_api_dep, user_entity_factory
 ):
-    current_user = user_entity_factory(identifier="u1", name="Ben", favorite_property_ids=[])
+    current_user = user_entity_factory(
+        identifier="u1", name="Ben", favorite_property_ids=[]
+    )
     service = override_api_dep(
         get_property_service,
         FavoritePropertyServiceStub(properties=[], noted_property_ids=set()),

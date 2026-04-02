@@ -355,9 +355,7 @@ def test_search_route_records_history_for_authenticated_user(
         get_property_service,
         CapturePropertyService(items=[property_entity_factory(identifier="p1")]),
     )
-    history_service = override_api_dep(
-        get_user_service, UserServiceStub()
-    )
+    history_service = override_api_dep(get_user_service, UserServiceStub())
     current_user = user_entity_factory(identifier="u1", name="Ben")
     override_api_dep(get_optional_current_user, current_user)
 
@@ -375,9 +373,7 @@ def test_search_route_records_history_for_authenticated_user(
 
 def test_search_route_skips_history_when_user_is_anonymous(client, override_api_dep):
     override_api_dep(get_property_service, CapturePropertyService())
-    history_service = override_api_dep(
-        get_user_service, UserServiceStub()
-    )
+    history_service = override_api_dep(get_user_service, UserServiceStub())
 
     response = client.get("/api/v1/property", params={"query": "台北咖啡廳"})
 
