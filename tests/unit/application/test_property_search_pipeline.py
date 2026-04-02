@@ -217,7 +217,7 @@ async def test_search_by_keyword_short_circuits_hybrid_on_exact_keyword_hit(
 
 
 @pytest.mark.asyncio
-async def test_search_by_keyword_exact_keyword_hit_must_still_match_semantic_filters(
+async def test_search_by_keyword_exact_keyword_hit_bypasses_semantic_filters(
     property_entity_factory,
 ):
     keyword_exact_wrong_type = property_entity_factory(
@@ -252,11 +252,10 @@ async def test_search_by_keyword_exact_keyword_hit_must_still_match_semantic_fil
 
     results, plan = await service.search_by_keyword("寵物公園")
 
-    assert [item.id for item in results] == ["semantic-park"]
+    assert [item.id for item in results] == ["keyword-exact"]
     assert plan.execution_modes == ["semantic", "keyword"]
     assert repo.calls == [
         ("get_by_keyword", "寵物公園"),
-        ("find_by_query", {"primary_type": "park"}, None),
     ]
 
 
@@ -264,9 +263,9 @@ async def test_search_by_keyword_exact_keyword_hit_must_still_match_semantic_fil
 async def test_search_by_keyword_filters_far_keyword_hits_by_map_radius(
     property_entity_factory,
 ):
-    far_keyword_exact = property_entity_factory(
-        identifier="far-keyword-exact",
-        name="寵物公園",
+    far_keyword_partial = property_entity_factory(
+        identifier="far-keyword-partial",
+        name="寵物公園大草皮",
         primary_type="park",
         latitude=25.1617,
         longitude=121.7644,
@@ -280,7 +279,7 @@ async def test_search_by_keyword_filters_far_keyword_hits_by_map_radius(
     )
     repo = CaptureRepo(
         query_items=[near_semantic_match],
-        keyword_items=[far_keyword_exact],
+        keyword_items=[far_keyword_partial],
     )
     service = PropertyService(
         repo=repo,

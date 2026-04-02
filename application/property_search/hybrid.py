@@ -3,6 +3,20 @@ from application.property_search.ranking import score_search_result
 from domain.entities.property import PropertyEntity
 
 
+def is_exact_lexical_match(
+    *,
+    query_text: str,
+    item: PropertyEntity,
+) -> bool:
+    normalized_query = normalize_text_for_match(query_text)
+    if not normalized_query:
+        return False
+
+    normalized_name = normalize_text_for_match(item.name)
+    normalized_aliases = [normalize_text_for_match(alias) for alias in item.aliases]
+    return normalized_query == normalized_name or normalized_query in normalized_aliases
+
+
 def should_short_circuit_hybrid_keyword(
     *,
     query_text: str,
@@ -17,13 +31,7 @@ def should_short_circuit_hybrid_keyword(
     if top_item.id not in lexical_ids:
         return False
 
-    normalized_query = normalize_text_for_match(query_text)
-    if not normalized_query:
-        return False
-
-    normalized_name = normalize_text_for_match(top_item.name)
-    normalized_aliases = [normalize_text_for_match(alias) for alias in top_item.aliases]
-    return normalized_query == normalized_name or normalized_query in normalized_aliases
+    return is_exact_lexical_match(query_text=query_text, item=top_item)
 
 
 def rank_combined_search_results(

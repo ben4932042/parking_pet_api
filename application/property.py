@@ -5,6 +5,7 @@ from typing import Any, List, Optional
 
 from application.exceptions import ConflictError, NotFoundError
 from application.property_search.hybrid import (
+    is_exact_lexical_match,
     rank_combined_search_results,
     should_short_circuit_hybrid_keyword,
 )
@@ -136,6 +137,11 @@ class PropertyService:
                     keyword_items,
                     lexical_keyword_items,
                 ) = await self._search_keyword_hybrid_with_metadata(q)
+                exact_lexical_keyword_items = [
+                    item
+                    for item in lexical_keyword_items
+                    if is_exact_lexical_match(query_text=q, item=item)
+                ]
                 if generate_query:
                     keyword_items = self._filter_keyword_items_by_semantic_query(
                         keyword_items,
@@ -149,6 +155,15 @@ class PropertyService:
                             open_at_minutes=open_at_minutes,
                         )
                     )
+                    if exact_lexical_keyword_items:
+                        keyword_items = self._merge_unique_items(
+                            exact_lexical_keyword_items,
+                            keyword_items,
+                        )
+                        lexical_keyword_items = self._merge_unique_items(
+                            exact_lexical_keyword_items,
+                            lexical_keyword_items,
+                        )
                 if should_short_circuit_hybrid_keyword(
                     query_text=q,
                     lexical_items=lexical_keyword_items,
@@ -246,6 +261,21 @@ class PropertyService:
                 open_at_minutes=open_at_minutes,
             )
         ]
+
+    @staticmethod
+    def _merge_unique_items(
+        priority_items: list[PropertyEntity],
+        fallback_items: list[PropertyEntity],
+    ) -> list[PropertyEntity]:
+        merged: list[PropertyEntity] = []
+        seen: set[str] = set()
+        for item in [*priority_items, *fallback_items]:
+            item_id = str(item.id)
+            if item_id in seen:
+                continue
+            seen.add(item_id)
+            merged.append(item)
+        return merged
 
     def _matches_semantic_query(
         self,
