@@ -173,7 +173,7 @@ async def test_search_by_keyword_combines_hybrid_execution_modes(
 
 
 @pytest.mark.asyncio
-async def test_search_by_keyword_short_circuits_hybrid_on_exact_keyword_hit(
+async def test_search_by_keyword_keeps_exact_keyword_hit_and_still_runs_semantic(
     property_entity_factory,
 ):
     keyword_exact = property_entity_factory(
@@ -209,10 +209,11 @@ async def test_search_by_keyword_short_circuits_hybrid_on_exact_keyword_hit(
 
     results, plan = await service.search_by_keyword("寵物公園")
 
-    assert [item.id for item in results] == ["keyword-exact"]
+    assert [item.id for item in results] == ["keyword-exact", "semantic-park"]
     assert plan.execution_modes == ["semantic", "keyword"]
     assert repo.calls == [
         ("get_by_keyword", "寵物公園"),
+        ("find_by_query", {"primary_type": "park"}, None),
     ]
 
 
@@ -252,10 +253,11 @@ async def test_search_by_keyword_exact_keyword_hit_bypasses_semantic_filters(
 
     results, plan = await service.search_by_keyword("寵物公園")
 
-    assert [item.id for item in results] == ["keyword-exact"]
+    assert [item.id for item in results] == ["keyword-exact", "semantic-park"]
     assert plan.execution_modes == ["semantic", "keyword"]
     assert repo.calls == [
         ("get_by_keyword", "寵物公園"),
+        ("find_by_query", {"primary_type": "park"}, None),
     ]
 
 

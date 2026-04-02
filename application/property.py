@@ -7,7 +7,6 @@ from application.exceptions import ConflictError, NotFoundError
 from application.property_search.hybrid import (
     is_exact_lexical_match,
     rank_combined_search_results,
-    should_short_circuit_hybrid_keyword,
 )
 from application.property_search.projection import build_property_alias_fields
 from application.property_search.ranking import rank_search_results
@@ -164,16 +163,6 @@ class PropertyService:
                             exact_lexical_keyword_items,
                             lexical_keyword_items,
                         )
-                if should_short_circuit_hybrid_keyword(
-                    query_text=q,
-                    lexical_items=lexical_keyword_items,
-                    ranked_keyword_items=keyword_items,
-                ):
-                    logger.debug(
-                        "Short-circuiting hybrid search on high-confidence keyword hit",
-                        extra={"query_text": q},
-                    )
-                    return keyword_items, search_plan
             else:
                 keyword_items = await self._search_keyword(q)
                 lexical_keyword_items = keyword_items
@@ -188,17 +177,6 @@ class PropertyService:
                     "warnings": search_plan.warnings,
                 },
             )
-            if keyword_items:
-                keyword_items = self._filter_keyword_items_by_semantic_query(
-                    keyword_items,
-                    generate_query,
-                    open_at_minutes=open_at_minutes,
-                )
-                lexical_keyword_items = self._filter_keyword_items_by_semantic_query(
-                    lexical_keyword_items,
-                    generate_query,
-                    open_at_minutes=open_at_minutes,
-                )
             semantic_items = await self.repo.find_by_query(
                 generate_query, open_at_minutes=open_at_minutes
             )
