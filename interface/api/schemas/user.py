@@ -8,6 +8,7 @@ from domain.entities import PyObjectId
 class UserDetailResponse(BaseModel):
     id: PyObjectId = Field(alias="_id")
     name: str
+    pet_name: str | None = None
     source: str
     favorite_property_ids: list[str]
     created_at: datetime

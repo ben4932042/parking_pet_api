@@ -14,13 +14,19 @@ class UserRepository(IUserRepository):
     def __init__(self, client, collection_name: str):
         self.collection = client.get_collection(collection_name)
 
-    async def basic_sign_in(self, name: str) -> UserEntity:
+    async def basic_sign_in(self, name: str, pet_name: str | None = None) -> UserEntity:
         result = await self.collection.insert_one(
-            {"name": name, "favorite_property_ids": [], "recent_searches": []}
+            {
+                "name": name,
+                "pet_name": pet_name,
+                "favorite_property_ids": [],
+                "recent_searches": [],
+            }
         )
         return UserEntity(
             _id=result.inserted_id,
             name=name,
+            pet_name=pet_name,
             source="basic",
             favorite_property_ids=[],
             recent_searches=[],

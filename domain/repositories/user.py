@@ -7,7 +7,9 @@ from domain.entities.user import UserEntity
 
 class IUserRepository(ABC):
     @abstractmethod
-    async def basic_sign_in(self, name: str) -> UserEntity: ...
+    async def basic_sign_in(
+        self, name: str, pet_name: str | None = None
+    ) -> UserEntity: ...
     @abstractmethod
     async def get_user_by_id(self, user_id: PyObjectId) -> Optional[UserEntity]: ...
     @abstractmethod

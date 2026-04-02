@@ -9,8 +9,8 @@ class UserServiceStub:
         self.user = user
         self.calls = []
 
-    async def basic_sign_in(self, name: str):
-        self.calls.append({"fn": "basic_sign_in", "name": name})
+    async def basic_sign_in(self, name: str, pet_name: str | None = None):
+        self.calls.append({"fn": "basic_sign_in", "name": name, "pet_name": pet_name})
         return self.user
 
     async def update_user_profile(self, user_id: str, name: str):
@@ -57,16 +57,22 @@ class FavoritePropertyServiceStub:
 
 
 def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
-    user = user_entity_factory(identifier="u1", name="Ben")
+    user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
     service = override_api_dep(get_user_service, UserServiceStub(user=user))
 
-    response = client.post("/api/v1/user/login", params={"username": "Ben"})
+    response = client.post(
+        "/api/v1/user/login",
+        params={"username": "Ben", "pet_name": "Mochi"},
+    )
 
     assert response.status_code == 200
     data = response.json()
     assert data["_id"] == "u1"
     assert data["name"] == "Ben"
-    assert service.calls == [{"fn": "basic_sign_in", "name": "Ben"}]
+    assert data["pet_name"] == "Mochi"
+    assert service.calls == [
+        {"fn": "basic_sign_in", "name": "Ben", "pet_name": "Mochi"}
+    ]
 
 
 def test_update_user_profile_returns_updated_user(
@@ -107,6 +113,7 @@ def test_get_me_returns_current_user(client, override_api_dep, user_entity_facto
     data = response.json()
     assert data["_id"] == "u1"
     assert data["name"] == "Ben"
+    assert data["pet_name"] is None
     assert "recent_searches" not in data
 
 

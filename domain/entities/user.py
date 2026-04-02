@@ -14,6 +14,7 @@ class UserSearchRecord(BaseModel):
 class UserEntity(BaseModel):
     id: PyObjectId = Field(alias="_id")
     name: str
+    pet_name: str | None = None
     source: Literal["apple", "basic"] = Field(default="basic")
     favorite_property_ids: list[str] = Field(default_factory=list)
     recent_searches: list[UserSearchRecord] = Field(default_factory=list)

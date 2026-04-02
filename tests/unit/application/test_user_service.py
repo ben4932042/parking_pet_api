@@ -9,8 +9,8 @@ class UserRepoStub(IUserRepository):
         self.user = user
         self.calls = []
 
-    async def basic_sign_in(self, name: str):
-        self.calls.append({"fn": "basic_sign_in", "name": name})
+    async def basic_sign_in(self, name: str, pet_name: str | None = None):
+        self.calls.append({"fn": "basic_sign_in", "name": name, "pet_name": pet_name})
         return self.user
 
     async def get_user_by_id(self, user_id: str):
@@ -54,10 +54,10 @@ async def test_basic_sign_in_delegates_to_repo(user_entity_factory):
     repo = UserRepoStub(user=user)
     service = UserService(repo=repo)
 
-    result = await service.basic_sign_in(name="Ben")
+    result = await service.basic_sign_in(name="Ben", pet_name="Mochi")
 
     assert result == user
-    assert repo.calls == [{"fn": "basic_sign_in", "name": "Ben"}]
+    assert repo.calls == [{"fn": "basic_sign_in", "name": "Ben", "pet_name": "Mochi"}]
 
 
 @pytest.mark.asyncio

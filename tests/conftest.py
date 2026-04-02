@@ -148,6 +148,7 @@ def user_entity_factory():
         *,
         identifier: str = "u1",
         name: str = "Ben",
+        pet_name: str | None = None,
         source: str = "basic",
         favorite_property_ids: list[str] | None = None,
         recent_searches: list[dict] | None = None,
@@ -155,6 +156,7 @@ def user_entity_factory():
         return UserEntity(
             _id=identifier,
             name=name,
+            pet_name=pet_name,
             source=source,
             favorite_property_ids=favorite_property_ids or [],
             recent_searches=recent_searches or [],

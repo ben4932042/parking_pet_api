@@ -27,9 +27,10 @@ router = APIRouter(prefix="/user")
 )
 async def create_new_user(
     username: str,
+    pet_name: str | None = Query(default=None),
     service: UserService = Depends(get_user_service),
 ):
-    return await service.basic_sign_in(name=username)
+    return await service.basic_sign_in(name=username, pet_name=pet_name)
 
 
 @router.patch(
