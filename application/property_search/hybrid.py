@@ -3,6 +3,32 @@ from application.property_search.ranking import score_search_result
 from domain.entities.property import PropertyEntity
 
 
+LEXICAL_PREFIX_BOUNDARY_CHARS = {
+    "(",
+    ")",
+    "[",
+    "]",
+    "{",
+    "}",
+    "（",
+    "）",
+    "-",
+    "_",
+    " ",
+}
+
+
+def _matches_lexical_lookup_variant(normalized_query: str, candidate: str) -> bool:
+    if not candidate.startswith(normalized_query):
+        return False
+
+    if len(candidate) == len(normalized_query):
+        return True
+
+    next_char = candidate[len(normalized_query)]
+    return next_char in LEXICAL_PREFIX_BOUNDARY_CHARS
+
+
 def is_exact_lexical_match(
     *,
     query_text: str,
@@ -14,7 +40,12 @@ def is_exact_lexical_match(
 
     normalized_name = normalize_text_for_match(item.name)
     normalized_aliases = [normalize_text_for_match(alias) for alias in item.aliases]
-    return normalized_query == normalized_name or normalized_query in normalized_aliases
+    if _matches_lexical_lookup_variant(normalized_query, normalized_name):
+        return True
+    return any(
+        _matches_lexical_lookup_variant(normalized_query, alias)
+        for alias in normalized_aliases
+    )
 
 
 def should_short_circuit_hybrid_keyword(

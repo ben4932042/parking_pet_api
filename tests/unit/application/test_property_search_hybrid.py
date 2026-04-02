@@ -20,6 +20,24 @@ def test_should_short_circuit_hybrid_keyword_for_exact_lexical_match(
     )
 
 
+def test_should_short_circuit_hybrid_keyword_for_contained_alias_match(
+    property_entity_factory,
+):
+    alias_match = property_entity_factory(
+        identifier="alias-match",
+        name="寵物公園(桃園青埔店) - 專業寵物用品&寵物美容",
+    )
+
+    assert (
+        should_short_circuit_hybrid_keyword(
+            query_text="寵物公園",
+            lexical_items=[alias_match],
+            ranked_keyword_items=[alias_match],
+        )
+        is True
+    )
+
+
 def test_should_not_short_circuit_hybrid_keyword_for_non_lexical_top_hit(
     property_entity_factory,
 ):
