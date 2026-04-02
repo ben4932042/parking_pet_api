@@ -84,7 +84,7 @@ This is the core product surface. It handles:
 
 This covers:
 
-- basic sign-in by username
+- basic user registration by name
 - current user lookup via `x-user-id`
 - profile updates
 - favorite property management
@@ -307,7 +307,7 @@ Main routes under `/api/v1`:
 
 ### User routes
 
-- `POST /user/login`
+- `POST /user/register`
 - `PATCH /user/profile`
 - `GET /user/me`
 - `PUT /user/favorite/{property_id}`

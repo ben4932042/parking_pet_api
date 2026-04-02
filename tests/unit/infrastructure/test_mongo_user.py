@@ -6,7 +6,7 @@ from infrastructure.mongo.user import UserRepository
 
 
 @pytest.mark.asyncio
-async def test_basic_sign_in_persists_pet_name():
+async def test_register_basic_user_persists_pet_name():
     collection = AsyncMock()
     collection.insert_one.return_value.inserted_id = "507f1f77bcf86cd799439011"
 
@@ -16,7 +16,7 @@ async def test_basic_sign_in_persists_pet_name():
 
     repo = UserRepository(client=ClientStub(), collection_name="user")
 
-    user = await repo.basic_sign_in(name="Ben", pet_name="Mochi")
+    user = await repo.register_basic_user(name="Ben", pet_name="Mochi")
 
     assert user.id == "507f1f77bcf86cd799439011"
     assert user.name == "Ben"
@@ -143,3 +143,37 @@ async def test_record_recent_search_respects_limit():
     )
 
     assert [item.query for item in user.recent_searches] == ["q0", "q1"]
+
+
+@pytest.mark.asyncio
+async def test_update_user_profile_updates_name_and_pet_name():
+    collection = AsyncMock()
+    collection.find_one.return_value = {
+        "_id": "507f1f77bcf86cd799439011",
+        "name": "Ben Updated",
+        "pet_name": "Mochi",
+        "source": "basic",
+        "favorite_property_ids": [],
+        "recent_searches": [],
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+    }
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = UserRepository(client=ClientStub(), collection_name="user")
+
+    user = await repo.update_user_profile(
+        user_id="507f1f77bcf86cd799439011",
+        name="Ben Updated",
+        pet_name="Mochi",
+    )
+
+    assert user.name == "Ben Updated"
+    assert user.pet_name == "Mochi"
+    collection.update_one.assert_awaited_once_with(
+        {"_id": pytest.importorskip("bson").ObjectId("507f1f77bcf86cd799439011")},
+        {"$set": {"name": "Ben Updated", "pet_name": "Mochi"}},
+    )

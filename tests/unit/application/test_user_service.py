@@ -9,17 +9,29 @@ class UserRepoStub(IUserRepository):
         self.user = user
         self.calls = []
 
-    async def basic_sign_in(self, name: str, pet_name: str | None = None):
-        self.calls.append({"fn": "basic_sign_in", "name": name, "pet_name": pet_name})
+    async def register_basic_user(self, name: str, pet_name: str | None = None):
+        self.calls.append(
+            {"fn": "register_basic_user", "name": name, "pet_name": pet_name}
+        )
         return self.user
 
     async def get_user_by_id(self, user_id: str):
         self.calls.append({"fn": "get_user_by_id", "user_id": user_id})
         return self.user
 
-    async def update_user_profile(self, user_id: str, name: str):
+    async def update_user_profile(
+        self,
+        user_id: str,
+        name: str,
+        pet_name: str | None = None,
+    ):
         self.calls.append(
-            {"fn": "update_user_profile", "user_id": user_id, "name": name}
+            {
+                "fn": "update_user_profile",
+                "user_id": user_id,
+                "name": name,
+                "pet_name": pet_name,
+            }
         )
         return self.user
 
@@ -49,15 +61,17 @@ class UserRepoStub(IUserRepository):
 
 
 @pytest.mark.asyncio
-async def test_basic_sign_in_delegates_to_repo(user_entity_factory):
+async def test_register_basic_user_delegates_to_repo(user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben")
     repo = UserRepoStub(user=user)
     service = UserService(repo=repo)
 
-    result = await service.basic_sign_in(name="Ben", pet_name="Mochi")
+    result = await service.register_basic_user(name="Ben", pet_name="Mochi")
 
     assert result == user
-    assert repo.calls == [{"fn": "basic_sign_in", "name": "Ben", "pet_name": "Mochi"}]
+    assert repo.calls == [
+        {"fn": "register_basic_user", "name": "Ben", "pet_name": "Mochi"}
+    ]
 
 
 @pytest.mark.asyncio
@@ -74,15 +88,26 @@ async def test_get_user_by_id_delegates_to_repo(user_entity_factory):
 
 @pytest.mark.asyncio
 async def test_update_user_profile_delegates_to_repo(user_entity_factory):
-    updated_user = user_entity_factory(identifier="u1", name="Ben Updated")
+    updated_user = user_entity_factory(
+        identifier="u1", name="Ben Updated", pet_name="Mochi"
+    )
     repo = UserRepoStub(user=updated_user)
     service = UserService(repo=repo)
 
-    result = await service.update_user_profile(user_id="u1", name="Ben Updated")
+    result = await service.update_user_profile(
+        user_id="u1",
+        name="Ben Updated",
+        pet_name="Mochi",
+    )
 
     assert result == updated_user
     assert repo.calls == [
-        {"fn": "update_user_profile", "user_id": "u1", "name": "Ben Updated"}
+        {
+            "fn": "update_user_profile",
+            "user_id": "u1",
+            "name": "Ben Updated",
+            "pet_name": "Mochi",
+        }
     ]
 
 

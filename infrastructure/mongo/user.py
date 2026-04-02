@@ -14,7 +14,9 @@ class UserRepository(IUserRepository):
     def __init__(self, client, collection_name: str):
         self.collection = client.get_collection(collection_name)
 
-    async def basic_sign_in(self, name: str, pet_name: str | None = None) -> UserEntity:
+    async def register_basic_user(
+        self, name: str, pet_name: str | None = None
+    ) -> UserEntity:
         result = await self.collection.insert_one(
             {
                 "name": name,
@@ -38,9 +40,15 @@ class UserRepository(IUserRepository):
             return UserEntity(**doc)
         return None
 
-    async def update_user_profile(self, user_id: str, name: str) -> UserEntity:
+    async def update_user_profile(
+        self,
+        user_id: str,
+        name: str,
+        pet_name: str | None = None,
+    ) -> UserEntity:
         await self.collection.update_one(
-            {"_id": ObjectId(user_id)}, {"$set": {"name": name}}
+            {"_id": ObjectId(user_id)},
+            {"$set": {"name": name, "pet_name": pet_name}},
         )
         return await self.get_user_by_id(user_id)
 

@@ -33,7 +33,19 @@ def test_get_me_rejects_invalid_user_id(client, override_api_dep):
 
 
 def test_update_profile_requires_authentication_header(client):
-    response = client.patch("/api/v1/user/profile", params={"name": "Ben Updated"})
+    response = client.patch(
+        "/api/v1/user/profile",
+        json={"name": "Ben Updated", "pet_name": "Mochi"},
+    )
+
+    assert response.status_code == 403
+    data = response.json()
+    assert data["code"] == "FORBIDDEN"
+    assert data["detail"] == "Authentication required"
+
+
+def test_get_profile_requires_authentication_header(client):
+    response = client.get("/api/v1/user/profile")
 
     assert response.status_code == 403
     data = response.json()

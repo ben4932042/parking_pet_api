@@ -15,38 +15,55 @@ from interface.api.schemas.property_note import UserPropertyNoteListItemResponse
 from interface.api.schemas.search_history import UserSearchHistoryItemResponse
 from interface.api.schemas.user import (
     UserDetailResponse,
+    UserAuthStatusResponse,
     FavoritePropertyResponse,
     FavoritePropertyStatusResponse,
+    RegisterBasicUserRequest,
+    UpdateUserProfileRequest,
+    UserProfileResponse,
 )
 
 router = APIRouter(prefix="/user")
 
 
 @router.post(
-    "/login", status_code=status.HTTP_200_OK, response_model=UserDetailResponse
+    "/register", status_code=status.HTTP_200_OK, response_model=UserDetailResponse
 )
-async def create_new_user(
-    username: str,
-    pet_name: str | None = Query(default=None),
+async def register_basic_user(
+    payload: RegisterBasicUserRequest,
     service: UserService = Depends(get_user_service),
 ):
-    return await service.basic_sign_in(name=username, pet_name=pet_name)
+    return await service.register_basic_user(
+        name=payload.name,
+        pet_name=payload.pet_name,
+    )
+
+
+@router.get(
+    "/profile", status_code=status.HTTP_200_OK, response_model=UserProfileResponse
+)
+async def get_user_profile(current_user=Depends(get_current_user)):
+    return current_user
 
 
 @router.patch(
-    "/profile", status_code=status.HTTP_201_CREATED, response_model=UserDetailResponse
+    "/profile", status_code=status.HTTP_200_OK, response_model=UserProfileResponse
 )
 async def update_user_profile(
-    name: str,
+    payload: UpdateUserProfileRequest,
     service: UserService = Depends(get_user_service),
     current_user=Depends(get_current_user),
 ):
-    return await service.update_user_profile(user_id=current_user.id, name=name)
+    return await service.update_user_profile(
+        user_id=current_user.id,
+        name=payload.name,
+        pet_name=payload.pet_name,
+    )
 
 
-@router.get("/me", status_code=status.HTTP_200_OK, response_model=UserDetailResponse)
+@router.get("/me", status_code=status.HTTP_200_OK, response_model=UserAuthStatusResponse)
 async def get_me(current_user=Depends(get_current_user)):
-    return current_user
+    return UserAuthStatusResponse(authenticated=current_user is not None)
 
 
 @router.put(

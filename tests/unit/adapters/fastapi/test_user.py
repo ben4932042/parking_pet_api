@@ -9,13 +9,25 @@ class UserServiceStub:
         self.user = user
         self.calls = []
 
-    async def basic_sign_in(self, name: str, pet_name: str | None = None):
-        self.calls.append({"fn": "basic_sign_in", "name": name, "pet_name": pet_name})
+    async def register_basic_user(self, name: str, pet_name: str | None = None):
+        self.calls.append(
+            {"fn": "register_basic_user", "name": name, "pet_name": pet_name}
+        )
         return self.user
 
-    async def update_user_profile(self, user_id: str, name: str):
+    async def update_user_profile(
+        self,
+        user_id: str,
+        name: str,
+        pet_name: str | None = None,
+    ):
         self.calls.append(
-            {"fn": "update_user_profile", "user_id": user_id, "name": name}
+            {
+                "fn": "update_user_profile",
+                "user_id": user_id,
+                "name": name,
+                "pet_name": pet_name,
+            }
         )
         return self.user
 
@@ -56,13 +68,13 @@ class FavoritePropertyServiceStub:
         return self.noted_property_ids
 
 
-def test_user_login_returns_user_detail(client, override_api_dep, user_entity_factory):
+def test_user_register_returns_user_detail(client, override_api_dep, user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
     service = override_api_dep(get_user_service, UserServiceStub(user=user))
 
     response = client.post(
-        "/api/v1/user/login",
-        params={"username": "Ben", "pet_name": "Mochi"},
+        "/api/v1/user/register",
+        json={"name": "Ben", "pet_name": "Mochi"},
     )
 
     assert response.status_code == 200
@@ -71,30 +83,68 @@ def test_user_login_returns_user_detail(client, override_api_dep, user_entity_fa
     assert data["name"] == "Ben"
     assert data["pet_name"] == "Mochi"
     assert service.calls == [
-        {"fn": "basic_sign_in", "name": "Ben", "pet_name": "Mochi"}
+        {"fn": "register_basic_user", "name": "Ben", "pet_name": "Mochi"}
     ]
 
 
-def test_update_user_profile_returns_updated_user(
+def test_get_user_profile_returns_name_and_pet_name(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/profile")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data == {"name": "Ben", "pet_name": "Mochi"}
+
+
+def test_update_user_profile_returns_updated_profile(
     client, override_api_dep, user_entity_factory
 ):
     current_user = user_entity_factory(identifier="u1", name="Ben")
-    updated_user = user_entity_factory(identifier="u1", name="Ben Updated")
+    override_api_dep(get_current_user, current_user)
+
+    response = client.post(
+        "/api/v1/user/profile",
+        json={"name": "Ben Updated", "pet_name": "Mochi"},
+    )
+
+    assert response.status_code == 405
+
+
+def test_update_user_profile_returns_updated_profile(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    updated_user = user_entity_factory(
+        identifier="u1", name="Ben Updated", pet_name="Mochi"
+    )
     service = override_api_dep(get_user_service, UserServiceStub(user=updated_user))
     override_api_dep(get_current_user, current_user)
 
-    response = client.patch("/api/v1/user/profile", params={"name": "Ben Updated"})
-
-    assert response.status_code == 201
+    response = client.patch(
+        "/api/v1/user/profile",
+        json={"name": "Ben Updated", "pet_name": "Mochi"},
+    )
+ 
+    assert response.status_code == 200
     data = response.json()
-    assert data["_id"] == "u1"
-    assert data["name"] == "Ben Updated"
+    assert data == {"name": "Ben Updated", "pet_name": "Mochi"}
     assert service.calls == [
-        {"fn": "update_user_profile", "user_id": "u1", "name": "Ben Updated"}
+        {
+            "fn": "update_user_profile",
+            "user_id": "u1",
+            "name": "Ben Updated",
+            "pet_name": "Mochi",
+        }
     ]
 
 
-def test_get_me_returns_current_user(client, override_api_dep, user_entity_factory):
+def test_get_me_returns_authentication_status(
+    client, override_api_dep, user_entity_factory
+):
     current_user = user_entity_factory(
         identifier="u1",
         name="Ben",
@@ -110,11 +160,33 @@ def test_get_me_returns_current_user(client, override_api_dep, user_entity_facto
     response = client.get("/api/v1/user/me")
 
     assert response.status_code == 200
-    data = response.json()
-    assert data["_id"] == "u1"
-    assert data["name"] == "Ben"
-    assert data["pet_name"] is None
-    assert "recent_searches" not in data
+    assert response.json() == {"authenticated": True}
+
+
+def test_register_rejects_blank_name(client, override_api_dep):
+    override_api_dep(get_user_service, UserServiceStub())
+
+    response = client.post(
+        "/api/v1/user/register",
+        json={"name": "   ", "pet_name": "Mochi"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_profile_rejects_blank_pet_name(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    override_api_dep(get_current_user, current_user)
+    override_api_dep(get_user_service, UserServiceStub())
+
+    response = client.patch(
+        "/api/v1/user/profile",
+        json={"name": "Ben", "pet_name": "   "},
+    )
+
+    assert response.status_code == 422
 
 
 def test_update_user_favorite_property_returns_status(
