@@ -11,6 +11,9 @@ class IEnrichmentProvider(ABC):
     def create_property_by_name(self, property_name: str) -> AnalysisSource: ...
 
     @abstractmethod
+    def renew_property_from_details(self, source: AnalysisSource) -> AnalysisSource: ...
+
+    @abstractmethod
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity: ...
 
     @abstractmethod

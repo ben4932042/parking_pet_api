@@ -11,6 +11,7 @@ This directory stores durable development guidance and feature-specific document
 Use these documents for repository-wide development rules, tooling workflows, and documentation conventions.
 
 - `docs/documentation/architecture.md`
+- `docs/development/workflow-external-service-costs.md`
 - `docs/development/workflow-user-feedback.md`
 - `docs/development/workflow-subagent-collaboration.md`
 

@@ -58,6 +58,10 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
         insight_info = get_place_details(basic_info)
         return AnalysisSource.from_parts(basic_info, insight_info)
 
+    def renew_property_from_details(self, source: AnalysisSource) -> AnalysisSource:
+        insight_info = get_place_details(source)
+        return AnalysisSource.from_parts(source, insight_info)
+
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity:
         return distill_property_insights(source)
 

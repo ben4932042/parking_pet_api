@@ -16,6 +16,9 @@ class DummyEnrichmentProvider(IEnrichmentProvider):
     def create_property_by_name(self, property_name: str):
         raise NotImplementedError
 
+    def renew_property_from_details(self, source):
+        raise NotImplementedError
+
     def generate_ai_analysis(self, source):
         raise NotImplementedError
 
@@ -69,6 +72,9 @@ class DummyRawDataRepo(IPlaceRawDataRepository):
         raise NotImplementedError
 
     async def save(self, source):
+        raise NotImplementedError
+
+    async def get_by_place_id(self, place_id: str):
         raise NotImplementedError
 
 

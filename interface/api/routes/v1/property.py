@@ -300,6 +300,45 @@ async def create_property(
         )
 
 
+@router.post(
+    "/{property_id}/renew",
+    status_code=status.HTTP_200_OK,
+    response_model=PropertyMutationResponse,
+    summary="Renew property from Google Places",
+    description=(
+        "Refreshes an existing property by property_id. "
+        "Use `basic` mode to restart from Places Text Search Enterprise + Atmosphere and then Places Details Enterprise + Atmosphere. "
+        "Use `details` mode to refresh only from Places Details Enterprise + Atmosphere using the existing raw source snapshot."
+    ),
+)
+async def renew_property(
+    property_id: PyObjectId,
+    mode: str = Query(
+        ...,
+        description=(
+            "`basic` refreshes from Places Text Search Enterprise + Atmosphere and then Places Details Enterprise + Atmosphere. "
+            "`details` refreshes only the detail fields from Places Details Enterprise + Atmosphere using the existing raw source snapshot."
+        ),
+    ),
+    service: PropertyService = Depends(get_property_service),
+    actor: ActorInfo = Depends(get_request_actor),
+):
+    renewed_property, changed = await service.renew_property(
+        property_id=property_id,
+        mode=mode,
+        actor=actor,
+    )
+    return PropertyMutationResponse(
+        property_id=renewed_property.id,
+        status="renewed" if changed else "unchanged",
+        is_deleted=renewed_property.is_deleted,
+        updated_by=renewed_property.updated_by,
+        updated_at=renewed_property.updated_at,
+        deleted_by=renewed_property.deleted_by,
+        deleted_at=renewed_property.deleted_at,
+    )
+
+
 @router.patch(
     "/{property_id}/pet-features",
     status_code=status.HTTP_200_OK,

@@ -12,6 +12,7 @@ from application.property_search.projection import build_property_alias_fields
 from application.property_search.ranking import rank_search_results
 from domain.entities.audit import ActorInfo, PropertyAuditAction, PropertyAuditLog
 from domain.entities import PyObjectId
+from domain.entities.enrichment import AnalysisSource, Review
 from domain.entities.property import (
     PetEnvironmentOverride,
     PetFeaturesOverride,
@@ -499,25 +500,118 @@ class PropertyService:
         source_data = self.enrichment_provider.create_property_by_name(name)
         if source_data is None:
             raise ValueError("Failed to resolve property from the provided keyword.")
-        await self.raw_data_repo.save(source_data)
+        saved_property, _ = await self._upsert_property_from_source(
+            source_data,
+            actor=actor,
+            allow_create=True,
+        )
+        return saved_property
+
+    async def renew_property(
+        self,
+        property_id: PyObjectId,
+        mode: str,
+        actor: Optional[ActorInfo] = None,
+        reason: Optional[str] = None,
+    ) -> tuple[PropertyEntity, bool]:
+        actor = actor or self._system_actor()
+        existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
+        if existing is None:
+            raise NotFoundError("Property not found")
+        if existing.is_deleted:
+            raise ConflictError("Property is soft-deleted. Restore it before renewing.")
+
+        previous_source_data = await self.raw_data_repo.get_by_place_id(existing.place_id)
+
+        if mode == "details":
+            if previous_source_data is None:
+                raise ConflictError(
+                    "Raw source not found for this property. Renew from basic mode first."
+                )
+            source_data = self.enrichment_provider.renew_property_from_details(
+                previous_source_data
+            )
+        elif mode == "basic":
+            renew_search_name = self._resolve_renew_search_name(
+                existing=existing,
+                previous_source=previous_source_data,
+            )
+            source_data = self.enrichment_provider.create_property_by_name(
+                renew_search_name
+            )
+            if source_data is None:
+                raise ValueError("Failed to renew property from the upstream provider.")
+            if source_data.place_id != existing.place_id:
+                raise ConflictError(
+                    "Renew resolved to a different place_id than the target property."
+                )
+        else:
+            raise ValueError("Unsupported renew mode.")
+
+        if source_data is None:
+            raise ValueError("Failed to renew property from the upstream provider.")
+
+        return await self._upsert_property_from_source(
+            source_data,
+            actor=actor,
+            reason=reason,
+            allow_create=False,
+        )
+
+    async def _upsert_property_from_source(
+        self,
+        source_data: AnalysisSource,
+        *,
+        actor: ActorInfo,
+        reason: Optional[str] = None,
+        allow_create: bool,
+    ) -> tuple[PropertyEntity, bool]:
+        previous_source_data = await self.raw_data_repo.get_by_place_id(
+            source_data.place_id
+        )
+        merged_source_data = self._merge_raw_source_data(
+            previous=previous_source_data,
+            latest=source_data,
+        )
+        reviews_changed = self._reviews_changed(
+            previous=previous_source_data,
+            merged=merged_source_data,
+        )
+        user_rating_count_changed = self._user_rating_count_changed(
+            previous=previous_source_data,
+            latest=source_data,
+        )
+        await self.raw_data_repo.save(merged_source_data)
         existing = await self.repo.get_property_by_place_id(
             source_data.place_id, include_deleted=True
         )
+        if existing is None and not allow_create:
+            raise NotFoundError("Property not found")
         if existing and existing.is_deleted:
             raise ConflictError(
                 "Property is soft-deleted. Restore it before syncing again."
             )
 
-        ai_result = self.enrichment_provider.generate_ai_analysis(source_data)
-        if ai_result is None:
-            raise ValueError(
-                "Failed to generate AI analysis for the resolved property."
-            )
         if existing:
-            final_property = self._merge_synced_property(existing, ai_result, actor)
-            action = PropertyAuditAction.SYNC
-            before = existing
+            if user_rating_count_changed or reviews_changed:
+                ai_result = self.enrichment_provider.generate_ai_analysis(
+                    merged_source_data
+                )
+                if ai_result is None:
+                    raise ValueError(
+                        "Failed to generate AI analysis for the resolved property."
+                    )
+                final_property = self._merge_synced_property(existing, ai_result, actor)
+                action = PropertyAuditAction.SYNC
+                before = existing
+            else:
+                return existing, False
         else:
+            ai_result = self.enrichment_provider.generate_ai_analysis(merged_source_data)
+            if ai_result is None:
+                raise ValueError(
+                    "Failed to generate AI analysis for the resolved property."
+                )
             if ai_result.primary_type == "unknown":
                 raise ValueError(
                     "Resolved property has unknown primary_type and cannot be created."
@@ -539,9 +633,13 @@ class PropertyService:
             actor=actor,
             before=before,
             after=saved_property,
+            reason=reason,
         )
-        logging.info(f"Property {name} created successfully")
-        return saved_property
+        logging.info(
+            "Property upsert completed successfully",
+            extra={"place_id": saved_property.place_id, "property_id": saved_property.id},
+        )
+        return saved_property, True
 
     async def update_aliases(
         self,
@@ -837,6 +935,93 @@ class PropertyService:
         return property_entity.model_copy(
             update=build_property_alias_fields(property_entity)
         )
+
+    @staticmethod
+    def _resolve_renew_search_name(
+        *,
+        existing: PropertyEntity,
+        previous_source: AnalysisSource | None,
+    ) -> str:
+        if previous_source is not None and previous_source.origin_search_name:
+            return previous_source.origin_search_name
+        return existing.name
+
+    @staticmethod
+    def _normalize_review_author(author: str | None) -> str | None:
+        if author is None:
+            return None
+        normalized = author.strip()
+        return normalized or None
+
+    @classmethod
+    def _merge_reviews_by_author(
+        cls,
+        previous_reviews: list[Review],
+        latest_reviews: list[Review],
+    ) -> list[Review]:
+        merged_reviews: list[Review] = []
+        author_to_index: dict[str, int] = {}
+
+        for review in previous_reviews:
+            author = cls._normalize_review_author(review.author)
+            if author is None:
+                continue
+            normalized_review = review.model_copy(update={"author": author})
+            author_to_index[author] = len(merged_reviews)
+            merged_reviews.append(normalized_review)
+
+        for review in latest_reviews:
+            author = cls._normalize_review_author(review.author)
+            if author is None:
+                continue
+            normalized_review = review.model_copy(update={"author": author})
+            existing_index = author_to_index.get(author)
+            if existing_index is None:
+                author_to_index[author] = len(merged_reviews)
+                merged_reviews.append(normalized_review)
+            else:
+                merged_reviews[existing_index] = normalized_review
+
+        return merged_reviews
+
+    @classmethod
+    def _merge_raw_source_data(
+        cls,
+        *,
+        previous: AnalysisSource | None,
+        latest: AnalysisSource,
+    ) -> AnalysisSource:
+        if previous is None:
+            return latest
+
+        return latest.model_copy(
+            update={
+                "reviews": cls._merge_reviews_by_author(
+                    previous.reviews,
+                    latest.reviews,
+                )
+            }
+        )
+
+    @staticmethod
+    def _reviews_changed(
+        *,
+        previous: AnalysisSource | None,
+        merged: AnalysisSource,
+    ) -> bool:
+        if previous is None:
+            return bool(merged.reviews)
+        return previous.reviews != merged.reviews
+
+    @staticmethod
+    def _user_rating_count_changed(
+        *,
+        previous: AnalysisSource | None,
+        latest: AnalysisSource,
+    ) -> bool:
+        if previous is None:
+            return False
+        return previous.user_rating_count != latest.user_rating_count
 
     @staticmethod
     def _normalize_aliases(aliases: list[str]) -> list[str]:

@@ -50,6 +50,9 @@ class DummyRawDataRepo(IPlaceRawDataRepository):
     async def save(self, source):
         raise NotImplementedError
 
+    async def get_by_place_id(self, place_id: str):
+        raise NotImplementedError
+
 
 class DummyAuditRepo(IPropertyAuditRepository):
     async def create(self, audit_log):
@@ -94,6 +97,9 @@ class LangGraphEnrichmentProvider(IEnrichmentProvider):
         self.llm = _NoopStructuredLLM()
 
     def create_property_by_name(self, property_name: str):
+        raise NotImplementedError
+
+    def renew_property_from_details(self, source):
         raise NotImplementedError
 
     def generate_ai_analysis(self, source):

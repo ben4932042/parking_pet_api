@@ -3,7 +3,7 @@ import pytest
 from application.property import PropertyService
 from application.exceptions import ConflictError, NotFoundError
 from domain.entities.audit import PropertyAuditAction
-from domain.entities.enrichment import AnalysisSource
+from domain.entities.enrichment import AnalysisSource, Review
 from domain.entities.property import (
     PetRulesOverride,
     PetFeaturesOverride,
@@ -69,25 +69,39 @@ class InMemoryAuditRepo(IPropertyAuditRepository):
 
 
 class DummyRawDataRepo(IPlaceRawDataRepository):
-    def __init__(self):
+    def __init__(self, existing: AnalysisSource | None = None):
+        self.existing = existing
         self.saved = []
 
     async def create(self, source):
         self.saved.append(source)
 
     async def save(self, source):
+        self.existing = source
         self.saved.append(source)
+
+    async def get_by_place_id(self, place_id: str) -> AnalysisSource | None:
+        if self.existing is None or self.existing.place_id != place_id:
+            return None
+        return self.existing
 
 
 class SyncEnrichmentProvider(IEnrichmentProvider):
     def __init__(self, source: AnalysisSource, synced_property: PropertyEntity):
         self.source = source
         self.synced_property = synced_property
+        self.generate_calls: list[AnalysisSource] = []
+        self.details_calls: list[AnalysisSource] = []
 
     def create_property_by_name(self, property_name: str) -> AnalysisSource:
         return self.source
 
+    def renew_property_from_details(self, source: AnalysisSource) -> AnalysisSource:
+        self.details_calls.append(source)
+        return self.source
+
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity:
+        self.generate_calls.append(source)
         return self.synced_property
 
     def extract_search_plan(self, query: str) -> SearchPlan:
@@ -113,6 +127,10 @@ def build_source(place_id: str) -> AnalysisSource:
         reviews=[],
         regular_opening_hours=[],
     )
+
+
+def build_review(author: str | None, rating: float, text: str) -> Review:
+    return Review(author=author, rating=rating, text=text, time="today")
 
 
 @pytest.mark.asyncio
@@ -170,11 +188,19 @@ async def test_sync_preserves_manual_override_and_writes_sync_audit(
     )
     repo = InMemoryPropertyRepo(existing)
     audit_repo = InMemoryAuditRepo()
+    old_source = build_source("place-1").model_copy(
+        update={"reviews": [build_review("alice", 5, "old text")]}
+    )
+    latest_source = build_source("place-1").model_copy(
+        update={"reviews": [build_review("alice", 5, "new text")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=old_source)
+    provider = SyncEnrichmentProvider(latest_source, synced)
     service = PropertyService(
         repo=repo,
-        raw_data_repo=DummyRawDataRepo(),
+        raw_data_repo=raw_data_repo,
         audit_repo=audit_repo,
-        enrichment_provider=SyncEnrichmentProvider(build_source("place-1"), synced),
+        enrichment_provider=provider,
     )
 
     saved = await service.create_property(name="test", actor=actor_factory())
@@ -291,6 +317,232 @@ async def test_create_property_new_record_writes_create_audit_and_actor(
     assert saved.created_by.user_id == "u1"
     assert len(raw_repo.saved) == 1
     assert audit_repo.logs[-1].action == PropertyAuditAction.CREATE
+
+
+@pytest.mark.asyncio
+async def test_sync_skips_llm_when_user_rating_count_and_reviews_are_unchanged(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    existing_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=existing_source)
+    provider = SyncEnrichmentProvider(existing_source, existing.model_copy())
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    saved = await service.create_property(name="test", actor=actor_factory())
+
+    assert saved == existing
+    assert provider.generate_calls == []
+    assert audit_repo.logs == []
+    assert raw_data_repo.saved[-1].reviews == [build_review("alice", 5, "same")]
+
+
+@pytest.mark.asyncio
+async def test_sync_reruns_llm_when_user_rating_count_changes(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    old_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    latest_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 11, "reviews": [build_review("alice", 5, "same")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=old_source)
+    provider = SyncEnrichmentProvider(latest_source, synced)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    saved = await service.create_property(name="test", actor=actor_factory())
+
+    assert saved.id == existing.id
+    assert provider.generate_calls == [raw_data_repo.saved[-1]]
+    assert raw_data_repo.saved[-1].user_rating_count == 11
+    assert audit_repo.logs[-1].action == PropertyAuditAction.SYNC
+
+
+@pytest.mark.asyncio
+async def test_sync_reruns_llm_when_review_content_changes_for_same_author(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    old_source = build_source("place-1").model_copy(
+        update={"reviews": [build_review("alice", 5, "old text")]}
+    )
+    latest_source = build_source("place-1").model_copy(
+        update={"reviews": [build_review("alice", 5, "new text")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=old_source)
+    provider = SyncEnrichmentProvider(latest_source, synced)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    saved = await service.create_property(name="test", actor=actor_factory())
+
+    assert saved.id == existing.id
+    assert provider.generate_calls == [raw_data_repo.saved[-1]]
+    assert raw_data_repo.saved[-1].reviews == [build_review("alice", 5, "new text")]
+    assert audit_repo.logs[-1].action == PropertyAuditAction.SYNC
+
+
+@pytest.mark.asyncio
+async def test_sync_merges_new_reviews_and_ignores_missing_authors(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    old_source = build_source("place-1").model_copy(
+        update={"reviews": [build_review("alice", 5, "old alice")]}
+    )
+    latest_source = build_source("place-1").model_copy(
+        update={
+            "reviews": [
+                build_review("bob", 4, "new bob"),
+                build_review(None, 3, "anonymous"),
+            ],
+            "address": "new address",
+            "business_status": "CLOSED_TEMPORARILY",
+        }
+    )
+    raw_data_repo = DummyRawDataRepo(existing=old_source)
+    provider = SyncEnrichmentProvider(latest_source, synced)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=InMemoryAuditRepo(),
+        enrichment_provider=provider,
+    )
+
+    await service.create_property(name="test", actor=actor_factory())
+
+    assert raw_data_repo.saved[-1].reviews == [
+        build_review("alice", 5, "old alice"),
+        build_review("bob", 4, "new bob"),
+    ]
+    assert raw_data_repo.saved[-1].address == "new address"
+    assert raw_data_repo.saved[-1].business_status == "CLOSED_TEMPORARILY"
+    assert provider.generate_calls == [raw_data_repo.saved[-1]]
+
+
+@pytest.mark.asyncio
+async def test_renew_property_in_details_mode_uses_existing_raw_source(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    previous_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "old")]}
+    )
+    renewed_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 11, "reviews": [build_review("alice", 5, "new")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=previous_source)
+    provider = SyncEnrichmentProvider(renewed_source, synced)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    saved, changed = await service.renew_property(
+        property_id="p1",
+        mode="details",
+        actor=actor_factory(),
+        reason="refresh details",
+    )
+
+    assert changed is True
+    assert saved.id == existing.id
+    assert provider.details_calls == [previous_source]
+    assert provider.generate_calls == [raw_data_repo.saved[-1]]
+    assert audit_repo.logs[-1].reason == "refresh details"
+
+
+@pytest.mark.asyncio
+async def test_renew_property_in_basic_mode_rejects_place_id_mismatch(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1", name="old")
+    repo = InMemoryPropertyRepo(existing)
+    raw_data_repo = DummyRawDataRepo(
+        existing=build_source("place-1").model_copy(update={"origin_search_name": "old"})
+    )
+    mismatched_source = build_source("place-2")
+    provider = SyncEnrichmentProvider(mismatched_source, existing)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=InMemoryAuditRepo(),
+        enrichment_provider=provider,
+    )
+
+    with pytest.raises(ConflictError, match="different place_id"):
+        await service.renew_property(
+            property_id="p1",
+            mode="basic",
+            actor=actor_factory(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_renew_property_returns_unchanged_when_reviews_and_rating_count_match(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    previous_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    renewed_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=previous_source)
+    provider = SyncEnrichmentProvider(renewed_source, existing)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    saved, changed = await service.renew_property(
+        property_id="p1",
+        mode="details",
+        actor=actor_factory(),
+    )
+
+    assert changed is False
+    assert saved == existing
+    assert provider.generate_calls == []
+    assert audit_repo.logs == []
 
 
 @pytest.mark.asyncio

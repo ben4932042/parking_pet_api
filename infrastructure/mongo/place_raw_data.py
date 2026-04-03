@@ -20,3 +20,9 @@ class PlaceRawDataRepository(IPlaceRawDataRepository):
             source.model_dump(by_alias=True),
             upsert=True,
         )
+
+    async def get_by_place_id(self, place_id: str) -> AnalysisSource | None:
+        doc = await self.collection.find_one({"_id": place_id})
+        if doc is None:
+            return None
+        return AnalysisSource(**doc)

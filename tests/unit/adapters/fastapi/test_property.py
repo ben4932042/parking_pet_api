@@ -132,6 +132,7 @@ class PropertyMutationService:
         self.property_entity = property_entity
         self.logs = logs or []
         self.calls = []
+        self.renew_changed = True
 
     async def update_pet_features(
         self, property_id, pet_rules, pet_environment, pet_service, actor, reason=None
@@ -182,6 +183,18 @@ class PropertyMutationService:
             }
         )
         return self.property_entity
+
+    async def renew_property(self, property_id, mode, actor, reason=None):
+        self.calls.append(
+            {
+                "fn": "renew_property",
+                "property_id": property_id,
+                "mode": mode,
+                "actor": actor,
+                "reason": reason,
+            }
+        )
+        return self.property_entity, self.renew_changed
 
     async def get_audit_logs(self, property_id, limit=50):
         self.calls.append(
@@ -605,6 +618,73 @@ def test_restore_route_returns_restored_status(
     assert data["status"] == "restored"
     assert data["is_deleted"] is False
     assert service.calls[0]["reason"] == "restore by admin"
+
+
+def test_renew_route_forwards_mode(
+    client,
+    override_api_dep,
+    property_entity_factory,
+    request_actor_override,
+):
+    renewed_property = property_entity_factory(
+        identifier="p1", place_id="place-1"
+    ).model_copy(
+        update={
+            "updated_by": request_actor_override,
+        }
+    )
+    service = override_api_dep(
+        get_property_service, PropertyMutationService(property_entity=renewed_property)
+    )
+    override_api_dep(get_request_actor, request_actor_override)
+
+    response = client.post(
+        "/api/v1/property/p1/renew",
+        params={"mode": "details"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["property_id"] == "p1"
+    assert data["status"] == "renewed"
+    assert data["is_deleted"] is False
+    assert service.calls[0]["fn"] == "renew_property"
+    assert service.calls[0]["mode"] == "details"
+    assert service.calls[0]["reason"] is None
+
+
+def test_renew_route_returns_unchanged_status_when_no_data_changed(
+    client,
+    override_api_dep,
+    property_entity_factory,
+    request_actor_override,
+):
+    unchanged_property = property_entity_factory(
+        identifier="p1", place_id="place-1"
+    ).model_copy(
+        update={
+            "updated_by": {
+                "name": "anonymous-api",
+                "role": "anonymous",
+                "source": "api",
+            }
+        }
+    )
+    service = PropertyMutationService(property_entity=unchanged_property)
+    service.renew_changed = False
+    override_api_dep(get_property_service, service)
+    override_api_dep(get_request_actor, request_actor_override)
+
+    response = client.post(
+        "/api/v1/property/p1/renew",
+        params={"mode": "details"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["property_id"] == "p1"
+    assert data["status"] == "unchanged"
+    assert data["updated_by"]["name"] == "anonymous-api"
 
 
 def test_audit_logs_route_returns_history(

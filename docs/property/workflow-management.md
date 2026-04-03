@@ -17,10 +17,12 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 ## Entry Points
 
 - Patch manual pet-feature overrides: `PATCH /property/{property_id}/pet-features`
+- Renew an existing property from upstream Places data: `POST /property/{property_id}/renew?mode=...`
 - Soft delete a property: `DELETE /property/{property_id}`
 - Restore a soft-deleted property: `POST /property/{property_id}/restore`
 - List property audit logs: `GET /property/{property_id}/audit-logs`
 - `application/property.py::PropertyService.update_pet_features`
+- `application/property.py::PropertyService.renew_property`
 - `application/property.py::PropertyService.soft_delete_property`
 - `application/property.py::PropertyService.restore_property`
 - `application/property.py::PropertyService.get_audit_logs`
@@ -40,6 +42,15 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 - Soft-deleted properties remain in storage.
 - Soft-deleted properties are excluded from normal search and detail APIs.
 - Deleting an already deleted property should fail.
+
+### Renew
+
+- Renew targets an existing property by `property_id`.
+- `basic` mode refreshes from Places Text Search Enterprise + Atmosphere and then Places Details Enterprise + Atmosphere.
+- `details` mode refreshes only from Places Details Enterprise + Atmosphere using the existing raw source snapshot.
+- Renew must not silently switch the property to a different resolved `place_id`.
+- Renew should preserve manual overrides through the sync path.
+- Renew uses the same sync audit behavior when a property entity is actually refreshed.
 
 ### Restore
 
