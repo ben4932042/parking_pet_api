@@ -20,6 +20,10 @@ class UserEntity(BaseModel):
     apple_user_identifier: str | None = None
     favorite_property_ids: list[str] = Field(default_factory=list)
     recent_searches: list[UserSearchRecord] = Field(default_factory=list)
+    session_version: int = 0
+    refresh_token_hash: str | None = None
+    is_deleted: bool = False
+    deleted_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 

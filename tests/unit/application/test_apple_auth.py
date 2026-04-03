@@ -39,6 +39,14 @@ class UserRepoStub:
         )
         return self.created_user
 
+    async def restore_user(self, user_id: str):
+        self.calls.append({"fn": "restore_user", "user_id": user_id})
+        if self.existing_user is None:
+            return None
+        return self.existing_user.model_copy(
+            update={"is_deleted": False, "deleted_at": None}
+        )
+
 
 class AppleVerifierStub:
     def __init__(self, identity=None, error=None):
@@ -87,6 +95,34 @@ async def test_authenticate_returns_existing_apple_user(user_entity_factory):
     assert result == existing_user
     assert repo.calls == [
         {"fn": "get_user_by_apple_user_identifier", "apple_user_identifier": "apple-sub-1"}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_authenticate_restores_deleted_apple_user(user_entity_factory):
+    deleted_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        source="apple",
+        apple_user_identifier="apple-sub-1",
+    ).model_copy(update={"is_deleted": True})
+    repo = UserRepoStub(existing_user=deleted_user)
+    verifier = AppleVerifierStub(identity=AppleIdentity(subject="apple-sub-1"))
+    service = AppleAuthService(repo=repo, verifier=verifier)
+
+    result = await service.authenticate(
+        identity_token="token",
+        authorization_code="code",
+        user_identifier="apple-user-1",
+        email=None,
+        name="Ben",
+        pet_name="Mochi",
+    )
+
+    assert result.is_deleted is False
+    assert repo.calls == [
+        {"fn": "get_user_by_apple_user_identifier", "apple_user_identifier": "apple-sub-1"},
+        {"fn": "restore_user", "user_id": "u1"},
     ]
 
 

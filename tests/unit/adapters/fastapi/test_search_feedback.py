@@ -3,7 +3,9 @@ from domain.entities.search_feedback import (
     SearchFeedbackPreference,
 )
 from interface.api.dependencies.db import get_user_repository
+from interface.api.dependencies.user import get_auth_token_service
 from interface.api.dependencies.search_feedback import get_search_feedback_service
+from infrastructure.auth.tokens import AuthTokenService
 
 
 class SearchFeedbackServiceStub:
@@ -43,6 +45,22 @@ class UserRepositoryStub:
         return self.user
 
 
+def _issue_auth_token(override_api_dep, *, user_id: str, source: str = "basic") -> str:
+    token_service = override_api_dep(
+        get_auth_token_service,
+        AuthTokenService(
+            signing_key="test-signing-key",
+            ttl_seconds=3600,
+            issuer="test-suite",
+        ),
+    )
+    return token_service.issue_access_token(
+        user_id=user_id,
+        source=source,
+        session_version=0,
+    )
+
+
 def test_create_search_feedback_requires_authentication_header(client):
     response = client.post(
         "/api/v1/search-feedback",
@@ -78,10 +96,11 @@ def test_create_search_feedback_persists_feedback_with_authenticated_user(
         get_user_repository,
         UserRepositoryStub(user=user_entity_factory(identifier="u1", name="Ben")),
     )
+    token = _issue_auth_token(override_api_dep, user_id="u1")
 
     response = client.post(
         "/api/v1/search-feedback",
-        headers={"x-user-id": "u1"},
+        headers={"Authorization": f"Bearer {token}"},
         json={
             "query": "桃園寵物友善餐廳",
             "response_type": "semantic_search",
@@ -115,10 +134,11 @@ def test_create_search_feedback_rejects_empty_query(
         get_user_repository,
         UserRepositoryStub(user=user_entity_factory(identifier="u1", name="Ben")),
     )
+    token = _issue_auth_token(override_api_dep, user_id="u1")
 
     response = client.post(
         "/api/v1/search-feedback",
-        headers={"x-user-id": "u1"},
+        headers={"Authorization": f"Bearer {token}"},
         json={"query": "   ", "response_type": "semantic_search"},
     )
 
@@ -144,10 +164,11 @@ def test_create_search_feedback_accepts_fallback_search_response_type(
         get_user_repository,
         UserRepositoryStub(user=user_entity_factory(identifier="u1", name="Ben")),
     )
+    token = _issue_auth_token(override_api_dep, user_id="u1")
 
     response = client.post(
         "/api/v1/search-feedback",
-        headers={"x-user-id": "u1"},
+        headers={"Authorization": f"Bearer {token}"},
         json={
             "query": "台北餐廳",
             "response_type": "fallback_search",

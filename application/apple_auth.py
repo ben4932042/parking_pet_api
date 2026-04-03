@@ -56,6 +56,10 @@ class AppleAuthService:
                 user_identifier
             )
         if existing_user is not None:
+            if existing_user.is_deleted:
+                restored_user = await self.repo.restore_user(existing_user.id)
+                if restored_user is not None:
+                    return restored_user
             return existing_user
 
         display_name = self._require_display_name(name=name)

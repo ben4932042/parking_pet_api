@@ -50,3 +50,28 @@ class IUserRepository(ABC):
         *,
         limit: int = 20,
     ) -> UserEntity: ...
+
+    @abstractmethod
+    async def delete_user(self, user_id: PyObjectId) -> bool: ...
+
+    @abstractmethod
+    async def restore_user(self, user_id: PyObjectId) -> UserEntity | None: ...
+
+    @abstractmethod
+    async def start_auth_session(
+        self,
+        *,
+        user_id: str,
+        refresh_token_hash: str,
+    ) -> UserEntity | None: ...
+
+    @abstractmethod
+    async def rotate_refresh_token(
+        self,
+        *,
+        user_id: str,
+        refresh_token_hash: str,
+    ) -> UserEntity | None: ...
+
+    @abstractmethod
+    async def revoke_auth_session(self, *, user_id: str) -> UserEntity | None: ...

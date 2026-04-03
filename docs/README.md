@@ -25,6 +25,7 @@ Use these documents when working on a specific product area.
 - `docs/property/workflow-creation.md`
 - `docs/property/workflow-management.md`
 - `docs/property/workflow-favorite.md`
+- `docs/user/workflow-account-lifecycle.md`
 
 ## Naming Rules
 

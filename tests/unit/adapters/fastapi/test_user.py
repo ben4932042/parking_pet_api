@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
 
+from application.auth_session import AuthSession
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
     get_apple_auth_service,
+    get_auth_session_service,
     get_current_user,
     get_user_service,
 )
@@ -47,6 +49,10 @@ class UserServiceStub:
             }
         )
         return self.user
+
+    async def delete_user(self, user_id: str):
+        self.calls.append({"fn": "delete_user", "user_id": user_id})
+        return True
 
 
 class FavoritePropertyServiceStub:
@@ -103,9 +109,50 @@ class AppleAuthServiceStub:
         return self.user
 
 
+class AuthSessionServiceStub:
+    def __init__(
+        self,
+        *,
+        access_token: str = "apple-access-token",
+        refresh_token: str = "apple-refresh-token",
+        user=None,
+    ):
+        self.access_token = access_token
+        self.refresh_token = refresh_token
+        self.user = user
+        self.calls = []
+
+    async def start_session(self, *, user):
+        self.calls.append({"fn": "start_session", "user_id": str(user.id), "source": user.source})
+        return AuthSession(
+            access_token=self.access_token,
+            refresh_token=self.refresh_token,
+            user=user,
+        )
+
+    async def refresh_session(self, *, refresh_token: str):
+        self.calls.append({"fn": "refresh_session", "refresh_token": refresh_token})
+        return AuthSession(
+            access_token=self.access_token,
+            refresh_token=self.refresh_token,
+            user=self.user,
+        )
+
+    async def logout(self, *, user_id: str):
+        self.calls.append({"fn": "logout", "user_id": user_id})
+        return None
+
+
 def test_user_register_returns_user_detail(client, override_api_dep, user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
     service = override_api_dep(get_user_service, UserServiceStub(user=user))
+    auth_session_service = override_api_dep(
+        get_auth_session_service,
+        AuthSessionServiceStub(
+            access_token="basic-access-token",
+            refresh_token="basic-refresh-token",
+        ),
+    )
 
     response = client.post(
         "/api/v1/user/register",
@@ -114,11 +161,25 @@ def test_user_register_returns_user_detail(client, override_api_dep, user_entity
 
     assert response.status_code == 200
     data = response.json()
-    assert data["_id"] == "u1"
-    assert data["name"] == "Ben"
-    assert data["pet_name"] == "Mochi"
+    assert data == {
+        "access_token": "basic-access-token",
+        "refresh_token": "basic-refresh-token",
+        "token_type": "Bearer",
+        "user": {
+            "_id": "u1",
+            "name": "Ben",
+            "pet_name": "Mochi",
+            "source": "basic",
+            "favorite_property_ids": [],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
+    }
     assert service.calls == [
         {"fn": "register_basic_user", "name": "Ben", "pet_name": "Mochi"}
+    ]
+    assert auth_session_service.calls == [
+        {"fn": "start_session", "user_id": "u1", "source": "basic"}
     ]
 
 
@@ -132,6 +193,10 @@ def test_apple_auth_returns_existing_user(client, override_api_dep, user_entity_
         favorite_property_ids=["p1"],
     )
     service = override_api_dep(get_apple_auth_service, AppleAuthServiceStub(user=user))
+    auth_session_service = override_api_dep(
+        get_auth_session_service,
+        AuthSessionServiceStub(),
+    )
 
     response = client.post(
         "/api/v1/user/auth/apple",
@@ -147,10 +212,18 @@ def test_apple_auth_returns_existing_user(client, override_api_dep, user_entity_
 
     assert response.status_code == 200
     assert response.json() == {
-        "_id": "u1",
-        "name": "Ben",
-        "pet_name": "Mochi",
-        "favorite_property_ids": ["p1"],
+        "access_token": "apple-access-token",
+        "refresh_token": "apple-refresh-token",
+        "token_type": "Bearer",
+        "user": {
+            "_id": "u1",
+            "name": "Ben",
+            "pet_name": "Mochi",
+            "source": "apple",
+            "favorite_property_ids": ["p1"],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
     }
     assert service.calls == [
         {
@@ -162,6 +235,64 @@ def test_apple_auth_returns_existing_user(client, override_api_dep, user_entity_
             "pet_name": "Mochi",
         }
     ]
+    assert auth_session_service.calls == [
+        {"fn": "start_session", "user_id": "u1", "source": "apple"}
+    ]
+
+
+def test_refresh_user_session_returns_rotated_tokens(
+    client, override_api_dep, user_entity_factory
+):
+    user = user_entity_factory(identifier="u1", name="Ben", source="basic")
+    auth_session_service = override_api_dep(
+        get_auth_session_service,
+        AuthSessionServiceStub(
+            access_token="rotated-access-token",
+            refresh_token="rotated-refresh-token",
+            user=user,
+        ),
+    )
+
+    response = client.post(
+        "/api/v1/user/auth/refresh",
+        json={"refresh_token": "old-refresh-token"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "access_token": "rotated-access-token",
+        "refresh_token": "rotated-refresh-token",
+        "token_type": "Bearer",
+        "user": {
+            "_id": "u1",
+            "name": "Ben",
+            "pet_name": None,
+            "source": "basic",
+            "favorite_property_ids": [],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-01T00:00:00Z",
+        },
+    }
+    assert auth_session_service.calls == [
+        {"fn": "refresh_session", "refresh_token": "old-refresh-token"}
+    ]
+
+
+def test_logout_user_revokes_current_session(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben", source="basic")
+    override_api_dep(get_current_user, current_user)
+    auth_session_service = override_api_dep(
+        get_auth_session_service,
+        AuthSessionServiceStub(user=current_user),
+    )
+
+    response = client.post("/api/v1/user/auth/logout")
+
+    assert response.status_code == 200
+    assert response.json() == {"revoked": True}
+    assert auth_session_service.calls == [{"fn": "logout", "user_id": "u1"}]
 
 
 def test_apple_auth_rejects_blank_required_fields(client):
@@ -178,6 +309,51 @@ def test_apple_auth_rejects_blank_required_fields(client):
     )
 
     assert response.status_code == 422
+
+
+def test_apple_auth_allows_blank_optional_profile_fields_for_existing_user(
+    client, override_api_dep, user_entity_factory
+):
+    user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        pet_name=None,
+        source="apple",
+        apple_user_identifier="apple-sub-1",
+        favorite_property_ids=["p1"],
+    )
+    service = override_api_dep(get_apple_auth_service, AppleAuthServiceStub(user=user))
+    auth_session_service = override_api_dep(
+        get_auth_session_service,
+        AuthSessionServiceStub(),
+    )
+
+    response = client.post(
+        "/api/v1/user/auth/apple",
+        json={
+            "identity_token": "token",
+            "authorization_code": "code",
+            "user_identifier": "apple-user-1",
+            "email": "",
+            "name": "",
+            "pet_name": "   ",
+        },
+    )
+
+    assert response.status_code == 200
+    assert service.calls == [
+        {
+            "identity_token": "token",
+            "authorization_code": "code",
+            "user_identifier": "apple-user-1",
+            "email": None,
+            "name": None,
+            "pet_name": None,
+        }
+    ]
+    assert auth_session_service.calls == [
+        {"fn": "start_session", "user_id": "u1", "source": "apple"}
+    ]
 
 
 def test_get_user_profile_returns_name_and_pet_name(
@@ -280,6 +456,20 @@ def test_update_profile_rejects_blank_pet_name(
     )
 
     assert response.status_code == 422
+
+
+def test_delete_current_user_returns_deleted_status(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben")
+    service = override_api_dep(get_user_service, UserServiceStub())
+    override_api_dep(get_current_user, current_user)
+
+    response = client.delete("/api/v1/user")
+
+    assert response.status_code == 200
+    assert response.json() == {"user_id": "u1", "deleted": True}
+    assert service.calls == [{"fn": "delete_user", "user_id": "u1"}]
 
 
 def test_update_user_favorite_property_returns_status(

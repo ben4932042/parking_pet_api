@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Annotated
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 
 from domain.entities import PyObjectId
 
@@ -46,11 +46,11 @@ class RegisterBasicUserRequest(BaseModel):
     pet_name: OptionalPetName | None = None
 
 
-class AppleAuthResponse(BaseModel):
-    id: PyObjectId = Field(alias="_id")
-    name: str
-    pet_name: str | None = None
-    favorite_property_ids: list[str]
+class UserAuthSessionResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "Bearer"
+    user: UserDetailResponse
 
     model_config = {"from_attributes": True, "populate_by_name": True}
 
@@ -69,6 +69,13 @@ class AppleAuthRequest(BaseModel):
     name: RequiredUserName | None = None
     pet_name: OptionalPetName | None = None
 
+    @field_validator("email", "name", "pet_name", mode="before")
+    @classmethod
+    def empty_optional_strings_to_none(cls, value: str | None):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
 
 class FavoritePropertyResponse(UserDetailResponse):
     property_id: PyObjectId
@@ -78,3 +85,18 @@ class FavoritePropertyResponse(UserDetailResponse):
 class FavoritePropertyStatusResponse(BaseModel):
     property_id: PyObjectId
     is_favorite: bool
+
+
+class UserDeleteResponse(BaseModel):
+    user_id: PyObjectId
+    deleted: bool
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ]
+
+
+class LogoutResponse(BaseModel):
+    revoked: bool

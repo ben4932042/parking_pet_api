@@ -45,3 +45,6 @@ class UserService:
             query=query,
             limit=limit,
         )
+
+    async def delete_user(self, user_id: PyObjectId) -> bool:
+        return await self.repo.delete_user(user_id)

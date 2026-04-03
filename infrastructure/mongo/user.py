@@ -24,6 +24,10 @@ class UserRepository(IUserRepository):
                 "source": "basic",
                 "favorite_property_ids": [],
                 "recent_searches": [],
+                "session_version": 0,
+                "refresh_token_hash": None,
+                "is_deleted": False,
+                "deleted_at": None,
             }
         )
         return UserEntity(
@@ -33,6 +37,10 @@ class UserRepository(IUserRepository):
             source="basic",
             favorite_property_ids=[],
             recent_searches=[],
+            session_version=0,
+            refresh_token_hash=None,
+            is_deleted=False,
+            deleted_at=None,
         )
 
     async def register_apple_user(
@@ -53,6 +61,10 @@ class UserRepository(IUserRepository):
                 "apple_user_identifier": apple_user_identifier,
                 "favorite_property_ids": [],
                 "recent_searches": [],
+                "session_version": 0,
+                "refresh_token_hash": None,
+                "is_deleted": False,
+                "deleted_at": None,
                 "created_at": now,
                 "updated_at": now,
             }
@@ -66,6 +78,10 @@ class UserRepository(IUserRepository):
             apple_user_identifier=apple_user_identifier,
             favorite_property_ids=[],
             recent_searches=[],
+            session_version=0,
+            refresh_token_hash=None,
+            is_deleted=False,
+            deleted_at=None,
             created_at=now,
             updated_at=now,
         )
@@ -143,6 +159,82 @@ class UserRepository(IUserRepository):
                     ],
                     "updated_at": datetime.now(UTC),
                 }
+            },
+        )
+        return await self.get_user_by_id(user_id)
+
+    async def delete_user(self, user_id: PyObjectId) -> bool:
+        now = datetime.now(UTC)
+        result = await self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "is_deleted": True,
+                    "deleted_at": now,
+                    "updated_at": now,
+                }
+            },
+        )
+        return result.matched_count > 0
+
+    async def restore_user(self, user_id: PyObjectId) -> UserEntity | None:
+        now = datetime.now(UTC)
+        await self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "is_deleted": False,
+                    "deleted_at": None,
+                    "updated_at": now,
+                }
+            },
+        )
+        return await self.get_user_by_id(user_id)
+
+    async def start_auth_session(
+        self,
+        *,
+        user_id: str,
+        refresh_token_hash: str,
+    ) -> UserEntity | None:
+        await self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "refresh_token_hash": refresh_token_hash,
+                    "updated_at": datetime.now(UTC),
+                },
+                "$inc": {"session_version": 1},
+            },
+        )
+        return await self.get_user_by_id(user_id)
+
+    async def rotate_refresh_token(
+        self,
+        *,
+        user_id: str,
+        refresh_token_hash: str,
+    ) -> UserEntity | None:
+        await self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "refresh_token_hash": refresh_token_hash,
+                    "updated_at": datetime.now(UTC),
+                }
+            },
+        )
+        return await self.get_user_by_id(user_id)
+
+    async def revoke_auth_session(self, *, user_id: str) -> UserEntity | None:
+        await self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "refresh_token_hash": None,
+                    "updated_at": datetime.now(UTC),
+                },
+                "$inc": {"session_version": 1},
             },
         )
         return await self.get_user_by_id(user_id)

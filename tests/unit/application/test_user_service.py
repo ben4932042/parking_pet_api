@@ -87,6 +87,38 @@ class UserRepoStub(IUserRepository):
         )
         return self.user
 
+    async def delete_user(self, user_id: str):
+        self.calls.append({"fn": "delete_user", "user_id": user_id})
+        return True
+
+    async def restore_user(self, user_id: str):
+        self.calls.append({"fn": "restore_user", "user_id": user_id})
+        return self.user
+
+    async def start_auth_session(self, *, user_id: str, refresh_token_hash: str):
+        self.calls.append(
+            {
+                "fn": "start_auth_session",
+                "user_id": user_id,
+                "refresh_token_hash": refresh_token_hash,
+            }
+        )
+        return self.user
+
+    async def rotate_refresh_token(self, *, user_id: str, refresh_token_hash: str):
+        self.calls.append(
+            {
+                "fn": "rotate_refresh_token",
+                "user_id": user_id,
+                "refresh_token_hash": refresh_token_hash,
+            }
+        )
+        return self.user
+
+    async def revoke_auth_session(self, *, user_id: str):
+        self.calls.append({"fn": "revoke_auth_session", "user_id": user_id})
+        return self.user
+
 
 @pytest.mark.asyncio
 async def test_register_basic_user_delegates_to_repo(user_entity_factory):
@@ -181,3 +213,14 @@ async def test_record_recent_search_delegates_to_repo(user_entity_factory):
             "limit": 10,
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_delete_user_delegates_to_repo():
+    repo = UserRepoStub()
+    service = UserService(repo=repo)
+
+    result = await service.delete_user("u1")
+
+    assert result is True
+    assert repo.calls == [{"fn": "delete_user", "user_id": "u1"}]

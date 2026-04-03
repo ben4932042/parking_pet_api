@@ -39,10 +39,18 @@ class AppleSettings(BaseModel):
     bundle_id: str = ""
 
 
+class AuthSettings(BaseModel):
+    signing_key: SecretStr = SecretStr("dev-unsafe-change-me")
+    issuer: str = "parking-pet-api"
+    access_token_ttl_seconds: int = 60 * 60
+    refresh_token_ttl_seconds: int = 60 * 60 * 24 * 30
+
+
 class Settings(BaseSettings):
     mongo: MongoSettings = MongoSettings()
     google: GoogleSettings
     apple: AppleSettings = AppleSettings()
+    auth: AuthSettings = AuthSettings()
 
     model_config = SettingsConfigDict(
         env_file=".env",

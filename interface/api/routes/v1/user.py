@@ -2,6 +2,7 @@ from fastapi import Depends, APIRouter, Query
 from starlette import status
 
 from application.apple_auth import AppleAuthService
+from application.auth_session import AuthSessionService
 from application.exceptions import ApplicationError
 from application.property import PropertyService
 from application.property_note import PropertyNoteService
@@ -10,6 +11,7 @@ from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
     get_apple_auth_service,
+    get_auth_session_service,
     get_user_service,
     get_current_user,
 )
@@ -21,7 +23,7 @@ from interface.api.schemas.property import PropertyOverviewResponse
 from interface.api.schemas.property_note import UserPropertyNoteListItemResponse
 from interface.api.schemas.search_history import UserSearchHistoryItemResponse
 from interface.api.schemas.user import (
-    AppleAuthResponse,
+    UserAuthSessionResponse,
     UserDetailResponse,
     UserAuthStatusResponse,
     FavoritePropertyResponse,
@@ -30,6 +32,9 @@ from interface.api.schemas.user import (
     RegisterBasicUserRequest,
     UpdateUserProfileRequest,
     UserProfileResponse,
+    UserDeleteResponse,
+    RefreshTokenRequest,
+    LogoutResponse,
 )
 
 router = APIRouter(prefix="/user")
@@ -38,14 +43,15 @@ router = APIRouter(prefix="/user")
 @router.post(
     "/auth/apple",
     status_code=status.HTTP_200_OK,
-    response_model=AppleAuthResponse,
+    response_model=UserAuthSessionResponse,
 )
 async def authenticate_with_apple(
     payload: AppleAuthRequest,
     service: AppleAuthService = Depends(get_apple_auth_service),
+    auth_session_service: AuthSessionService = Depends(get_auth_session_service),
 ):
     try:
-        return await service.authenticate(
+        user = await service.authenticate(
             identity_token=payload.identity_token,
             authorization_code=payload.authorization_code,
             user_identifier=payload.user_identifier,
@@ -53,21 +59,77 @@ async def authenticate_with_apple(
             name=payload.name,
             pet_name=payload.pet_name,
         )
+        session = await auth_session_service.start_session(user=user)
+        return UserAuthSessionResponse(
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
+            user=UserDetailResponse.model_validate(session.user),
+        )
     except ApplicationError as exc:
         raise from_application_error(exc)
 
 
 @router.post(
-    "/register", status_code=status.HTTP_200_OK, response_model=UserDetailResponse
+    "/register", status_code=status.HTTP_200_OK, response_model=UserAuthSessionResponse
 )
 async def register_basic_user(
     payload: RegisterBasicUserRequest,
     service: UserService = Depends(get_user_service),
+    auth_session_service: AuthSessionService = Depends(get_auth_session_service),
 ):
-    return await service.register_basic_user(
+    user = await service.register_basic_user(
         name=payload.name,
         pet_name=payload.pet_name,
     )
+    session = await auth_session_service.start_session(user=user)
+    return UserAuthSessionResponse(
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+        user=UserDetailResponse.model_validate(session.user),
+    )
+
+
+@router.post(
+    "/auth/refresh",
+    status_code=status.HTTP_200_OK,
+    response_model=UserAuthSessionResponse,
+)
+async def refresh_user_session(
+    payload: RefreshTokenRequest,
+    auth_session_service: AuthSessionService = Depends(get_auth_session_service),
+):
+    try:
+        session = await auth_session_service.refresh_session(
+            refresh_token=payload.refresh_token
+        )
+        return UserAuthSessionResponse(
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
+            user=UserDetailResponse.model_validate(session.user),
+        )
+    except ApplicationError as exc:
+        raise from_application_error(exc)
+
+
+@router.post(
+    "/auth/logout",
+    status_code=status.HTTP_200_OK,
+    response_model=LogoutResponse,
+)
+@router.post(
+    "/auth/revoke",
+    status_code=status.HTTP_200_OK,
+    response_model=LogoutResponse,
+)
+async def logout_user(
+    auth_session_service: AuthSessionService = Depends(get_auth_session_service),
+    current_user=Depends(get_current_user),
+):
+    try:
+        await auth_session_service.logout(user_id=str(current_user.id))
+        return LogoutResponse(revoked=True)
+    except ApplicationError as exc:
+        raise from_application_error(exc)
 
 
 @router.get(
@@ -178,6 +240,20 @@ async def get_user_search_history(
         )
         for item in items
     ]
+
+
+@router.delete(
+    "",
+    status_code=status.HTTP_200_OK,
+    response_model=UserDeleteResponse,
+    summary="Delete current user account",
+)
+async def delete_current_user(
+    service: UserService = Depends(get_user_service),
+    current_user=Depends(get_current_user),
+):
+    deleted = await service.delete_user(current_user.id)
+    return UserDeleteResponse(user_id=current_user.id, deleted=deleted)
 
 
 @router.get(

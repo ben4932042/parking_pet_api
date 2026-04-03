@@ -243,9 +243,12 @@ This project currently uses a lightweight header-based user lookup:
 
 - authenticated endpoints expect `x-user-id`
 - `GET /api/v1/user/me` resolves the current user from MongoDB
+- soft-deleted users are treated as invalid credentials
 - some property mutations allow anonymous actors, while others require an authenticated user
 
 This is closer to application-level identity wiring than a production auth system.
+
+For the current user lifecycle and Apple Login behavior, read `docs/user/workflow-account-lifecycle.md`.
 
 ## Important Domain Concepts
 
@@ -307,12 +310,17 @@ Main routes under `/api/v1`:
 
 ### User routes
 
+- `POST /user/auth/apple`
 - `POST /user/register`
+- `GET /user/profile`
 - `PATCH /user/profile`
 - `GET /user/me`
 - `PUT /user/favorite/{property_id}`
 - `GET /user/favorite/{property_id}`
 - `GET /user/favorite`
+- `GET /user/search-history`
+- `GET /user/property-notes`
+- `DELETE /user`
 
 ## Known Observations
 
