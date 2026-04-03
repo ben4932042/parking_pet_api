@@ -150,6 +150,8 @@ def user_entity_factory():
         name: str = "Ben",
         pet_name: str | None = None,
         source: str = "basic",
+        email: str | None = None,
+        apple_user_identifier: str | None = None,
         favorite_property_ids: list[str] | None = None,
         recent_searches: list[dict] | None = None,
     ):
@@ -158,6 +160,8 @@ def user_entity_factory():
             name=name,
             pet_name=pet_name,
             source=source,
+            email=email,
+            apple_user_identifier=apple_user_identifier,
             favorite_property_ids=favorite_property_ids or [],
             recent_searches=recent_searches or [],
             created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),

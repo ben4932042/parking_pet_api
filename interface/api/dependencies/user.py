@@ -2,10 +2,13 @@ from typing import Optional
 
 from fastapi import Depends, Header
 
+from application.apple_auth import AppleAuthService
 from application.user import UserService
 from domain.entities.audit import ActorInfo, SourceType
 from interface.api.dependencies.db import get_user_repository
 
+from infrastructure.apple import AppleIdentityTokenVerifier
+from infrastructure.config import settings
 from infrastructure.mongo.user import UserRepository
 from interface.api.exceptions.error import ForbiddenError
 
@@ -14,6 +17,17 @@ from domain.entities.user import UserEntity
 
 def get_user_service(repo=Depends(get_user_repository)) -> UserService:
     return UserService(repo=repo)
+
+
+def get_apple_identity_verifier() -> AppleIdentityTokenVerifier:
+    return AppleIdentityTokenVerifier(bundle_id=settings.apple.bundle_id)
+
+
+def get_apple_auth_service(
+    repo=Depends(get_user_repository),
+    verifier: AppleIdentityTokenVerifier = Depends(get_apple_identity_verifier),
+) -> AppleAuthService:
+    return AppleAuthService(repo=repo, verifier=verifier)
 
 
 def build_actor_from_user(

@@ -25,3 +25,7 @@ class ConflictError(ApplicationError):
 
 class ValidationDomainError(ApplicationError):
     pass
+
+
+class AuthenticationError(ApplicationError):
+    pass

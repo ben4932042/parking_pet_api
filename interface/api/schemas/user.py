@@ -46,6 +46,30 @@ class RegisterBasicUserRequest(BaseModel):
     pet_name: OptionalPetName | None = None
 
 
+class AppleAuthResponse(BaseModel):
+    id: PyObjectId = Field(alias="_id")
+    name: str
+    pet_name: str | None = None
+    favorite_property_ids: list[str]
+
+    model_config = {"from_attributes": True, "populate_by_name": True}
+
+
+class AppleAuthRequest(BaseModel):
+    identity_token: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ]
+    authorization_code: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ]
+    user_identifier: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ]
+    email: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None = None
+    name: RequiredUserName | None = None
+    pet_name: OptionalPetName | None = None
+
+
 class FavoritePropertyResponse(UserDetailResponse):
     property_id: PyObjectId
     is_favorite: bool

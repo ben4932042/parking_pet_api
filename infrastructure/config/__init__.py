@@ -35,9 +35,14 @@ class GoogleSettings(BaseModel):
     place_api_key: SecretStr = Field(description="Google Maps API Key")
 
 
+class AppleSettings(BaseModel):
+    bundle_id: str = ""
+
+
 class Settings(BaseSettings):
     mongo: MongoSettings = MongoSettings()
     google: GoogleSettings
+    apple: AppleSettings = AppleSettings()
 
     model_config = SettingsConfigDict(
         env_file=".env",

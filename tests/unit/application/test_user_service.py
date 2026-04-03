@@ -19,6 +19,34 @@ class UserRepoStub(IUserRepository):
         self.calls.append({"fn": "get_user_by_id", "user_id": user_id})
         return self.user
 
+    async def register_apple_user(
+        self,
+        *,
+        apple_user_identifier: str,
+        name: str,
+        pet_name: str | None = None,
+        email: str | None = None,
+    ):
+        self.calls.append(
+            {
+                "fn": "register_apple_user",
+                "apple_user_identifier": apple_user_identifier,
+                "name": name,
+                "pet_name": pet_name,
+                "email": email,
+            }
+        )
+        return self.user
+
+    async def get_user_by_apple_user_identifier(self, apple_user_identifier: str):
+        self.calls.append(
+            {
+                "fn": "get_user_by_apple_user_identifier",
+                "apple_user_identifier": apple_user_identifier,
+            }
+        )
+        return self.user
+
     async def update_user_profile(
         self,
         user_id: str,

@@ -21,6 +21,7 @@ class UserRepository(IUserRepository):
             {
                 "name": name,
                 "pet_name": pet_name,
+                "source": "basic",
                 "favorite_property_ids": [],
                 "recent_searches": [],
             }
@@ -34,8 +35,53 @@ class UserRepository(IUserRepository):
             recent_searches=[],
         )
 
+    async def register_apple_user(
+        self,
+        *,
+        apple_user_identifier: str,
+        name: str,
+        pet_name: str | None = None,
+        email: str | None = None,
+    ) -> UserEntity:
+        now = datetime.now(UTC)
+        result = await self.collection.insert_one(
+            {
+                "name": name,
+                "pet_name": pet_name,
+                "email": email,
+                "source": "apple",
+                "apple_user_identifier": apple_user_identifier,
+                "favorite_property_ids": [],
+                "recent_searches": [],
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+        return UserEntity(
+            _id=result.inserted_id,
+            name=name,
+            pet_name=pet_name,
+            email=email,
+            source="apple",
+            apple_user_identifier=apple_user_identifier,
+            favorite_property_ids=[],
+            recent_searches=[],
+            created_at=now,
+            updated_at=now,
+        )
+
     async def get_user_by_id(self, user_id: PyObjectId) -> Optional[UserEntity]:
         doc = await self.collection.find_one({"_id": ObjectId(user_id)})
+        if doc:
+            return UserEntity(**doc)
+        return None
+
+    async def get_user_by_apple_user_identifier(
+        self, apple_user_identifier: str
+    ) -> Optional[UserEntity]:
+        doc = await self.collection.find_one(
+            {"apple_user_identifier": apple_user_identifier}
+        )
         if doc:
             return UserEntity(**doc)
         return None

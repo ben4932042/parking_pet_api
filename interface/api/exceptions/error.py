@@ -2,6 +2,7 @@ from typing import Any, Mapping, Optional
 
 from application.exceptions import (
     ApplicationError,
+    AuthenticationError as ApplicationAuthenticationError,
     ConflictError as ApplicationConflictError,
     NotFoundError as ApplicationNotFoundError,
     ValidationDomainError as ApplicationValidationDomainError,
@@ -73,6 +74,12 @@ def from_application_error(exc: ApplicationError) -> AppError:
         )
     if isinstance(exc, ApplicationValidationDomainError):
         return ValidationDomainError(
+            exc.message,
+            details=exc.details,
+            cause=exc.cause,
+        )
+    if isinstance(exc, ApplicationAuthenticationError):
+        return UnauthorizedError(
             exc.message,
             details=exc.details,
             cause=exc.cause,

@@ -15,7 +15,9 @@ class UserEntity(BaseModel):
     id: PyObjectId = Field(alias="_id")
     name: str
     pet_name: str | None = None
+    email: str | None = None
     source: Literal["apple", "basic"] = Field(default="basic")
+    apple_user_identifier: str | None = None
     favorite_property_ids: list[str] = Field(default_factory=list)
     recent_searches: list[UserSearchRecord] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

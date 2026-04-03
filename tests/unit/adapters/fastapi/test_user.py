@@ -1,7 +1,11 @@
 from datetime import datetime, timezone
 
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.user import get_current_user, get_user_service
+from interface.api.dependencies.user import (
+    get_apple_auth_service,
+    get_current_user,
+    get_user_service,
+)
 
 
 class UserServiceStub:
@@ -68,6 +72,37 @@ class FavoritePropertyServiceStub:
         return self.noted_property_ids
 
 
+class AppleAuthServiceStub:
+    def __init__(self, user=None, error=None):
+        self.user = user
+        self.error = error
+        self.calls = []
+
+    async def authenticate(
+        self,
+        *,
+        identity_token: str,
+        authorization_code: str,
+        user_identifier: str,
+        email: str | None = None,
+        name: str | None = None,
+        pet_name: str | None = None,
+    ):
+        self.calls.append(
+            {
+                "identity_token": identity_token,
+                "authorization_code": authorization_code,
+                "user_identifier": user_identifier,
+                "email": email,
+                "name": name,
+                "pet_name": pet_name,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.user
+
+
 def test_user_register_returns_user_detail(client, override_api_dep, user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
     service = override_api_dep(get_user_service, UserServiceStub(user=user))
@@ -85,6 +120,64 @@ def test_user_register_returns_user_detail(client, override_api_dep, user_entity
     assert service.calls == [
         {"fn": "register_basic_user", "name": "Ben", "pet_name": "Mochi"}
     ]
+
+
+def test_apple_auth_returns_existing_user(client, override_api_dep, user_entity_factory):
+    user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        pet_name="Mochi",
+        source="apple",
+        apple_user_identifier="apple-sub-1",
+        favorite_property_ids=["p1"],
+    )
+    service = override_api_dep(get_apple_auth_service, AppleAuthServiceStub(user=user))
+
+    response = client.post(
+        "/api/v1/user/auth/apple",
+        json={
+            "identity_token": "token",
+            "authorization_code": "code",
+            "user_identifier": "apple-user-1",
+            "email": "ben@example.com",
+            "name": "Ben",
+            "pet_name": "Mochi",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "_id": "u1",
+        "name": "Ben",
+        "pet_name": "Mochi",
+        "favorite_property_ids": ["p1"],
+    }
+    assert service.calls == [
+        {
+            "identity_token": "token",
+            "authorization_code": "code",
+            "user_identifier": "apple-user-1",
+            "email": "ben@example.com",
+            "name": "Ben",
+            "pet_name": "Mochi",
+        }
+    ]
+
+
+def test_apple_auth_rejects_blank_required_fields(client):
+    response = client.post(
+        "/api/v1/user/auth/apple",
+        json={
+            "identity_token": "   ",
+            "authorization_code": "",
+            "user_identifier": "   ",
+            "email": None,
+            "name": None,
+            "pet_name": None,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_get_user_profile_returns_name_and_pet_name(

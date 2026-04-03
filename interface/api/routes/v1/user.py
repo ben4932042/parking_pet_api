@@ -1,29 +1,60 @@
 from fastapi import Depends, APIRouter, Query
 from starlette import status
 
+from application.apple_auth import AppleAuthService
+from application.exceptions import ApplicationError
 from application.property import PropertyService
 from application.property_note import PropertyNoteService
 from application.user import UserService
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.user import get_user_service, get_current_user
+from interface.api.dependencies.user import (
+    get_apple_auth_service,
+    get_user_service,
+    get_current_user,
+)
 
 from domain.entities import PyObjectId
+from interface.api.exceptions.error import from_application_error
 from interface.api.schemas.page import Pagination
 from interface.api.schemas.property import PropertyOverviewResponse
 from interface.api.schemas.property_note import UserPropertyNoteListItemResponse
 from interface.api.schemas.search_history import UserSearchHistoryItemResponse
 from interface.api.schemas.user import (
+    AppleAuthResponse,
     UserDetailResponse,
     UserAuthStatusResponse,
     FavoritePropertyResponse,
     FavoritePropertyStatusResponse,
+    AppleAuthRequest,
     RegisterBasicUserRequest,
     UpdateUserProfileRequest,
     UserProfileResponse,
 )
 
 router = APIRouter(prefix="/user")
+
+
+@router.post(
+    "/auth/apple",
+    status_code=status.HTTP_200_OK,
+    response_model=AppleAuthResponse,
+)
+async def authenticate_with_apple(
+    payload: AppleAuthRequest,
+    service: AppleAuthService = Depends(get_apple_auth_service),
+):
+    try:
+        return await service.authenticate(
+            identity_token=payload.identity_token,
+            authorization_code=payload.authorization_code,
+            user_identifier=payload.user_identifier,
+            email=payload.email,
+            name=payload.name,
+            pet_name=payload.pet_name,
+        )
+    except ApplicationError as exc:
+        raise from_application_error(exc)
 
 
 @router.post(
