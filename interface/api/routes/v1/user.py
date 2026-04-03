@@ -44,6 +44,12 @@ router = APIRouter(prefix="/user")
     "/auth/apple",
     status_code=status.HTTP_200_OK,
     response_model=UserAuthSessionResponse,
+    summary="Authenticate with Apple",
+    description=(
+        "Verifies the Apple identity token, resolves or creates the corresponding user, "
+        "restores a previously soft-deleted Apple account when applicable, "
+        "and returns a bearer-token session."
+    ),
 )
 async def authenticate_with_apple(
     payload: AppleAuthRequest,
@@ -70,7 +76,14 @@ async def authenticate_with_apple(
 
 
 @router.post(
-    "/register", status_code=status.HTTP_200_OK, response_model=UserAuthSessionResponse
+    "/register",
+    status_code=status.HTTP_200_OK,
+    response_model=UserAuthSessionResponse,
+    summary="Register basic user",
+    description=(
+        "Creates a basic user account with name and optional pet name, "
+        "then immediately starts an authenticated bearer-token session."
+    ),
 )
 async def register_basic_user(
     payload: RegisterBasicUserRequest,
@@ -93,6 +106,11 @@ async def register_basic_user(
     "/auth/refresh",
     status_code=status.HTTP_200_OK,
     response_model=UserAuthSessionResponse,
+    summary="Refresh auth session",
+    description=(
+        "Exchanges a valid refresh token for a new access token, a rotated refresh token, "
+        "and the latest user snapshot."
+    ),
 )
 async def refresh_user_session(
     payload: RefreshTokenRequest,
@@ -115,11 +133,17 @@ async def refresh_user_session(
     "/auth/logout",
     status_code=status.HTTP_200_OK,
     response_model=LogoutResponse,
+    summary="Logout current session",
+    description=(
+        "Revokes the current authenticated session. "
+        "Requires `Authorization: Bearer <access_token>`."
+    ),
 )
 @router.post(
     "/auth/revoke",
     status_code=status.HTTP_200_OK,
     response_model=LogoutResponse,
+    include_in_schema=False,
 )
 async def logout_user(
     auth_session_service: AuthSessionService = Depends(get_auth_session_service),
@@ -133,14 +157,24 @@ async def logout_user(
 
 
 @router.get(
-    "/profile", status_code=status.HTTP_200_OK, response_model=UserProfileResponse
+    "/profile",
+    status_code=status.HTTP_200_OK,
+    response_model=UserProfileResponse,
+    summary="Get current user profile",
+    description="Returns the profile for the authenticated user.",
 )
 async def get_user_profile(current_user=Depends(get_current_user)):
     return current_user
 
 
 @router.patch(
-    "/profile", status_code=status.HTTP_200_OK, response_model=UserProfileResponse
+    "/profile",
+    status_code=status.HTTP_200_OK,
+    response_model=UserProfileResponse,
+    summary="Update current user profile",
+    description=(
+        "Updates the authenticated user's display name and optional pet name."
+    ),
 )
 async def update_user_profile(
     payload: UpdateUserProfileRequest,
@@ -154,7 +188,15 @@ async def update_user_profile(
     )
 
 
-@router.get("/me", status_code=status.HTTP_200_OK, response_model=UserAuthStatusResponse)
+@router.get(
+    "/me",
+    status_code=status.HTTP_200_OK,
+    response_model=UserAuthStatusResponse,
+    summary="Check auth status",
+    description=(
+        "Validates the bearer token and returns whether it maps to an active user session."
+    ),
+)
 async def get_me(current_user=Depends(get_current_user)):
     return UserAuthStatusResponse(authenticated=current_user is not None)
 
@@ -163,6 +205,11 @@ async def get_me(current_user=Depends(get_current_user)):
     "/favorite/{property_id}",
     status_code=status.HTTP_200_OK,
     response_model=FavoritePropertyResponse,
+    summary="Add or remove favorite property",
+    description=(
+        "Updates the authenticated user's favorite state for a property. "
+        "Use the `is_favorite` query parameter to add or remove the favorite."
+    ),
 )
 async def update_user_favorite_property(
     property_id: PyObjectId,
@@ -186,6 +233,8 @@ async def update_user_favorite_property(
     "/favorite/{property_id}",
     status_code=status.HTTP_200_OK,
     response_model=FavoritePropertyStatusResponse,
+    summary="Get favorite status",
+    description="Returns whether the authenticated user has favorited the target property.",
 )
 async def get_user_favorite_property_status(
     property_id: PyObjectId,
@@ -201,6 +250,11 @@ async def get_user_favorite_property_status(
     "/favorite",
     status_code=status.HTTP_200_OK,
     response_model=list[PropertyOverviewResponse],
+    summary="List favorite properties",
+    description=(
+        "Returns the authenticated user's favorite properties as property overviews. "
+        "Items with user notes are prioritized first."
+    ),
 )
 async def get_user_favorite_properties(
     current_user=Depends(get_current_user),
@@ -227,6 +281,10 @@ async def get_user_favorite_properties(
     "/search-history",
     status_code=status.HTTP_200_OK,
     response_model=list[UserSearchHistoryItemResponse],
+    summary="List search history",
+    description=(
+        "Returns the authenticated user's recent search history, newest first."
+    ),
 )
 async def get_user_search_history(
     limit: int = Query(default=20, ge=1, le=100),
@@ -246,7 +304,11 @@ async def get_user_search_history(
     "",
     status_code=status.HTTP_200_OK,
     response_model=UserDeleteResponse,
-    summary="Delete current user account",
+    summary="Soft-delete current user account",
+    description=(
+        "Soft-deletes the authenticated user account by marking it deleted. "
+        "User data is retained, but existing bearer-token authentication becomes invalid."
+    ),
 )
 async def delete_current_user(
     service: UserService = Depends(get_user_service),
@@ -260,6 +322,11 @@ async def delete_current_user(
     "/property-notes",
     status_code=status.HTTP_200_OK,
     response_model=Pagination[UserPropertyNoteListItemResponse],
+    summary="List current user's property notes",
+    description=(
+        "Returns paginated private notes for the authenticated user, "
+        "including related property overviews when available."
+    ),
 )
 async def get_user_property_notes(
     page: int = Query(default=1, ge=1),

@@ -1,6 +1,7 @@
 from typing import Optional
 
-from fastapi import Depends, Header
+from fastapi import Depends, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from application.auth_session import AuthSessionService
 from application.auth_tokens import IAuthTokenService
@@ -16,6 +17,9 @@ from infrastructure.mongo.user import UserRepository
 from interface.api.exceptions.error import ForbiddenError, UnauthorizedError
 
 from domain.entities.user import UserEntity
+
+bearer_auth_optional = HTTPBearer(auto_error=False)
+bearer_auth_required = HTTPBearer(auto_error=False)
 
 
 def get_user_service(repo=Depends(get_user_repository)) -> UserService:
@@ -74,18 +78,17 @@ def build_actor_from_user(
 
 
 async def get_current_user(
-    authorization: Optional[str] = Header(
-        None, description="Bearer token for authenticated users"
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(
+        bearer_auth_required
     ),
     repo: UserRepository = Depends(get_user_repository),
     token_service: IAuthTokenService = Depends(get_auth_token_service),
 ) -> UserEntity:
-    if not authorization:
+    if credentials is None or not credentials.credentials.strip():
         raise ForbiddenError("Authentication required")
-    scheme, _, credentials = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not credentials.strip():
+    if credentials.scheme.lower() != "bearer":
         raise UnauthorizedError("Invalid authorization header")
-    claims = token_service.verify_access_token(credentials.strip())
+    claims = token_service.verify_access_token(credentials.credentials.strip())
     current_user = await repo.get_user_by_id(claims.user_id)
     if (
         not current_user
@@ -99,18 +102,17 @@ async def get_current_user(
 
 
 async def get_optional_current_user(
-    authorization: Optional[str] = Header(
-        None, description="Bearer token for authenticated users"
+    credentials: Optional[HTTPAuthorizationCredentials] = Security(
+        bearer_auth_optional
     ),
     repo: UserRepository = Depends(get_user_repository),
     token_service: IAuthTokenService = Depends(get_auth_token_service),
 ) -> Optional[UserEntity]:
-    if not authorization:
+    if credentials is None:
         return None
-    scheme, _, credentials = authorization.partition(" ")
-    if scheme.lower() != "bearer" or not credentials.strip():
+    if credentials.scheme.lower() != "bearer" or not credentials.credentials.strip():
         raise UnauthorizedError("Invalid authorization header")
-    claims = token_service.verify_access_token(credentials.strip())
+    claims = token_service.verify_access_token(credentials.credentials.strip())
     current_user = await repo.get_user_by_id(claims.user_id)
     if (
         current_user is None

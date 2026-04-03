@@ -40,8 +40,8 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 
 ## Rules
 
-- This project currently uses lightweight header-based authentication. Authenticated routes expect `x-user-id`.
-- `get_current_user` must reject requests with no `x-user-id`, unknown users, or soft-deleted users.
+- This project currently uses bearer-token authentication. Authenticated routes expect `Authorization: Bearer <access-token>`.
+- `get_current_user` must reject requests with no bearer token, malformed bearer headers, unknown users, or soft-deleted users.
 - `get_optional_current_user` may return `None` for anonymous, unknown, or soft-deleted users.
 - Basic registration creates a new user with `source="basic"`.
 - Apple login verifies the Apple identity token before any user lookup or creation.
@@ -82,7 +82,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 
 ### 3. Authenticated requests
 
-- Client sends `x-user-id` on authenticated routes.
+- Client sends `Authorization: Bearer <access-token>` on authenticated routes.
 - Backend resolves the current user from MongoDB.
 - Soft-deleted users are treated as invalid credentials.
 
@@ -98,7 +98,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - Client calls `DELETE /api/v1/user`.
 - Backend marks the current user as deleted.
 - The user record remains in storage.
-- Existing `x-user-id` authentication stops working after deletion.
+- Existing access tokens stop working after deletion because the deleted user is treated as invalid credentials.
 - Apple login with the same Apple account restores the same user later.
 
 ## Validation

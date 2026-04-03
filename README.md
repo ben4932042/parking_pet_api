@@ -239,10 +239,10 @@ make lint
 
 ## Authentication Model
 
-This project currently uses a lightweight header-based user lookup:
+This project currently uses bearer-token-based user authentication:
 
-- authenticated endpoints expect `x-user-id`
-- `GET /api/v1/user/me` resolves the current user from MongoDB
+- authenticated endpoints expect `Authorization: Bearer <access-token>`
+- `GET /api/v1/user/me` verifies the bearer token, then resolves the current user from MongoDB
 - soft-deleted users are treated as invalid credentials
 - some property mutations allow anonymous actors, while others require an authenticated user
 
