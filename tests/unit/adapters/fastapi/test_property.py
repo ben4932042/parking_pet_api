@@ -261,6 +261,7 @@ def test_search_route_returns_keyword_response_type_for_keyword_retrieval(
     assert response.status_code == 200
     assert response.json()["user_query"] == "肉球森林"
     assert response.json()["response_type"] == "keyword_search"
+    assert response.json()["categories"] == []
 
 
 def test_search_route_returns_keyword_response_type_for_fallback_retrieval(
@@ -386,12 +387,33 @@ def test_search_route_includes_has_note_for_authenticated_user(
     assert response.status_code == 200
     data = response.json()
     assert data["results"][0]["id"] == "p1"
+    assert data["categories"] == ["cafe"]
     assert data["results"][0]["has_note"] is True
     assert service.calls[-1] == {
         "fn": "get_noted_property_ids",
         "user_id": "u1",
         "property_ids": ["p1"],
     }
+
+
+def test_search_route_returns_unique_non_null_categories_from_results(
+    client, override_api_dep, property_entity_factory
+):
+    override_api_dep(
+        get_property_service,
+        CapturePropertyService(
+            items=[
+                property_entity_factory(identifier="p1", primary_type="cafe"),
+                property_entity_factory(identifier="p2", primary_type="restaurant"),
+                property_entity_factory(identifier="p3", primary_type="cafe"),
+            ]
+        ),
+    )
+
+    response = client.get("/api/v1/property", params={"query": "台北"})
+
+    assert response.status_code == 200
+    assert response.json()["categories"] == ["cafe", "restaurant"]
 
 
 def test_search_route_records_history_for_authenticated_user(

@@ -93,6 +93,16 @@ async def _attach_has_note(
     ]
 
 
+def _collect_result_categories(results: list[dict]) -> list[str]:
+    categories: list[str] = []
+    for item in results:
+        category = item.get("category")
+        if category is None or category in categories:
+            continue
+        categories.append(category)
+    return categories
+
+
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
@@ -144,6 +154,7 @@ async def search_properties_by_keyword(
                 "Failed to record search history",
                 extra={"user_id": str(current_user.id), "query": query},
             )
+    results = await _attach_has_note(items, service, current_user)
     return {
         "status": "success",
         "user_query": query,
@@ -152,7 +163,8 @@ async def search_properties_by_keyword(
             plan.used_fallback,
         ),
         "preferences": plan.filter_condition.preferences,
-        "results": await _attach_has_note(items, service, current_user),
+        "categories": _collect_result_categories(results),
+        "results": results,
     }
 
 
