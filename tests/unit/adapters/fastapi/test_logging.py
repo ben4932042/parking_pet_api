@@ -39,6 +39,12 @@ def test_logging_middleware_logs_http_access_with_cloudflare_request_id(caplog):
     assert record.request_id == "cf-request-id"
     assert record.request_id_source == "cf-ray"
     assert record.route_name == "ping_route"
+    assert record.headers["cf-ray"] == "cf-request-id"
+    assert record.headers["cf-connecting-ip"] == "1.2.3.4"
+    assert record.headers["cf-ipcountry"] == "TW"
+    assert record.headers["user-agent"] == "pytest"
+    assert record.headers["x-forwarded-for"] == "1.2.3.4"
+    assert record.headers["x-forwarded-proto"] == "https"
     assert record.query_summary == {"limit": "10"}
     assert record.status_code == 200
     assert record.client == {

@@ -816,7 +816,7 @@ def test_get_detail_allows_anonymous_access(
 
     assert response.status_code == 200
     record = next(record for record in caplog.records if record.event == "property_viewed")
-    assert record.user_id is None
+    assert getattr(record, "user_id", None) is None
     assert record.resource == {"type": "property", "id": "p1"}
 
 

@@ -149,6 +149,7 @@ class LoggingMiddleware:
                 "route_name": route_name,
                 "status_code": response_info["status_code"],
                 "latency_ms": latency_ms,
+                "headers": headers,
                 "query_summary": state.get("query_summary"),
                 "input_summary": state.get("input_summary"),
                 "resource": build_resource_from_path_params(
