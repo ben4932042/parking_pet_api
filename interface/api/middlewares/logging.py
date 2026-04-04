@@ -1,8 +1,16 @@
 import json
 import logging
+import time
 from typing import Optional, Set
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+from interface.api.logging_utils import (
+    build_input_summary,
+    build_resource_from_path_params,
+    resolve_request_id,
+    summarize_query_string,
+)
 
 
 class LoggingMiddleware:
@@ -23,6 +31,8 @@ class LoggingMiddleware:
         if path in self._exclude_paths:
             await self.app(scope, receive, send)
             return
+
+        state = scope.setdefault("state", {})
 
         # 1) Read & buffer the incoming HTTP request body
         body = b""
@@ -67,6 +77,10 @@ class LoggingMiddleware:
             # if we built from scope manually, we might need to re-parse
             headers = {k.decode(): v.decode() for k, v in scope["headers"]}
 
+        request_id, request_id_source = resolve_request_id(headers)
+        state["request_id"] = request_id
+        state["request_id_source"] = request_id_source
+
         body_for_log = None
         content_type = headers.get("content-type", "")
         if body:
@@ -82,22 +96,14 @@ class LoggingMiddleware:
                     body_for_log = body.decode("utf-8", errors="replace")
             except Exception:
                 body_for_log = body.decode("utf-8", errors="replace")
-
-        req_dict = {
-            "request": {
-                "method": scope.get("method"),
-                "path": path,
-                "query_params": scope.get("query_string", b"").decode(),
-                "headers": headers,
-                "body": body_for_log,
-            }
-        }
-        self._logger.debug("Request access log", extra=req_dict)
+        state["input_summary"] = build_input_summary(body_for_log)
+        state["query_summary"] = summarize_query_string(
+            scope.get("query_string", b"").decode()
+        )
 
         # 4) Wrap send to capture response info
         response_info = {
             "status_code": None,
-            "body": None,
             "media_type": None,
         }
 
@@ -113,41 +119,47 @@ class LoggingMiddleware:
                 response_info["media_type"] = resp_headers.get("content-type")
                 await send(message)
             elif message["type"] == "http.response.body":
-                # try to log non-streaming / small body
-                body_bytes = message.get("body", b"")
-                more_body = message.get("more_body", False)
-
-                # only buffer if small and not event-stream
-                if (
-                    body_bytes
-                    and not more_body
-                    and response_info["media_type"] != "text/event-stream"
-                    and (response_info["body"] is None)
-                ):
-                    # cap size
-                    # we will buffer the body but to avoid breaking streaming, we'll cap
-                    if len(body_bytes) <= 10240:  # 10 KB
-                        try:
-                            parsed = json.loads(body_bytes.decode())
-                            response_info["body"] = parsed
-                        except Exception:
-                            # non-json, skip actual body text to avoid noise
-                            pass
-
                 await send(message)
             else:
                 await send(message)
 
         # 5) Call downstream app with our replaying receive & wrapped send
-        await self.app(scope, replay_receive, send_wrapper)
-
-        # 6) After response sent, log it
-        res_dict = {
-            "response": {
+        started_at = time.perf_counter()
+        try:
+            await self.app(scope, replay_receive, send_wrapper)
+        except Exception:
+            if response_info["status_code"] is None:
+                response_info["status_code"] = 500
+            raise
+        finally:
+            route = scope.get("route")
+            route_name = getattr(route, "name", None)
+            if route_name is None:
+                endpoint = scope.get("endpoint")
+                route_name = getattr(endpoint, "__name__", None)
+            state["route_name"] = route_name
+            latency_ms = round((time.perf_counter() - started_at) * 1000, 2)
+            detail = {
+                "event": "http_access",
+                "request_id": request_id,
+                "request_id_source": request_id_source,
+                "user_id": state.get("user_id"),
+                "method": scope.get("method"),
+                "path": path,
+                "route_name": route_name,
                 "status_code": response_info["status_code"],
+                "latency_ms": latency_ms,
+                "query_summary": state.get("query_summary"),
+                "input_summary": state.get("input_summary"),
+                "resource": build_resource_from_path_params(
+                    scope.get("path_params", {})
+                ),
+                "client": {
+                    "ip": headers.get("cf-connecting-ip"),
+                    "country": headers.get("cf-ipcountry"),
+                    "forwarded_for": headers.get("x-forwarded-for"),
+                    "scheme": headers.get("x-forwarded-proto"),
+                    "user_agent": headers.get("user-agent"),
+                },
             }
-        }
-        if response_info["body"] is not None:
-            res_dict["response"]["body"] = response_info["body"]
-
-        self._logger.debug("Response log", extra=res_dict)
+            self._logger.debug("HTTP access", extra=detail)

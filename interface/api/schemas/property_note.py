@@ -1,9 +1,8 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from interface.api.schemas.property import PropertyOverviewResponse
+from application.dto.property_note import UserPropertyNoteListItemDto
 
 
 class PropertyNoteUpsertRequest(BaseModel):
@@ -17,9 +16,5 @@ class PropertyNoteResponse(BaseModel):
     updated_at: datetime
 
 
-class UserPropertyNoteListItemResponse(BaseModel):
-    property_id: str
-    content: str
-    created_at: datetime
-    updated_at: datetime
-    property: Optional[PropertyOverviewResponse] = None
+class UserPropertyNoteListItemResponse(UserPropertyNoteListItemDto):
+    model_config = {"from_attributes": True}

@@ -14,6 +14,7 @@ from interface.api.exceptions.error import AppError
 from interface.api.exceptions.error import from_application_error
 from interface.api.exceptions.error_code import ErrorCode
 from interface.api.exceptions.problem import ProblemDetails
+from interface.api.logging_utils import log_api_event
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +52,23 @@ async def app_error_handler(request: Request, exc: Exception) -> Response:
     if not isinstance(exc, AppError):
         return await unhandled_exception_handler(request, exc)
 
-    logger.error(
-        exc.message,
+    log_api_event(
+        "request_failed",
+        request=request,
+        level=logging.ERROR,
+        message="Request failed",
         extra={
-            "json_fields": {
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": exc.http_status,
+            "error_type": type(exc).__name__,
+            "error_message": exc.message,
+            "input_summary": getattr(request.state, "input_summary", None),
+            "error": {
                 "code": exc.code,
-                "status": exc.http_status,
                 "details": exc.details,
-            }
+            },
         },
-        exc_info=exc.cause,
     )
 
     headers = {}
@@ -83,6 +91,20 @@ async def app_error_handler(request: Request, exc: Exception) -> Response:
 async def validation_error_handler(request: Request, exc: Exception) -> Response:
     if not isinstance(exc, RequestValidationError):
         return await unhandled_exception_handler(request, exc)
+    log_api_event(
+        "request_failed",
+        request=request,
+        level=logging.ERROR,
+        message="Request failed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": 422,
+            "error_type": type(exc).__name__,
+            "error_message": "Request validation failed",
+            "input_summary": getattr(request.state, "input_summary", None),
+        },
+    )
     return _problem_json(
         request,
         status=422,
@@ -98,6 +120,20 @@ async def pydantic_validation_error_handler(
 ) -> Response:
     if not isinstance(exc, PydanticValidationError):
         return await unhandled_exception_handler(request, exc)
+    log_api_event(
+        "request_failed",
+        request=request,
+        level=logging.ERROR,
+        message="Request failed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": 422,
+            "error_type": type(exc).__name__,
+            "error_message": "Request validation failed",
+            "input_summary": getattr(request.state, "input_summary", None),
+        },
+    )
     return _problem_json(
         request,
         status=422,
@@ -111,6 +147,22 @@ async def pydantic_validation_error_handler(
 async def http_exception_handler(request: Request, exc: Exception) -> Response:
     if not isinstance(exc, StarletteHTTPException):
         return await unhandled_exception_handler(request, exc)
+    log_api_event(
+        "request_failed",
+        request=request,
+        level=logging.ERROR,
+        message="Request failed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": exc.status_code,
+            "error_type": type(exc).__name__,
+            "error_message": exc.detail
+            if isinstance(exc.detail, str)
+            else "HTTP error",
+            "input_summary": getattr(request.state, "input_summary", None),
+        },
+    )
 
     return _problem_json(
         request,
@@ -137,16 +189,20 @@ def get_clean_traceback(exc: Exception) -> str:
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> Response:
     clean_tb = get_clean_traceback(exc)
-
-    log_data = {
-        "method": request.method,
-        "url": str(request.url),
-        "error_summary": clean_tb,
-    }
-
-    logger.error(
-        f"Unhandled Error: {type(exc).__name__} at [{request.method}] {request.url.path}",
-        extra={"json_fields": log_data},
+    log_api_event(
+        "request_failed",
+        request=request,
+        level=logging.ERROR,
+        message="Request failed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": 500,
+            "error_type": type(exc).__name__,
+            "error_message": "Unexpected error.",
+            "error_summary": clean_tb,
+            "input_summary": getattr(request.state, "input_summary", None),
+        },
     )
     return _problem_json(
         request,

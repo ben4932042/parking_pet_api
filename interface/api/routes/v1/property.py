@@ -1,7 +1,6 @@
-import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from starlette import status
 
 from application.exceptions import ApplicationError
@@ -23,7 +22,6 @@ from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
     get_current_user,
-    get_optional_current_user,
     get_optional_request_actor,
     get_request_actor,
     get_user_service,
@@ -46,9 +44,10 @@ from interface.api.schemas.property import (
     PropertyPetFeaturesResponse,
     PropertySearchResponse,
 )
+from interface.api.logging_utils import log_api_event
+from interface.api.logging_utils import optional_user_id
 
 router = APIRouter(prefix="/property")
-logger = logging.getLogger(__name__)
 
 
 def _coords_or_none(
@@ -58,8 +57,16 @@ def _coords_or_none(
         return None
     return lng, lat
 
+
+def _read_result_field(result, field: str, default=None):
+    if isinstance(result, dict):
+        return result.get(field, default)
+    return getattr(result, field, default)
+
+
 @router.get(
     "",
+    name="list_properties",
     status_code=status.HTTP_200_OK,
     response_model=PropertySearchResponse,
     summary="Search properties",
@@ -69,6 +76,7 @@ def _coords_or_none(
     ),
 )
 async def search_properties_by_keyword(
+    request: Request,
     query: str = Query(..., description="Natural-language search query."),
     category: PropertyCategoryKey | None = Query(
         default=None,
@@ -89,7 +97,7 @@ async def search_properties_by_keyword(
     ),
     service: PropertyService = Depends(get_property_service),
     user_service: UserService = Depends(get_user_service),
-    current_user: Optional[UserEntity] = Depends(get_optional_current_user),
+    current_user: UserEntity = Depends(get_current_user),
 ):
     result = await service.search_properties(
         q=query,
@@ -100,16 +108,33 @@ async def search_properties_by_keyword(
         current_user=current_user,
     )
     if current_user is not None:
-        try:
-            await user_service.record_recent_search(
-                user_id=str(current_user.id),
-                query=query,
-            )
-        except Exception:
-            logger.exception(
-                "Failed to record search history",
-                extra={"user_id": str(current_user.id), "query": query},
-            )
+        await user_service.record_recent_search(
+            user_id=str(current_user.id),
+            query=query,
+        )
+
+    log_api_event(
+        "property_search_executed",
+        request=request,
+        user_id=optional_user_id(current_user),
+        extra={
+            "keyword": query,
+            "filter_keys": [
+                key
+                for key, value in {
+                    "category": category,
+                    "user_lat": user_lat,
+                    "user_lng": user_lng,
+                    "map_lat": map_lat,
+                    "map_lng": map_lng,
+                    "radius": radius,
+                }.items()
+                if value is not None
+            ],
+            "result_count": len(_read_result_field(result, "results", []) or []),
+            "response_type": _read_result_field(result, "response_type"),
+        },
+    )
     return result
 
 
@@ -137,17 +162,32 @@ async def get_property_note(
 
 @router.put(
     "/{property_id}/note",
+    name="upsert_property_note",
     status_code=status.HTTP_200_OK,
     response_model=PropertyNoteResponse,
     summary="Create or update my private note for a property",
 )
 async def upsert_property_note(
+    request: Request,
     property_id: PyObjectId,
     payload: PropertyNoteUpsertRequest,
     service: PropertyNoteService = Depends(get_property_note_service),
     current_user: UserEntity = Depends(get_current_user),
 ):
+    is_created = all(
+        note.property_id != str(property_id) for note in current_user.property_notes
+    )
     note = await service.save_note(str(current_user.id), property_id, payload.content)
+    log_api_event(
+        "user_property_note_upserted",
+        request=request,
+        user_id=str(current_user.id),
+        extra={
+            "resource": {"type": "property", "id": str(property_id)},
+            "is_created": is_created,
+            "content_length": len(payload.content),
+        },
+    )
     return PropertyNoteResponse(
         property_id=note.property_id,
         content=note.content,
@@ -172,6 +212,7 @@ async def delete_property_note(
 
 @router.get(
     "/nearby",
+    name="list_nearby_properties",
     status_code=status.HTTP_200_OK,
     response_model=Pagination[PropertyOverviewResponse],
     summary="Get nearby properties",
@@ -182,9 +223,10 @@ async def delete_property_note(
     ),
 )
 async def get_nearby_properties(
+    request: Request,
     params: PropertyNearbyRequest = Depends(),
     service: PropertyService = Depends(get_property_service),
-    current_user: Optional[UserEntity] = Depends(get_optional_current_user),
+    current_user: UserEntity = Depends(get_current_user),
 ):
     types = (
         get_primary_types_by_category_key(params.category) if params.category else []
@@ -199,6 +241,19 @@ async def get_nearby_properties(
         current_user=current_user,
     )
     pages = (total + params.size - 1) // params.size if params.size else 0
+    log_api_event(
+        "property_nearby_search_executed",
+        request=request,
+        user_id=optional_user_id(current_user),
+        extra={
+            "lat": params.lat,
+            "lng": params.lng,
+            "radius": params.radius,
+            "page": params.page,
+            "size": params.size,
+            "result_count": total,
+        },
+    )
     return {
         "items": items,
         "total": total,
@@ -210,12 +265,16 @@ async def get_nearby_properties(
 
 @router.get(
     "/{property_id}",
+    name="get_property_detail",
     response_model=PropertyDetailResponse,
     summary="Get property detail",
     description="Returns a single property detail record. Soft-deleted properties are not returned from this endpoint.",
 )
 async def get_detail(
-    property_id: PyObjectId, service: PropertyService = Depends(get_property_service)
+    request: Request,
+    property_id: PyObjectId,
+    service: PropertyService = Depends(get_property_service),
+    current_user: UserEntity = Depends(get_current_user),
 ):
     prop = await service.get_details(property_id=property_id)
     if prop is None:
@@ -225,6 +284,12 @@ async def get_detail(
                 "error": {"code": "PROPERTY_NOT_FOUND", "message": "Property not found"}
             },
         )
+    log_api_event(
+        "property_viewed",
+        request=request,
+        user_id=optional_user_id(current_user),
+        extra={"resource": {"type": "property", "id": str(property_id)}},
+    )
     return prop
 
 

@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 from application.dto.property import PropertyOverviewDto
@@ -163,7 +164,7 @@ class AuthSessionServiceStub:
 
 
 def test_user_register_returns_user_detail(
-    client, override_api_dep, user_entity_factory
+    client, override_api_dep, user_entity_factory, caplog
 ):
     user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
     service = override_api_dep(get_user_service, UserServiceStub(user=user))
@@ -175,10 +176,11 @@ def test_user_register_returns_user_detail(
         ),
     )
 
-    response = client.post(
-        "/api/v1/user/register",
-        json={"name": "Ben", "pet_name": "Mochi"},
-    )
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.post(
+            "/api/v1/user/register",
+            json={"name": "Ben", "pet_name": "Mochi"},
+        )
 
     assert response.status_code == 200
     data = response.json()
@@ -199,6 +201,9 @@ def test_user_register_returns_user_detail(
     assert service.calls == [
         {"fn": "register_basic_user", "name": "Ben", "pet_name": "Mochi"}
     ]
+    record = next(record for record in caplog.records if record.event == "auth_registered")
+    assert record.user_id == "u1"
+    assert record.source == "basic"
     assert auth_session_service.calls == [
         {"fn": "start_session", "user_id": "u1", "source": "basic"}
     ]
@@ -496,7 +501,7 @@ def test_delete_current_user_returns_deleted_status(
 
 
 def test_update_user_favorite_property_returns_status(
-    client, override_api_dep, user_entity_factory
+    client, override_api_dep, user_entity_factory, caplog
 ):
     current_user = user_entity_factory(identifier="u1", name="Ben")
     updated_user = user_entity_factory(
@@ -505,7 +510,10 @@ def test_update_user_favorite_property_returns_status(
     service = override_api_dep(get_user_service, UserServiceStub(user=updated_user))
     override_api_dep(get_current_user, current_user)
 
-    response = client.put("/api/v1/user/favorite/p1", params={"is_favorite": "true"})
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.put(
+            "/api/v1/user/favorite/p1", params={"is_favorite": "true"}
+        )
 
     assert response.status_code == 200
     data = response.json()
@@ -520,10 +528,15 @@ def test_update_user_favorite_property_returns_status(
             "is_favorite": True,
         }
     ]
+    record = next(
+        record for record in caplog.records if record.event == "user_favorite_added"
+    )
+    assert record.user_id == "u1"
+    assert record.resource == {"type": "property", "id": "p1"}
 
 
 def test_update_user_favorite_property_can_remove_favorite(
-    client, override_api_dep, user_entity_factory
+    client, override_api_dep, user_entity_factory, caplog
 ):
     current_user = user_entity_factory(
         identifier="u1", name="Ben", favorite_property_ids=["p1"]
@@ -534,7 +547,10 @@ def test_update_user_favorite_property_can_remove_favorite(
     service = override_api_dep(get_user_service, UserServiceStub(user=updated_user))
     override_api_dep(get_current_user, current_user)
 
-    response = client.put("/api/v1/user/favorite/p1", params={"is_favorite": "false"})
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.put(
+            "/api/v1/user/favorite/p1", params={"is_favorite": "false"}
+        )
 
     assert response.status_code == 200
     assert response.json()["is_favorite"] is False
@@ -546,6 +562,11 @@ def test_update_user_favorite_property_can_remove_favorite(
             "is_favorite": False,
         }
     ]
+    record = next(
+        record for record in caplog.records if record.event == "user_favorite_removed"
+    )
+    assert record.user_id == "u1"
+    assert record.resource == {"type": "property", "id": "p1"}
 
 
 def test_get_user_favorite_property_status_returns_boolean(
@@ -581,6 +602,7 @@ def test_get_user_favorite_properties_returns_property_overviews(
     override_api_dep,
     user_entity_factory,
     property_entity_factory,
+    caplog,
 ):
     current_user = user_entity_factory(
         identifier="u1",
@@ -604,7 +626,8 @@ def test_get_user_favorite_properties_returns_property_overviews(
     )
     override_api_dep(get_current_user, current_user)
 
-    response = client.get("/api/v1/user/favorite")
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.get("/api/v1/user/favorite")
 
     assert response.status_code == 200
     data = response.json()
@@ -615,6 +638,13 @@ def test_get_user_favorite_properties_returns_property_overviews(
     assert service.calls == [
         {"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}
     ]
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "user_favorite_list_viewed"
+    )
+    assert record.user_id == "u1"
+    assert record.favorite_count == 2
 
 
 def test_get_user_favorite_properties_sorts_noted_items_first(

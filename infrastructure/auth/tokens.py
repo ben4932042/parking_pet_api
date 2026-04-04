@@ -5,18 +5,36 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
+from application.auth_tokens import AuthTokenClaims as AuthTokenClaimsContract
+from application.auth_tokens import IAuthTokenService
 from application.exceptions import AuthenticationError
 
 
 @dataclass(frozen=True)
-class AuthTokenClaims:
-    user_id: str
-    source: str
-    token_type: str
-    session_version: int
+class AuthTokenClaims(AuthTokenClaimsContract):
+    _user_id: str
+    _source: str
+    _token_type: str
+    _session_version: int
+
+    @property
+    def user_id(self) -> str:
+        return self._user_id
+
+    @property
+    def source(self) -> str:
+        return self._source
+
+    @property
+    def token_type(self) -> str:
+        return self._token_type
+
+    @property
+    def session_version(self) -> int:
+        return self._session_version
 
 
-class AuthTokenService:
+class AuthTokenService(IAuthTokenService):
     def __init__(
         self,
         *,
@@ -114,10 +132,10 @@ class AuthTokenService:
             raise AuthenticationError("Access token session version is missing")
 
         return AuthTokenClaims(
-            user_id=user_id,
-            source=source,
-            token_type=token_type,
-            session_version=session_version,
+            _user_id=user_id,
+            _source=source,
+            _token_type=token_type,
+            _session_version=session_version,
         )
 
     def _sign(self, encoded_payload: str) -> str:

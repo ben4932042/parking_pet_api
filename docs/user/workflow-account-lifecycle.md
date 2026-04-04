@@ -138,7 +138,8 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 
 - Favorite property ids are stored on the user record in `favorite_property_ids`.
 - Search history is stored on the user record in `recent_searches`.
-- Property notes are stored separately and joined at the route layer when needed.
+- Property notes are stored on the user record in `property_notes`.
+- Property-facing note workflows may still compose property overview data before returning API responses.
 - Search feedback is stored separately and linked by user id.
 
 ### 7. Account deletion

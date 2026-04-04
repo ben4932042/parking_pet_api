@@ -1,14 +1,16 @@
 from typing import Optional
 
-from fastapi import Depends, Security
+from fastapi import Depends, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from application.auth_session import AuthSessionService
 from application.auth_tokens import IAuthTokenService
-from application.apple_auth import AppleAuthService
+from application.apple_auth import AppleAuthService, IAppleIdentityVerifier
+from application.exceptions import AuthenticationError as ApplicationAuthenticationError
 from application.user import UserService
 from domain.entities.audit import ActorInfo, SourceType
 from interface.api.dependencies.db import get_user_repository
+from interface.api.logging_utils import log_api_event
 
 from infrastructure.apple import AppleIdentityTokenVerifier
 from infrastructure.auth import AuthTokenService
@@ -21,7 +23,6 @@ from domain.entities.user import UserEntity
 bearer_auth_optional = HTTPBearer(auto_error=False)
 bearer_auth_required = HTTPBearer(auto_error=False)
 
-
 def get_user_service(repo=Depends(get_user_repository)) -> UserService:
     return UserService(repo=repo)
 
@@ -32,12 +33,12 @@ def get_apple_identity_verifier() -> AppleIdentityTokenVerifier:
 
 def get_apple_auth_service(
     repo=Depends(get_user_repository),
-    verifier: AppleIdentityTokenVerifier = Depends(get_apple_identity_verifier),
+    verifier: IAppleIdentityVerifier = Depends(get_apple_identity_verifier),
 ) -> AppleAuthService:
     return AppleAuthService(repo=repo, verifier=verifier)
 
 
-def get_auth_token_service() -> IAuthTokenService:
+def get_auth_token_service() -> AuthTokenService:
     return AuthTokenService(
         signing_key=settings.auth.signing_key.get_secret_value(),
         ttl_seconds=settings.auth.access_token_ttl_seconds,
@@ -45,7 +46,7 @@ def get_auth_token_service() -> IAuthTokenService:
     )
 
 
-def get_refresh_token_service() -> IAuthTokenService:
+def get_refresh_token_service() -> AuthTokenService:
     return AuthTokenService(
         signing_key=settings.auth.signing_key.get_secret_value(),
         ttl_seconds=settings.auth.refresh_token_ttl_seconds,
@@ -78,6 +79,7 @@ def build_actor_from_user(
 
 
 async def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         bearer_auth_required
     ),
@@ -88,20 +90,65 @@ async def get_current_user(
         raise ForbiddenError("Authentication required")
     if credentials.scheme.lower() != "bearer":
         raise UnauthorizedError("Invalid authorization header")
-    claims = token_service.verify_access_token(credentials.credentials.strip())
+    try:
+        claims = token_service.verify_access_token(credentials.credentials.strip())
+    except ApplicationAuthenticationError as exc:
+        log_api_event(
+            "auth_invalid_token",
+            request=request,
+            level=30,
+            extra={
+                "path": request.url.path,
+                "reason": exc.message or "invalid_access_token",
+            },
+        )
+        raise UnauthorizedError("Invalid authentication credentials") from exc
     current_user = await repo.get_user_by_id(claims.user_id)
-    if (
-        not current_user
-        or current_user.source != claims.source
-        or current_user.session_version != claims.session_version
-    ):
+    if current_user is None or current_user.source != claims.source:
+        log_api_event(
+            "auth_invalid_token",
+            request=request,
+            user_id=claims.user_id,
+            level=30,
+            extra={
+                "path": request.url.path,
+                "reason": "invalid_authentication_credentials",
+            },
+        )
         raise UnauthorizedError("Invalid authentication credentials")
     if current_user.is_deleted:
+        log_api_event(
+            "auth_invalid_token",
+            request=request,
+            user_id=claims.user_id,
+            level=30,
+            extra={
+                "path": request.url.path,
+                "reason": "deleted_user",
+            },
+        )
         raise UnauthorizedError("Invalid authentication credentials")
+    if current_user.session_version != claims.session_version:
+        log_api_event(
+            "auth_session_mismatch",
+            request=request,
+            user_id=str(current_user.id),
+            level=30,
+            extra={
+                "path": request.url.path,
+                "token_session_version": claims.session_version,
+                "current_session_version": current_user.session_version,
+            },
+        )
+        raise UnauthorizedError("Invalid authentication credentials")
+    request.state.user_id = str(current_user.id)
+    request.state.user_source = current_user.source
+    request.state.session_version = current_user.session_version
     return current_user
 
 
 async def get_optional_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Security(
         bearer_auth_optional
     ),
@@ -112,15 +159,60 @@ async def get_optional_current_user(
         return None
     if credentials.scheme.lower() != "bearer" or not credentials.credentials.strip():
         raise UnauthorizedError("Invalid authorization header")
-    claims = token_service.verify_access_token(credentials.credentials.strip())
+    try:
+        claims = token_service.verify_access_token(credentials.credentials.strip())
+    except ApplicationAuthenticationError as exc:
+        log_api_event(
+            "auth_invalid_token",
+            request=request,
+            level=30,
+            extra={
+                "path": request.url.path,
+                "reason": exc.message or "invalid_access_token",
+            },
+        )
+        raise UnauthorizedError("Invalid authentication credentials") from exc
     current_user = await repo.get_user_by_id(claims.user_id)
-    if (
-        current_user is None
-        or current_user.is_deleted
-        or current_user.source != claims.source
-        or current_user.session_version != claims.session_version
-    ):
+    if current_user is None or current_user.source != claims.source:
+        log_api_event(
+            "auth_invalid_token",
+            request=request,
+            user_id=claims.user_id,
+            level=30,
+            extra={
+                "path": request.url.path,
+                "reason": "invalid_authentication_credentials",
+            },
+        )
         raise UnauthorizedError("Invalid authentication credentials")
+    if current_user.is_deleted:
+        log_api_event(
+            "auth_invalid_token",
+            request=request,
+            user_id=claims.user_id,
+            level=30,
+            extra={
+                "path": request.url.path,
+                "reason": "deleted_user",
+            },
+        )
+        raise UnauthorizedError("Invalid authentication credentials")
+    if current_user.session_version != claims.session_version:
+        log_api_event(
+            "auth_session_mismatch",
+            request=request,
+            user_id=str(current_user.id),
+            level=30,
+            extra={
+                "path": request.url.path,
+                "token_session_version": claims.session_version,
+                "current_session_version": current_user.session_version,
+            },
+        )
+        raise UnauthorizedError("Invalid authentication credentials")
+    request.state.user_id = str(current_user.id)
+    request.state.user_source = current_user.source
+    request.state.session_version = current_user.session_version
     return current_user
 
 

@@ -7,7 +7,7 @@ from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from interface.api.dependencies.property import get_property_service
-from interface.api.dependencies.user import get_optional_current_user
+from interface.api.dependencies.user import get_current_user, get_user_service
 from tests.integration.search_cases import SEARCH_CONDITION_CASES, SearchConditionCase
 
 
@@ -93,6 +93,11 @@ class LangGraphEnrichmentProvider(IEnrichmentProvider):
         return landmark_name, self.geocode_map.get(landmark_name)
 
 
+class NoopUserService:
+    async def record_recent_search(self, *, user_id, query, limit=20):
+        return None
+
+
 @pytest.fixture
 def integration_search_setup(api_app):
     repo = CaptureQueryRepo()
@@ -112,16 +117,22 @@ def integration_search_setup(api_app):
     async def _property_service_override():
         return service
 
-    async def _optional_user_override():
-        return None
+    class _CurrentUser:
+        id = "u1"
+        property_notes = []
+        favorite_property_ids = []
+        source = "basic"
+        session_version = 0
 
     api_app.dependency_overrides[get_property_service] = _property_service_override
-    api_app.dependency_overrides[get_optional_current_user] = _optional_user_override
+    api_app.dependency_overrides[get_current_user] = lambda: _CurrentUser()
+    api_app.dependency_overrides[get_user_service] = lambda: NoopUserService()
 
     yield repo, provider
 
     api_app.dependency_overrides.pop(get_property_service, None)
-    api_app.dependency_overrides.pop(get_optional_current_user, None)
+    api_app.dependency_overrides.pop(get_current_user, None)
+    api_app.dependency_overrides.pop(get_user_service, None)
 
 
 def _assert_mongo_query_matches_case(

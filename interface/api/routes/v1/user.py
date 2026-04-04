@@ -1,4 +1,6 @@
-from fastapi import Depends, APIRouter, Query
+import logging
+
+from fastapi import Depends, APIRouter, Query, Request
 from starlette import status
 
 from application.apple_auth import AppleAuthService
@@ -15,6 +17,7 @@ from interface.api.dependencies.user import (
     get_user_service,
     get_current_user,
 )
+from interface.api.logging_utils import log_api_event
 
 from domain.entities import PyObjectId
 from interface.api.exceptions.error import from_application_error
@@ -38,10 +41,12 @@ from interface.api.schemas.user import (
 )
 
 router = APIRouter(prefix="/user")
+logger = logging.getLogger(__name__)
 
 
 @router.post(
     "/auth/apple",
+    name="login_with_apple",
     status_code=status.HTTP_200_OK,
     response_model=UserAuthSessionResponse,
     summary="Authenticate with Apple",
@@ -52,6 +57,7 @@ router = APIRouter(prefix="/user")
     ),
 )
 async def authenticate_with_apple(
+    request: Request,
     payload: AppleAuthRequest,
     service: AppleAuthService = Depends(get_apple_auth_service),
     auth_session_service: AuthSessionService = Depends(get_auth_session_service),
@@ -66,17 +72,30 @@ async def authenticate_with_apple(
             pet_name=payload.pet_name,
         )
         session = await auth_session_service.start_session(user=user)
+        log_api_event(
+            "auth_login_succeeded",
+            request=request,
+            extra={"provider": "apple"},
+            user_id=str(session.user.id),
+        )
         return UserAuthSessionResponse(
             access_token=session.access_token,
             refresh_token=session.refresh_token,
             user=UserDetailResponse.model_validate(session.user),
         )
     except ApplicationError as exc:
+        log_api_event(
+            "auth_login_failed",
+            request=request,
+            level=logging.WARNING,
+            extra={"provider": "apple", "reason": exc.message},
+        )
         raise from_application_error(exc)
 
 
 @router.post(
     "/register",
+    name="register_user",
     status_code=status.HTTP_200_OK,
     response_model=UserAuthSessionResponse,
     summary="Register basic user",
@@ -86,6 +105,7 @@ async def authenticate_with_apple(
     ),
 )
 async def register_basic_user(
+    request: Request,
     payload: RegisterBasicUserRequest,
     service: UserService = Depends(get_user_service),
     auth_session_service: AuthSessionService = Depends(get_auth_session_service),
@@ -95,6 +115,12 @@ async def register_basic_user(
         pet_name=payload.pet_name,
     )
     session = await auth_session_service.start_session(user=user)
+    log_api_event(
+        "auth_registered",
+        request=request,
+        user_id=str(session.user.id),
+        extra={"source": session.user.source},
+    )
     return UserAuthSessionResponse(
         access_token=session.access_token,
         refresh_token=session.refresh_token,
@@ -104,6 +130,7 @@ async def register_basic_user(
 
 @router.post(
     "/auth/refresh",
+    name="refresh_auth_token",
     status_code=status.HTTP_200_OK,
     response_model=UserAuthSessionResponse,
     summary="Refresh auth session",
@@ -113,6 +140,7 @@ async def register_basic_user(
     ),
 )
 async def refresh_user_session(
+    request: Request,
     payload: RefreshTokenRequest,
     auth_session_service: AuthSessionService = Depends(get_auth_session_service),
 ):
@@ -120,17 +148,30 @@ async def refresh_user_session(
         session = await auth_session_service.refresh_session(
             refresh_token=payload.refresh_token
         )
+        log_api_event(
+            "auth_token_refreshed",
+            request=request,
+            user_id=str(session.user.id),
+            extra={"session_version": session.user.session_version},
+        )
         return UserAuthSessionResponse(
             access_token=session.access_token,
             refresh_token=session.refresh_token,
             user=UserDetailResponse.model_validate(session.user),
         )
     except ApplicationError as exc:
+        log_api_event(
+            "auth_refresh_failed",
+            request=request,
+            level=logging.WARNING,
+            extra={"reason": exc.message},
+        )
         raise from_application_error(exc)
 
 
 @router.post(
     "/auth/logout",
+    name="logout_user",
     status_code=status.HTTP_200_OK,
     response_model=LogoutResponse,
     summary="Logout current session",
@@ -146,11 +187,18 @@ async def refresh_user_session(
     include_in_schema=False,
 )
 async def logout_user(
+    request: Request,
     auth_session_service: AuthSessionService = Depends(get_auth_session_service),
     current_user=Depends(get_current_user),
 ):
     try:
         await auth_session_service.logout(user_id=str(current_user.id))
+        log_api_event(
+            "auth_logout_succeeded",
+            request=request,
+            user_id=str(current_user.id),
+            extra={"session_version": current_user.session_version},
+        )
         return LogoutResponse(revoked=True)
     except ApplicationError as exc:
         raise from_application_error(exc)
@@ -158,6 +206,7 @@ async def logout_user(
 
 @router.get(
     "/profile",
+    name="get_user_profile",
     status_code=status.HTTP_200_OK,
     response_model=UserProfileResponse,
     summary="Get current user profile",
@@ -169,6 +218,7 @@ async def get_user_profile(current_user=Depends(get_current_user)):
 
 @router.patch(
     "/profile",
+    name="update_user_profile",
     status_code=status.HTTP_200_OK,
     response_model=UserProfileResponse,
     summary="Update current user profile",
@@ -177,19 +227,31 @@ async def get_user_profile(current_user=Depends(get_current_user)):
     ),
 )
 async def update_user_profile(
+    request: Request,
     payload: UpdateUserProfileRequest,
     service: UserService = Depends(get_user_service),
     current_user=Depends(get_current_user),
 ):
-    return await service.update_user_profile(
+    updated_user = await service.update_user_profile(
         user_id=current_user.id,
         name=payload.name,
         pet_name=payload.pet_name,
     )
+    changed_fields = ["name"]
+    if "pet_name" in payload.model_fields_set:
+        changed_fields.append("pet_name")
+    log_api_event(
+        "user_profile_updated",
+        request=request,
+        user_id=str(current_user.id),
+        extra={"changed_fields": changed_fields},
+    )
+    return updated_user
 
 
 @router.get(
     "/me",
+    name="get_current_user",
     status_code=status.HTTP_200_OK,
     response_model=UserAuthStatusResponse,
     summary="Check auth status",
@@ -203,6 +265,7 @@ async def get_me(current_user=Depends(get_current_user)):
 
 @router.put(
     "/favorite/{property_id}",
+    name="update_user_favorite_property",
     status_code=status.HTTP_200_OK,
     response_model=FavoritePropertyResponse,
     summary="Add or remove favorite property",
@@ -212,6 +275,7 @@ async def get_me(current_user=Depends(get_current_user)):
     ),
 )
 async def update_user_favorite_property(
+    request: Request,
     property_id: PyObjectId,
     is_favorite: bool,
     service: UserService = Depends(get_user_service),
@@ -222,6 +286,12 @@ async def update_user_favorite_property(
         property_id=property_id,
         is_favorite=is_favorite,
     )
+    log_api_event(
+        "user_favorite_added" if is_favorite else "user_favorite_removed",
+        request=request,
+        user_id=str(current_user.id),
+        extra={"resource": {"type": "property", "id": str(property_id)}},
+    )
     return FavoritePropertyResponse(
         **user.model_dump(by_alias=True),
         property_id=property_id,
@@ -231,10 +301,11 @@ async def update_user_favorite_property(
 
 @router.get(
     "/favorite/{property_id}",
+    name="get_user_favorite_property_status",
     status_code=status.HTTP_200_OK,
     response_model=FavoritePropertyStatusResponse,
     summary="Get favorite status",
-    description="Returns whether the authenticated user has favorited the target property.",
+    description="Returns whether the authenticated user has favorite the target property.",
 )
 async def get_user_favorite_property_status(
     property_id: PyObjectId,
@@ -248,6 +319,7 @@ async def get_user_favorite_property_status(
 
 @router.get(
     "/favorite",
+    name="list_favorite_properties",
     status_code=status.HTTP_200_OK,
     response_model=list[PropertyOverviewResponse],
     summary="List favorite properties",
@@ -257,6 +329,7 @@ async def get_user_favorite_property_status(
     ),
 )
 async def get_user_favorite_properties(
+    request: Request,
     current_user=Depends(get_current_user),
     property_service: PropertyService = Depends(get_property_service),
 ):
@@ -265,11 +338,18 @@ async def get_user_favorite_properties(
         current_user=current_user,
         note_first=True,
     )
+    log_api_event(
+        "user_favorite_list_viewed",
+        request=request,
+        user_id=str(current_user.id),
+        extra={"favorite_count": len(properties)},
+    )
     return properties
 
 
 @router.get(
     "/search-history",
+    name="get_user_search_history",
     status_code=status.HTTP_200_OK,
     response_model=list[UserSearchHistoryItemResponse],
     summary="List search history",
@@ -293,6 +373,7 @@ async def get_user_search_history(
 
 @router.delete(
     "",
+    name="delete_current_user",
     status_code=status.HTTP_200_OK,
     response_model=UserDeleteResponse,
     summary="Soft-delete current user account",
@@ -311,6 +392,7 @@ async def delete_current_user(
 
 @router.get(
     "/property-notes",
+    name="list_property_notes",
     status_code=status.HTTP_200_OK,
     response_model=Pagination[UserPropertyNoteListItemResponse],
     summary="List current user's property notes",
@@ -320,6 +402,7 @@ async def delete_current_user(
     ),
 )
 async def get_user_property_notes(
+    request: Request,
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
     query: str | None = Query(default=None),
@@ -337,30 +420,18 @@ async def get_user_property_notes(
         [note.property_id for note in notes],
         current_user=current_user,
     )
-    property_map = {property_item.id: property_item for property_item in properties}
-    favorite_property_ids = set(current_user.favorite_property_ids)
-    items = [
-        UserPropertyNoteListItemResponse(
-            property_id=note.property_id,
-            content=note.content,
-            created_at=note.created_at,
-            updated_at=note.updated_at,
-            property=(
-                PropertyOverviewResponse.model_validate(property_map[note.property_id])
-                if note.property_id in property_map
-                else None
-            ),
-        )
-        for note in notes
-    ]
-    items = sorted(
-        items, key=lambda item: item.property_id not in favorite_property_ids
+    note_page = await note_service.list_user_note_overviews(
+        current_user=current_user,
+        notes=notes,
+        total=total,
+        page=page,
+        size=size,
+        property_overviews=properties,
     )
-    pages = (total + size - 1) // size if size else 0
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "size": size,
-        "pages": pages,
-    }
+    log_api_event(
+        "user_property_notes_viewed",
+        request=request,
+        user_id=str(current_user.id),
+        extra={"note_count": note_page.total},
+    )
+    return note_page

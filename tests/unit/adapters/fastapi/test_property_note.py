@@ -1,6 +1,8 @@
+import logging
 from datetime import UTC, datetime
 
 from application.dto.property import PropertyOverviewDto
+from application.dto.property_note import UserPropertyNoteListPageDto
 from domain.entities.property_note import PropertyNoteEntity
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
@@ -49,6 +51,54 @@ class PropertyNoteServiceStub:
             }
         )
         return self.notes, len(self.notes)
+
+    async def list_user_note_overviews(
+        self,
+        *,
+        current_user,
+        notes,
+        total: int,
+        page: int,
+        size: int,
+        property_overviews,
+    ):
+        self.calls.append(
+            {
+                "fn": "list_user_note_overviews",
+                "current_user_id": str(current_user.id),
+                "note_ids": [note.property_id for note in notes],
+                "total": total,
+                "page": page,
+                "size": size,
+                "property_ids": [item.id for item in property_overviews],
+            }
+        )
+        favorite_property_ids = set(current_user.favorite_property_ids)
+        items = [
+            {
+                "property_id": note.property_id,
+                "content": note.content,
+                "created_at": note.created_at,
+                "updated_at": note.updated_at,
+                "property": next(
+                    (
+                        item
+                        for item in property_overviews
+                        if item.id == note.property_id
+                    ),
+                    None,
+                ),
+            }
+            for note in notes
+        ]
+        items.sort(key=lambda item: item["property_id"] not in favorite_property_ids)
+        return UserPropertyNoteListPageDto(
+            items=items,
+            total=total,
+            page=page,
+            size=size,
+            pages=(total + size - 1) // size if size else 0,
+        )
 
 
 class PropertyOverviewServiceStub:
@@ -122,7 +172,9 @@ def test_get_property_note_returns_null_when_missing(
     assert service.calls == [{"fn": "get_note", "user_id": "u1", "property_id": "p1"}]
 
 
-def test_put_property_note_upserts_note(client, override_api_dep, user_entity_factory):
+def test_put_property_note_upserts_note(
+    client, override_api_dep, user_entity_factory, caplog
+):
     current_user = user_entity_factory(identifier="u1", name="Ben")
     note = PropertyNoteEntity(
         property_id="p1",
@@ -135,7 +187,8 @@ def test_put_property_note_upserts_note(client, override_api_dep, user_entity_fa
     )
     override_api_dep(get_current_user, current_user)
 
-    response = client.put("/api/v1/property/p1/note", json={"content": "hello"})
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.put("/api/v1/property/p1/note", json={"content": "hello"})
 
     assert response.status_code == 200
     assert response.json()["property_id"] == "p1"
@@ -147,6 +200,15 @@ def test_put_property_note_upserts_note(client, override_api_dep, user_entity_fa
             "content": "hello",
         }
     ]
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "user_property_note_upserted"
+    )
+    assert record.user_id == "u1"
+    assert record.resource == {"type": "property", "id": "p1"}
+    assert record.is_created is True
+    assert record.content_length == 5
 
 
 def test_delete_property_note_returns_deleted_status(
@@ -166,7 +228,7 @@ def test_delete_property_note_returns_deleted_status(
 
 
 def test_get_user_property_notes_returns_note_list_with_properties(
-    client, override_api_dep, user_entity_factory, property_entity_factory
+    client, override_api_dep, user_entity_factory, property_entity_factory, caplog
 ):
     note = PropertyNoteEntity(
         property_id="p1",
@@ -200,7 +262,10 @@ def test_get_user_property_notes_returns_note_list_with_properties(
     )
     override_api_dep(get_current_user, current_user)
 
-    response = client.get("/api/v1/user/property-notes", params={"page": 1, "size": 20})
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.get(
+            "/api/v1/user/property-notes", params={"page": 1, "size": 20}
+        )
 
     assert response.status_code == 200
     data = response.json()
@@ -212,11 +277,27 @@ def test_get_user_property_notes_returns_note_list_with_properties(
     assert data["items"][0]["property"]["is_favorite"] is True
     assert data["items"][1]["property"]["is_favorite"] is False
     assert note_service.calls == [
-        {"fn": "list_notes", "user_id": "u1", "page": 1, "size": 20, "query": None}
+        {"fn": "list_notes", "user_id": "u1", "page": 1, "size": 20, "query": None},
+        {
+            "fn": "list_user_note_overviews",
+            "current_user_id": "u1",
+            "note_ids": ["p1", "p2"],
+            "total": 2,
+            "page": 1,
+            "size": 20,
+            "property_ids": ["p1", "p2"],
+        },
     ]
     assert property_service.calls == [
         {"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}
     ]
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "user_property_notes_viewed"
+    )
+    assert record.user_id == "u1"
+    assert record.note_count == 2
 
 
 def test_get_user_property_notes_passes_query_and_handles_empty_results(
@@ -245,7 +326,16 @@ def test_get_user_property_notes_passes_query_and_handles_empty_results(
         "pages": 0,
     }
     assert note_service.calls == [
-        {"fn": "list_notes", "user_id": "u1", "page": 1, "size": 20, "query": "cat"}
+        {"fn": "list_notes", "user_id": "u1", "page": 1, "size": 20, "query": "cat"},
+        {
+            "fn": "list_user_note_overviews",
+            "current_user_id": "u1",
+            "note_ids": [],
+            "total": 0,
+            "page": 1,
+            "size": 20,
+            "property_ids": [],
+        },
     ]
     assert property_service.calls == [
         {"fn": "get_overviews_by_ids", "property_ids": []}

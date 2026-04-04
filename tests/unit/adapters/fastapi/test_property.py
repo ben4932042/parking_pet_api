@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timezone
 
 import pytest
@@ -14,7 +15,7 @@ from domain.entities.property import (
 from domain.entities.property_category import PropertyCategoryKey
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
-    get_optional_current_user,
+    get_current_user,
     get_optional_request_actor,
     get_request_actor,
     get_user_service,
@@ -215,6 +216,14 @@ class MissingDetailService:
         return None
 
 
+class DetailService:
+    def __init__(self, property_entity):
+        self.property_entity = property_entity
+
+    async def get_details(self, property_id):
+        return _detail_payload(self.property_entity)
+
+
 class UserServiceStub:
     def __init__(self, error=None):
         self.calls = []
@@ -411,17 +420,21 @@ def search_history_service_override(override_api_dep):
     return override_api_dep(get_user_service, UserServiceStub())
 
 
-def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
+def test_search_route_omits_invalid_coordinate_tuples(
+    client, override_api_dep, user_entity_factory, caplog
+):
     service = override_api_dep(get_property_service, CapturePropertyService())
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
-    response = client.get(
-        "/api/v1/property",
-        params={
-            "query": "dog cafe",
-            "map_lat": 25.03,
-            "map_lng": 121.56,
-        },
-    )
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.get(
+            "/api/v1/property",
+            params={
+                "query": "dog cafe",
+                "map_lat": 25.03,
+                "map_lng": 121.56,
+            },
+        )
 
     assert response.status_code == 200
     assert response.json()["response_type"] == "semantic_search"
@@ -436,12 +449,20 @@ def test_search_route_omits_invalid_coordinate_tuples(client, override_api_dep):
             "open_at_minutes": None,
         }
     ]
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "property_search_executed"
+    )
+    assert record.keyword == "dog cafe"
+    assert record.result_count == 0
 
 
 def test_search_route_returns_keyword_response_type_for_keyword_retrieval(
-    client, override_api_dep
+    client, override_api_dep, user_entity_factory
 ):
     override_api_dep(get_property_service, CapturePropertyService(route="keyword"))
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get("/api/v1/property", params={"query": "肉球森林"})
 
@@ -452,12 +473,13 @@ def test_search_route_returns_keyword_response_type_for_keyword_retrieval(
 
 
 def test_search_route_returns_keyword_response_type_for_fallback_retrieval(
-    client, override_api_dep
+    client, override_api_dep, user_entity_factory
 ):
     override_api_dep(
         get_property_service,
         CapturePropertyService(route="semantic", used_fallback=True),
     )
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get("/api/v1/property", params={"query": "推薦的店"})
 
@@ -467,12 +489,13 @@ def test_search_route_returns_keyword_response_type_for_fallback_retrieval(
 
 
 def test_search_route_returns_hybrid_response_type_for_dual_execution(
-    client, override_api_dep
+    client, override_api_dep, user_entity_factory
 ):
     override_api_dep(
         get_property_service,
         CapturePropertyService(execution_modes=["semantic", "keyword"]),
     )
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get("/api/v1/property", params={"query": "寵物公園"})
 
@@ -481,8 +504,11 @@ def test_search_route_returns_hybrid_response_type_for_dual_execution(
     assert response.json()["response_type"] == "hybrid_search"
 
 
-def test_search_route_passes_radius_to_service(client, override_api_dep):
+def test_search_route_passes_radius_to_service(
+    client, override_api_dep, user_entity_factory
+):
     service = override_api_dep(get_property_service, CapturePropertyService())
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get(
         "/api/v1/property",
@@ -507,20 +533,24 @@ def test_search_route_passes_radius_to_service(client, override_api_dep):
     ]
 
 
-def test_nearby_route_expands_category_to_primary_types(client, override_api_dep):
+def test_nearby_route_expands_category_to_primary_types(
+    client, override_api_dep, user_entity_factory, caplog
+):
     service = override_api_dep(get_property_service, CapturePropertyService())
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
-    response = client.get(
-        "/api/v1/property/nearby",
-        params={
-            "lat": 25.03,
-            "lng": 121.56,
-            "radius": 1000,
-            "category": PropertyCategoryKey.RESTAURANT,
-            "page": 1,
-            "size": 20,
-        },
-    )
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.get(
+            "/api/v1/property/nearby",
+            params={
+                "lat": 25.03,
+                "lng": 121.56,
+                "radius": 1000,
+                "category": PropertyCategoryKey.RESTAURANT,
+                "page": 1,
+                "size": 20,
+            },
+        )
 
     assert response.status_code == 200
     assert len(service.calls) == 1
@@ -533,6 +563,14 @@ def test_nearby_route_expands_category_to_primary_types(client, override_api_dep
     assert "restaurant" in call["types"]
     assert "brunch_restaurant" in call["types"]
     assert "bar" in call["types"]
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "property_nearby_search_executed"
+    )
+    assert record.lat == 25.03
+    assert record.lng == 121.56
+    assert record.result_count == 0
 
 
 def test_nearby_route_includes_note_and_favorite_flags_for_authenticated_user(
@@ -555,7 +593,7 @@ def test_nearby_route_includes_note_and_favorite_flags_for_authenticated_user(
             )
         ],
     )
-    override_api_dep(get_optional_current_user, current_user)
+    override_api_dep(get_current_user, current_user)
 
     response = client.get(
         "/api/v1/property/nearby",
@@ -586,11 +624,12 @@ def test_nearby_route_includes_note_and_favorite_flags_for_authenticated_user(
 
 
 def test_search_route_passes_category_and_returns_keyword_search_when_present(
-    client, override_api_dep
+    client, override_api_dep, user_entity_factory
 ):
     service = override_api_dep(
         get_property_service, CapturePropertyService(route="keyword")
     )
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get(
         "/api/v1/property",
@@ -630,7 +669,7 @@ def test_search_route_includes_has_note_for_authenticated_user(
             )
         ],
     )
-    override_api_dep(get_optional_current_user, current_user)
+    override_api_dep(get_current_user, current_user)
 
     response = client.get("/api/v1/property", params={"query": "台北"})
 
@@ -653,7 +692,7 @@ def test_search_route_includes_has_note_for_authenticated_user(
 
 
 def test_search_route_returns_unique_non_null_categories_from_results(
-    client, override_api_dep, property_entity_factory
+    client, override_api_dep, property_entity_factory, user_entity_factory
 ):
     override_api_dep(
         get_property_service,
@@ -665,6 +704,7 @@ def test_search_route_returns_unique_non_null_categories_from_results(
             ]
         ),
     )
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get("/api/v1/property", params={"query": "台北"})
 
@@ -681,7 +721,7 @@ def test_search_route_records_history_for_authenticated_user(
     )
     history_service = override_api_dep(get_user_service, UserServiceStub())
     current_user = user_entity_factory(identifier="u1", name="Ben")
-    override_api_dep(get_optional_current_user, current_user)
+    override_api_dep(get_current_user, current_user)
 
     response = client.get("/api/v1/property", params={"query": "台北咖啡廳"})
 
@@ -695,14 +735,15 @@ def test_search_route_records_history_for_authenticated_user(
     ]
 
 
-def test_search_route_skips_history_when_user_is_anonymous(client, override_api_dep):
+def test_search_route_requires_authentication_header(client, override_api_dep):
     override_api_dep(get_property_service, CapturePropertyService())
-    history_service = override_api_dep(get_user_service, UserServiceStub())
 
     response = client.get("/api/v1/property", params={"query": "台北咖啡廳"})
 
-    assert response.status_code == 200
-    assert history_service.calls == []
+    assert response.status_code == 403
+    data = response.json()
+    assert data["code"] == "FORBIDDEN"
+    assert data["detail"] == "Authentication required"
 
 
 def test_create_property_route_returns_property_id_on_success(
@@ -750,12 +791,33 @@ def test_create_property_route_returns_409_with_reason_on_failure(
     )
 
 
-def test_get_detail_returns_404_when_service_has_no_property(client, override_api_dep):
+def test_get_detail_returns_404_when_service_has_no_property(
+    client, override_api_dep, user_entity_factory
+):
     override_api_dep(get_property_service, MissingDetailService())
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get("/api/v1/property/missing-id")
 
     assert response.status_code == 404
+
+
+def test_get_detail_logs_property_viewed(
+    client, override_api_dep, property_entity_factory, user_entity_factory, caplog
+):
+    override_api_dep(
+        get_property_service,
+        DetailService(property_entity_factory(identifier="p1", name="Cafe 1")),
+    )
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
+
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.get("/api/v1/property/p1")
+
+    assert response.status_code == 200
+    record = next(record for record in caplog.records if record.event == "property_viewed")
+    assert record.user_id == "u1"
+    assert record.resource == {"type": "property", "id": "p1"}
 
 
 def test_update_pet_features_route_returns_effective_and_manual_features(

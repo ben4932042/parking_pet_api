@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from application.exceptions import NotFoundError, ValidationDomainError
+from application.dto.property import PropertyOverviewDto
 from application.property_note import PropertyNoteService
 from domain.entities.property_note import PropertyNoteEntity
 from domain.repositories.property import IPropertyRepository
@@ -277,3 +278,70 @@ async def test_list_notes_delegates_to_repo(property_entity_factory):
             "query": "hel",
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_list_user_note_overviews_builds_sorted_page(user_entity_factory):
+    favorite_note = PropertyNoteEntity(
+        property_id="p2",
+        content="favorite",
+        created_at=datetime(2026, 1, 3, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 4, tzinfo=UTC),
+    )
+    regular_note = PropertyNoteEntity(
+        property_id="p1",
+        content="hello",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    current_user = user_entity_factory(
+        identifier="u1",
+        favorite_property_ids=["p2"],
+        property_notes=[regular_note, favorite_note],
+    )
+    service = PropertyNoteService(
+        user_repo=UserRepoStub(notes=[regular_note, favorite_note]),
+        property_repo=PropertyRepoStub(),
+    )
+
+    result = await service.list_user_note_overviews(
+        current_user=current_user,
+        notes=[regular_note, favorite_note],
+        total=2,
+        page=1,
+        size=20,
+        property_overviews=[
+            PropertyOverviewDto(
+                id="p1",
+                name="Cafe 1",
+                address="Addr 1",
+                latitude=25.0,
+                longitude=121.0,
+                category="cafe",
+                types=["cafe"],
+                rating=4.5,
+                is_open=True,
+                has_note=True,
+                is_favorite=False,
+            ),
+            PropertyOverviewDto(
+                id="p2",
+                name="Cafe 2",
+                address="Addr 2",
+                latitude=25.1,
+                longitude=121.1,
+                category="cafe",
+                types=["cafe"],
+                rating=4.6,
+                is_open=True,
+                has_note=True,
+                is_favorite=True,
+            ),
+        ],
+    )
+
+    assert result.total == 2
+    assert [item.property_id for item in result.items] == ["p2", "p1"]
+    assert result.items[0].property is not None
+    assert result.items[0].property.id == "p2"
+    assert result.pages == 1

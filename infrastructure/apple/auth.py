@@ -7,19 +7,33 @@ import httpx
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 
+from application.apple_auth import IAppleIdentityVerifier
+from application.apple_auth import VerifiedAppleIdentity
 from application.exceptions import AuthenticationError
 
 APPLE_ISSUER = "https://appleid.apple.com"
 APPLE_JWKS_URL = "https://appleid.apple.com/auth/keys"
 
 
-@dataclass(frozen=True)
-class AppleIdentity:
-    subject: str
-    email: str | None = None
+@dataclass(frozen=True, init=False)
+class AppleIdentity(VerifiedAppleIdentity):
+    _subject: str
+    _email: str | None = None
+
+    def __init__(self, subject: str, email: str | None = None) -> None:
+        object.__setattr__(self, "_subject", subject)
+        object.__setattr__(self, "_email", email)
+
+    @property
+    def subject(self) -> str:
+        return self._subject
+
+    @property
+    def email(self) -> str | None:
+        return self._email
 
 
-class AppleIdentityTokenVerifier:
+class AppleIdentityTokenVerifier(IAppleIdentityVerifier):
     def __init__(
         self,
         *,

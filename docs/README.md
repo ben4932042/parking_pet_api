@@ -16,6 +16,7 @@ Use these documents for repository-wide development rules, tooling workflows, an
 
 - `docs/documentation/architecture.md`
 - `docs/development/workflow-external-service-costs.md`
+- `docs/development/workflow-logging.md`
 - `docs/development/workflow-user-feedback.md`
 - `docs/development/workflow-subagent-collaboration.md`
 

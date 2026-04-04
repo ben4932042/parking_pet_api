@@ -1,19 +1,22 @@
-from typing import Protocol
+from abc import ABC, abstractmethod
 
 from application.exceptions import AuthenticationError, ValidationDomainError
 from domain.entities.user import UserEntity
 from domain.repositories.user import IUserRepository
 
 
-class VerifiedAppleIdentity(Protocol):
+class VerifiedAppleIdentity(ABC):
     @property
+    @abstractmethod
     def subject(self) -> str: ...
 
     @property
+    @abstractmethod
     def email(self) -> str | None: ...
 
 
-class IAppleIdentityVerifier(Protocol):
+class IAppleIdentityVerifier(ABC):
+    @abstractmethod
     async def verify_identity_token(
         self,
         *,
