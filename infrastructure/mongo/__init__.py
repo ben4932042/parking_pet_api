@@ -5,9 +5,6 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
     AsyncIOMotorCollection,
 )
-from pymongo import MongoClient
-from pymongo.collection import Collection
-from pymongo.database import Database
 
 from infrastructure.config import settings
 
@@ -19,7 +16,6 @@ class MongoDBClient:
     """
 
     _async_client: Optional[AsyncIOMotorClient] = None
-    _sync_client: Optional[MongoClient] = None
 
     def __init__(self) -> None:
         pass
@@ -37,26 +33,10 @@ class MongoDBClient:
     def get_collection(self, name: str) -> AsyncIOMotorCollection:
         return self.get_database()[name]
 
-    def get_sync_client(self) -> MongoClient:
-        if self.__class__._sync_client is None:
-            self.__class__._sync_client = MongoClient(
-                settings.mongo.url.get_secret_value()
-            )
-        return self.__class__._sync_client
-
-    def get_sync_database(self) -> Database:
-        return self.get_sync_client()[settings.mongo.db_name]
-
-    def get_sync_collection(self, name: str) -> Collection:
-        return self.get_sync_database()[name]
-
     async def close(self) -> None:
         if self.__class__._async_client:
             self.__class__._async_client.close()
             self.__class__._async_client = None
-        if self.__class__._sync_client:
-            self.__class__._sync_client.close()
-            self.__class__._sync_client = None
 
 
 _mongodb_client = MongoDBClient()

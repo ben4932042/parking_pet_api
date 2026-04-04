@@ -104,10 +104,10 @@ class SyncEnrichmentProvider(IEnrichmentProvider):
         self.generate_calls.append(source)
         return self.synced_property
 
-    def extract_search_plan(self, query: str) -> SearchPlan:
+    async def extract_search_plan(self, query: str) -> SearchPlan:
         raise NotImplementedError
 
-    def geocode_landmark(self, landmark_name: str):
+    async def geocode_landmark(self, landmark_name: str):
         return landmark_name, None
 
 

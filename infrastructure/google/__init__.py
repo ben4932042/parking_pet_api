@@ -66,19 +66,19 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity:
         return distill_property_insights(source)
 
-    def extract_search_plan(self, query: str):
+    async def extract_search_plan(self, query: str):
         if self.search_plan_workflow is None:
             return extract_search_plan(self.llm, query)
-        return self.search_plan_workflow.extract(query)
+        return await self.search_plan_workflow.extract(query)
 
-    def geocode_landmark(self, landmark_name: str):
+    async def geocode_landmark(self, landmark_name: str):
         normalized_name = " ".join(landmark_name.split()).strip()
         if not normalized_name:
             return landmark_name, None
 
         cache_key = self._build_landmark_cache_key(normalized_name)
         if self.landmark_cache_repo is not None:
-            cached = self.landmark_cache_repo.get_by_key(cache_key)
+            cached = await self.landmark_cache_repo.get_by_key(cache_key)
             if cached is not None:
                 return cached.display_name, cached.coordinates
 
@@ -87,7 +87,7 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
         if self.landmark_cache_repo is not None:
             longitude = coordinates[0] if coordinates is not None else None
             latitude = coordinates[1] if coordinates is not None else None
-            self.landmark_cache_repo.save(
+            await self.landmark_cache_repo.save(
                 LandmarkCacheEntity(
                     cache_key=cache_key,
                     query_text=normalized_name,

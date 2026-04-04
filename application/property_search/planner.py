@@ -27,12 +27,12 @@ class SearchPlanWorkflow:
         payload = f"{version}\n{normalized_query}".encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
 
-    def extract(self, query: str) -> SearchPlan:
+    async def extract(self, query: str) -> SearchPlan:
         normalized_query = normalize_search_query(query)
         cache_key = self.build_cache_key(self.version, normalized_query)
 
         if self.cache_repo is not None:
-            cached = self.cache_repo.touch(cache_key)
+            cached = await self.cache_repo.touch(cache_key)
             if cached is not None:
                 return SearchPlan.model_validate(cached.plan_payload)
 
@@ -40,7 +40,7 @@ class SearchPlanWorkflow:
         if self.cache_repo is None or not should_cache_search_plan(plan):
             return plan
 
-        self.cache_repo.save(
+        await self.cache_repo.save(
             SearchPlanCacheEntity(
                 cache_key=cache_key,
                 query_text=query,

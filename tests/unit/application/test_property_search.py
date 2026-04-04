@@ -21,10 +21,10 @@ class DummyEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source):
         raise NotImplementedError
 
-    def extract_search_plan(self, query: str) -> SearchPlan:
+    async def extract_search_plan(self, query: str) -> SearchPlan:
         raise NotImplementedError
 
-    def geocode_landmark(self, landmark_name: str):
+    async def geocode_landmark(self, landmark_name: str):
         return self.geocode_result
 
 
@@ -62,7 +62,7 @@ class RankingEnrichmentProvider(DummyEnrichmentProvider):
         super().__init__()
         self.condition = condition
 
-    def extract_search_plan(self, query: str) -> SearchPlan:
+    async def extract_search_plan(self, query: str) -> SearchPlan:
         return SearchPlan(route="semantic", filter_condition=self.condition)
 
 
@@ -85,7 +85,8 @@ class DummyAuditRepo(IPropertyAuditRepository):
         return []
 
 
-def test_generate_query_skips_current_location_when_user_coords_missing():
+@pytest.mark.asyncio
+async def test_generate_query_skips_current_location_when_user_coords_missing():
     provider = DummyEnrichmentProvider()
     condition = PropertyFilterCondition(
         mongo_query={"primary_type": "cafe"},
@@ -93,12 +94,13 @@ def test_generate_query_skips_current_location_when_user_coords_missing():
         search_radius_meters=2000,
     )
 
-    query = provider.generate_query(condition, user_coords=None, map_coords=None)
+    query = await provider.generate_query(condition, user_coords=None, map_coords=None)
 
     assert query == {"primary_type": "cafe"}
 
 
-def test_generate_query_skips_location_when_landmark_geocode_fails():
+@pytest.mark.asyncio
+async def test_generate_query_skips_location_when_landmark_geocode_fails():
     provider = DummyEnrichmentProvider(geocode_result=("taipei 101", None))
     condition = PropertyFilterCondition(
         mongo_query={"primary_type": "cafe"},
@@ -106,14 +108,15 @@ def test_generate_query_skips_location_when_landmark_geocode_fails():
         search_radius_meters=2000,
     )
 
-    query = provider.generate_query(
+    query = await provider.generate_query(
         condition, user_coords=None, map_coords=(121.0, 25.0)
     )
 
     assert query == {"primary_type": "cafe"}
 
 
-def test_generate_query_does_not_apply_map_geo_for_address_queries():
+@pytest.mark.asyncio
+async def test_generate_query_does_not_apply_map_geo_for_address_queries():
     provider = DummyEnrichmentProvider()
     condition = PropertyFilterCondition(
         mongo_query={
@@ -123,7 +126,7 @@ def test_generate_query_does_not_apply_map_geo_for_address_queries():
         search_radius_meters=10000,
     )
 
-    query = provider.generate_query(
+    query = await provider.generate_query(
         condition,
         user_coords=(121.221859793306, 25.011705336264292),
         map_coords=(121.221859793306, 25.011705336264292),
@@ -135,14 +138,15 @@ def test_generate_query_does_not_apply_map_geo_for_address_queries():
     }
 
 
-def test_generate_query_uses_map_geo_for_browse_queries_without_address_or_landmark():
+@pytest.mark.asyncio
+async def test_generate_query_uses_map_geo_for_browse_queries_without_address_or_landmark():
     provider = DummyEnrichmentProvider()
     condition = PropertyFilterCondition(
         mongo_query={"primary_type": "park"},
         search_radius_meters=2500,
     )
 
-    query = provider.generate_query(
+    query = await provider.generate_query(
         condition,
         user_coords=(121.221859793306, 25.011705336264292),
         map_coords=(121.25874722747007, 24.951597027520226),
@@ -162,7 +166,8 @@ def test_generate_query_uses_map_geo_for_browse_queries_without_address_or_landm
     }
 
 
-def test_generate_query_uses_current_location_for_current_location_landmark_context():
+@pytest.mark.asyncio
+async def test_generate_query_uses_current_location_for_current_location_landmark_context():
     provider = DummyEnrichmentProvider()
     condition = PropertyFilterCondition(
         mongo_query={"primary_type": "cafe"},
@@ -170,7 +175,7 @@ def test_generate_query_uses_current_location_for_current_location_landmark_cont
         search_radius_meters=3000,
     )
 
-    query = provider.generate_query(
+    query = await provider.generate_query(
         condition,
         user_coords=(121.5645, 25.0339),
         map_coords=(121.221859793306, 25.011705336264292),
@@ -190,7 +195,8 @@ def test_generate_query_uses_current_location_for_current_location_landmark_cont
     }
 
 
-def test_generate_query_uses_geocoded_landmark_instead_of_map_coords():
+@pytest.mark.asyncio
+async def test_generate_query_uses_geocoded_landmark_instead_of_map_coords():
     provider = DummyEnrichmentProvider(geocode_result=("台北101", (121.5645, 25.0339)))
     condition = PropertyFilterCondition(
         mongo_query={"primary_type": "cafe"},
@@ -198,7 +204,7 @@ def test_generate_query_uses_geocoded_landmark_instead_of_map_coords():
         search_radius_meters=5000,
     )
 
-    query = provider.generate_query(
+    query = await provider.generate_query(
         condition,
         user_coords=(121.221859793306, 25.011705336264292),
         map_coords=(121.221859793306, 25.011705336264292),

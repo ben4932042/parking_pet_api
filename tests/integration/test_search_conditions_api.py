@@ -83,13 +83,13 @@ class LangGraphEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source):
         raise NotImplementedError
 
-    def extract_search_plan(self, query: str) -> SearchPlan:
+    async def extract_search_plan(self, query: str) -> SearchPlan:
         from infrastructure.search.pipeline import extract_search_plan
 
         self.last_plan = extract_search_plan(self.llm, query)
         return self.last_plan
 
-    def geocode_landmark(self, landmark_name: str):
+    async def geocode_landmark(self, landmark_name: str):
         return landmark_name, self.geocode_map.get(landmark_name)
 
 

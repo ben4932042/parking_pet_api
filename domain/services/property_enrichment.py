@@ -17,10 +17,10 @@ class IEnrichmentProvider(ABC):
     def generate_ai_analysis(self, source: AnalysisSource) -> PropertyEntity: ...
 
     @abstractmethod
-    def extract_search_plan(self, query: str) -> SearchPlan: ...
+    async def extract_search_plan(self, query: str) -> SearchPlan: ...
 
     @abstractmethod
-    def geocode_landmark(
+    async def geocode_landmark(
         self, landmark_name: str
     ) -> Tuple[str, Optional[Tuple[float, float]]]: ...
 
@@ -37,7 +37,7 @@ class IEnrichmentProvider(ABC):
 
         return (lng, lat)
 
-    def generate_query(
+    async def generate_query(
         self,
         intent: PropertyFilterCondition,
         user_coords: Optional[tuple[float, float]],
@@ -52,7 +52,7 @@ class IEnrichmentProvider(ABC):
         if intent.landmark_context == "CURRENT_LOCATION":
             target_coordinates = self._normalize_coordinates(user_coords)
         elif intent.landmark_context:
-            _, landmark_coords = self.geocode_landmark(intent.landmark_context)
+            _, landmark_coords = await self.geocode_landmark(intent.landmark_context)
             target_coordinates = self._normalize_coordinates(landmark_coords)
         elif "address" not in final_query:
             target_coordinates = self._normalize_coordinates(map_coords)

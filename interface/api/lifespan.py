@@ -13,6 +13,12 @@ async def lifespan(app: FastAPI):
     mongodb_client = get_mongodb_client()
 
     _ = mongodb_client.get_client()
+    await mongodb_client.get_collection("landmark_cache").create_index(
+        "cache_key", unique=True
+    )
+    await mongodb_client.get_collection("search_plan_cache").create_index(
+        "cache_key", unique=True
+    )
     logger.debug("Successfully connected to MongoDB")
 
     yield

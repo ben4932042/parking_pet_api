@@ -137,7 +137,7 @@ class PropertyService:
         radius: Optional[int] = None,
         open_at_minutes: Optional[int] = None,
     ):
-        search_plan = self.enrichment_provider.extract_search_plan(q)
+        search_plan = await self.enrichment_provider.extract_search_plan(q)
         if category is not None:
             search_plan.execution_modes = ["keyword"]
         self._apply_radius_override(search_plan, radius)
@@ -185,7 +185,7 @@ class PropertyService:
                 if not run_keyword:
                     return [], search_plan
             else:
-                generate_query = self.enrichment_provider.generate_query(
+                generate_query = await self.enrichment_provider.generate_query(
                     search_plan.filter_condition,
                     user_coords,
                     map_coords,

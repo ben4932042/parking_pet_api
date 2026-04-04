@@ -23,10 +23,10 @@ class DummyEnrichmentProvider(IEnrichmentProvider):
     def generate_ai_analysis(self, source):
         raise NotImplementedError
 
-    def extract_search_plan(self, query: str) -> SearchPlan:
+    async def extract_search_plan(self, query: str) -> SearchPlan:
         return self.plan
 
-    def geocode_landmark(self, landmark_name: str):
+    async def geocode_landmark(self, landmark_name: str):
         return self.geocode_result
 
 
