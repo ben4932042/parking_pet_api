@@ -28,6 +28,7 @@ Repository-wide instructions for coding agents working in this project.
 ## Development Docs
 
 - Keep `AGENTS.md` minimal. Detailed workflows and conventions should live in `docs/`.
+- Use `docs/README.md` as the documentation index.
 - For documentation structure and naming conventions, read `docs/documentation/architecture.md`.
 - When working with user feedback during development, read `docs/development/workflow-user-feedback.md`.
 - Before changing development workflow, tooling behavior, or documentation structure, read the relevant development docs first.
@@ -35,9 +36,10 @@ Repository-wide instructions for coding agents working in this project.
 ## Feature Docs
 
 - Before changing a feature, read the relevant feature docs first and follow their validation rules.
-- When working on search, read `docs/search/workflow-optimization.md`.
-- When working on nearby property search, read `docs/search/workflow-nearby.md`.
+- When working on search, read `docs/search/architecture.md` and `docs/search/workflow-optimization.md`.
+- When working on nearby property search, read `docs/search/architecture.md` and `docs/search/workflow-nearby.md`.
 - When working on property architecture or shared property behavior, read `docs/property/architecture.md`.
-- When working on property creation, read `docs/property/workflow-creation.md`.
-- When working on property management, read `docs/property/workflow-management.md`.
-- When working on property favorite flows, read `docs/property/workflow-favorite.md`.
+- When working on property creation, read `docs/property/architecture.md` and `docs/property/workflow-creation.md`.
+- When working on property management, read `docs/property/architecture.md` and `docs/property/workflow-management.md`.
+- When working on property favorite flows, read `docs/property/architecture.md` and `docs/property/workflow-favorite.md`.
+- When working on user authentication, profile, or account lifecycle behavior, read `docs/user/architecture.md` and `docs/user/workflow-account-lifecycle.md`.

@@ -14,12 +14,18 @@ Read this document when:
 - changing profile, favorite, search-history, or note flows that depend on the current user
 - changing account deletion or restoration behavior
 
+Read `docs/user/architecture.md` first when you need a structure-oriented explanation of the current auth design, token roles, or layer boundaries.
+
+Read `docs/user/guide-auth-sequence.md` when you want a diagram-first walkthrough of the auth and session flow.
+
 Read `docs/property/workflow-favorite.md` when the change is specifically about favorite-property behavior.
 
 ## Entry Points
 
 - Basic registration: `POST /api/v1/user/register`
 - Apple login: `POST /api/v1/user/auth/apple`
+- Refresh auth session: `POST /api/v1/user/auth/refresh`
+- Logout current session: `POST /api/v1/user/auth/logout`
 - Current user auth status: `GET /api/v1/user/me`
 - Profile read: `GET /api/v1/user/profile`
 - Profile update: `PATCH /api/v1/user/profile`
@@ -41,6 +47,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 ## Rules
 
 - This project currently uses bearer-token authentication. Authenticated routes expect `Authorization: Bearer <access-token>`.
+- Apple `identity_token` is only used during Apple login. Normal authenticated API calls use backend-issued bearer tokens.
 - `get_current_user` must reject requests with no bearer token, malformed bearer headers, unknown users, or soft-deleted users.
 - `get_optional_current_user` may return `None` for anonymous, unknown, or soft-deleted users.
 - Basic registration creates a new user with `source="basic"`.
@@ -56,6 +63,27 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - If Apple login finds a soft-deleted user, it restores that same user and returns it.
 - If Apple login does not find a user and `name` is missing, it must return a validation error so the client can enter a supplement-information flow.
 - If Apple login does not find a user and the required fields are present, it creates a new `source="apple"` user.
+- Successful basic registration and successful Apple login both start an auth session and return:
+  - `access_token`
+  - `refresh_token`
+  - the latest user snapshot
+- Access and refresh tokens are backend-signed and include:
+  - `sub` for the user id
+  - `source` for the user source such as `basic` or `apple`
+  - `type` for `access` or `refresh`
+  - `sv` for `session_version`
+  - `iss`, `iat`, and `exp`
+- Authenticated user resolution must verify both token integrity and persisted user state:
+  - signature
+  - issuer
+  - expiry
+  - matching user id
+  - matching `source`
+  - matching `session_version`
+  - user is not soft deleted
+- Refreshing a session must also require the presented refresh token to match the stored `refresh_token_hash`.
+- Starting a new session increments `session_version`.
+- Logging out revokes the stored refresh token and increments `session_version`, which invalidates older access tokens.
 - Account deletion is currently a soft delete on the user record only. It must not erase user-owned data.
 - User soft deletion is represented by:
   - `is_deleted`
@@ -68,7 +96,8 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 
 - Client calls `POST /api/v1/user/register` with `name` and optional `pet_name`.
 - Backend creates a new user document.
-- The response returns the created user payload, including `_id`.
+- Backend starts an auth session for the newly created user.
+- The response returns the created user payload together with `access_token` and `refresh_token`.
 
 ### 2. Apple login
 
@@ -79,21 +108,40 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - If a matching deleted user exists, backend restores it and returns it.
 - If no matching user exists and `name` is missing, backend returns `422`.
 - If no matching user exists and required fields are present, backend creates a new Apple user and returns it.
+- Backend starts an auth session and returns backend-issued `access_token` and `refresh_token`.
 
 ### 3. Authenticated requests
 
 - Client sends `Authorization: Bearer <access-token>` on authenticated routes.
+- Backend verifies the token signature, issuer, expiry, token type, and claims.
 - Backend resolves the current user from MongoDB.
+- Backend rejects the request unless the stored user still matches the token `source` and `session_version`.
 - Soft-deleted users are treated as invalid credentials.
 
-### 4. User-owned interaction data
+### 4. Refresh session
+
+- Client calls `POST /api/v1/user/auth/refresh` with the current `refresh_token`.
+- Backend verifies the refresh token.
+- Backend loads the user and rejects the request if the user is missing, deleted, source-mismatched, session-version-mismatched, or the stored `refresh_token_hash` does not match the presented token.
+- Backend rotates the refresh token by storing the hash of a newly issued refresh token.
+- Backend returns a new `access_token`, a new `refresh_token`, and the latest user snapshot.
+
+### 5. Logout
+
+- Client calls `POST /api/v1/user/auth/logout` with `Authorization: Bearer <access-token>`.
+- Backend clears the stored `refresh_token_hash`.
+- Backend increments `session_version`.
+- Existing refresh tokens become unusable.
+- Existing access tokens also stop working because the persisted `session_version` no longer matches the token claims.
+
+### 6. User-owned interaction data
 
 - Favorite property ids are stored on the user record in `favorite_property_ids`.
 - Search history is stored on the user record in `recent_searches`.
 - Property notes are stored separately and joined at the route layer when needed.
 - Search feedback is stored separately and linked by user id.
 
-### 5. Account deletion
+### 7. Account deletion
 
 - Client calls `DELETE /api/v1/user`.
 - Backend marks the current user as deleted.
@@ -106,6 +154,9 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - Keep unit tests stable for:
   - basic registration
   - Apple login success and failure cases
+  - auth session creation
+  - refresh-token rotation
+  - logout session revocation
   - deleted-user auth rejection
   - deleted Apple-user restoration
   - delete-account behavior
@@ -119,8 +170,10 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - `interface/api/dependencies/user.py`
 - `application/user.py`
 - `application/apple_auth.py`
+- `application/auth_session.py`
 - `domain/entities/user.py`
 - `domain/repositories/user.py`
+- `infrastructure/auth/tokens.py`
 - `infrastructure/mongo/user.py`
 - `infrastructure/apple/auth.py`
 - `interface/api/schemas/user.py`

@@ -19,8 +19,8 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 - API route: `POST /property`
 - Route module: `interface/api/routes/v1/property.py`
 - Service method: `application/property.py::PropertyService.create_property`
-- Supporting repository path: `infrastructure/mongo/property.py`
-- Supporting enrichment path: `domain/services/property_enrichment.py`
+- Supporting a repository path: `infrastructure/mongo/property.py`
+- Supporting an enrichment path: `domain/services/property_enrichment.py`
 
 ## Rules
 

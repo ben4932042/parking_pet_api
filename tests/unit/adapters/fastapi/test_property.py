@@ -1,6 +1,9 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from domain.entities.audit import PropertyAuditAction, PropertyAuditLog
+from domain.entities.property_note import PropertyNoteEntity
 from domain.entities.property import (
     PropertyEntity,
     PropertyFilterCondition,
@@ -75,17 +78,6 @@ class CapturePropertyService:
             }
         )
         return self.items, len(self.items)
-
-    async def get_noted_property_ids(self, user_id: str, property_ids: list[str]):
-        self.calls.append(
-            {
-                "fn": "get_noted_property_ids",
-                "user_id": user_id,
-                "property_ids": property_ids,
-            }
-        )
-        return {"p1"}
-
 
 class MissingDetailService:
     async def get_details(self, property_id):
@@ -348,6 +340,56 @@ def test_nearby_route_expands_category_to_primary_types(client, override_api_dep
     assert "bar" in call["types"]
 
 
+def test_nearby_route_includes_note_and_favorite_flags_for_authenticated_user(
+    client, override_api_dep, property_entity_factory, user_entity_factory
+):
+    service = override_api_dep(
+        get_property_service,
+        CapturePropertyService(items=[property_entity_factory(identifier="p1")]),
+    )
+    current_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        favorite_property_ids=["p1"],
+        property_notes=[
+            PropertyNoteEntity(
+                property_id="p1",
+                content="hello",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+        ],
+    )
+    override_api_dep(get_optional_current_user, current_user)
+
+    response = client.get(
+        "/api/v1/property/nearby",
+        params={
+            "lat": 25.03,
+            "lng": 121.56,
+            "radius": 1000,
+            "page": 1,
+            "size": 20,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["items"][0]["id"] == "p1"
+    assert data["items"][0]["has_note"] is True
+    assert data["items"][0]["is_favorite"] is True
+    assert service.calls == [
+        {
+            "lat": 25.03,
+            "lng": 121.56,
+            "radius": 1000,
+            "types": [],
+            "page": 1,
+            "size": 20,
+        }
+    ]
+
+
 def test_search_route_passes_category_and_returns_keyword_search_when_present(
     client, override_api_dep
 ):
@@ -379,7 +421,18 @@ def test_search_route_includes_has_note_for_authenticated_user(
         get_property_service,
         CapturePropertyService(items=[property_entity_factory(identifier="p1")]),
     )
-    current_user = user_entity_factory(identifier="u1", name="Ben")
+    current_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        property_notes=[
+            PropertyNoteEntity(
+                property_id="p1",
+                content="saved",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+        ],
+    )
     override_api_dep(get_optional_current_user, current_user)
 
     response = client.get("/api/v1/property", params={"query": "台北"})
@@ -389,11 +442,17 @@ def test_search_route_includes_has_note_for_authenticated_user(
     assert data["results"][0]["id"] == "p1"
     assert data["categories"] == ["cafe"]
     assert data["results"][0]["has_note"] is True
-    assert service.calls[-1] == {
-        "fn": "get_noted_property_ids",
-        "user_id": "u1",
-        "property_ids": ["p1"],
-    }
+    assert data["results"][0]["is_favorite"] is False
+    assert service.calls == [
+        {
+            "q": "台北",
+            "category": None,
+            "user_coords": None,
+            "map_coords": None,
+            "radius": None,
+            "open_at_minutes": None,
+        }
+    ]
 
 
 def test_search_route_returns_unique_non_null_categories_from_results(

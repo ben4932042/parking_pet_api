@@ -63,8 +63,6 @@ class PropertyOverviewServiceStub:
 def test_get_property_note_returns_note(client, override_api_dep, user_entity_factory):
     current_user = user_entity_factory(identifier="u1", name="Ben")
     note = PropertyNoteEntity(
-        _id="n1",
-        user_id="u1",
         property_id="p1",
         content="hello",
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -101,8 +99,6 @@ def test_get_property_note_returns_null_when_missing(
 def test_put_property_note_upserts_note(client, override_api_dep, user_entity_factory):
     current_user = user_entity_factory(identifier="u1", name="Ben")
     note = PropertyNoteEntity(
-        _id="n1",
-        user_id="u1",
         property_id="p1",
         content="hello",
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -146,24 +142,23 @@ def test_delete_property_note_returns_deleted_status(
 def test_get_user_property_notes_returns_note_list_with_properties(
     client, override_api_dep, user_entity_factory, property_entity_factory
 ):
-    current_user = user_entity_factory(
-        identifier="u1", name="Ben", favorite_property_ids=["p2"]
-    )
     note = PropertyNoteEntity(
-        _id="n1",
-        user_id="u1",
         property_id="p1",
         content="hello",
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
         updated_at=datetime(2026, 1, 2, tzinfo=UTC),
     )
     favorite_note = PropertyNoteEntity(
-        _id="n2",
-        user_id="u1",
         property_id="p2",
         content="favorite",
         created_at=datetime(2026, 1, 3, tzinfo=UTC),
         updated_at=datetime(2026, 1, 4, tzinfo=UTC),
+    )
+    current_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        favorite_property_ids=["p2"],
+        property_notes=[note, favorite_note],
     )
     note_service = override_api_dep(
         get_property_note_service, PropertyNoteServiceStub(notes=[note, favorite_note])
@@ -188,6 +183,8 @@ def test_get_user_property_notes_returns_note_list_with_properties(
     assert data["items"][0]["content"] == "favorite"
     assert data["items"][0]["property"]["id"] == "p2"
     assert data["items"][0]["property"]["has_note"] is True
+    assert data["items"][0]["property"]["is_favorite"] is True
+    assert data["items"][1]["property"]["is_favorite"] is False
     assert note_service.calls == [
         {"fn": "list_notes", "user_id": "u1", "page": 1, "size": 20, "query": None}
     ]

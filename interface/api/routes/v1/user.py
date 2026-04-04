@@ -260,17 +260,18 @@ async def get_user_favorite_properties(
     current_user=Depends(get_current_user),
     property_service: PropertyService = Depends(get_property_service),
 ):
+    favorite_property_ids = set(current_user.favorite_property_ids)
+    noted_property_ids = {
+        note.property_id for note in current_user.property_notes
+    }
     properties = await property_service.get_overviews_by_ids(
         current_user.favorite_property_ids
-    )
-    noted_property_ids = await property_service.get_noted_property_ids(
-        user_id=str(current_user.id),
-        property_ids=[property_item.id for property_item in properties],
     )
     items = [
         PropertyOverviewResponse(
             **property_item.model_dump(by_alias=False),
             has_note=property_item.id in noted_property_ids,
+            is_favorite=property_item.id in favorite_property_ids,
         )
         for property_item in properties
     ]
@@ -347,6 +348,7 @@ async def get_user_property_notes(
     )
     property_map = {property_item.id: property_item for property_item in properties}
     favorite_property_ids = set(current_user.favorite_property_ids)
+    noted_property_ids = {note.property_id for note in notes}
     items = [
         UserPropertyNoteListItemResponse(
             property_id=note.property_id,
@@ -356,7 +358,8 @@ async def get_user_property_notes(
             property=(
                 PropertyOverviewResponse(
                     **property_map[note.property_id].model_dump(by_alias=False),
-                    has_note=True,
+                    has_note=note.property_id in noted_property_ids,
+                    is_favorite=note.property_id in favorite_property_ids,
                 )
                 if note.property_id in property_map
                 else None

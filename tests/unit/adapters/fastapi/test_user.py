@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from application.auth_session import AuthSession
+from domain.entities.property_note import PropertyNoteEntity
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
     get_apple_auth_service,
@@ -56,26 +57,13 @@ class UserServiceStub:
 
 
 class FavoritePropertyServiceStub:
-    def __init__(self, properties=None, noted_property_ids=None):
+    def __init__(self, properties=None):
         self.properties = properties or []
-        self.noted_property_ids = (
-            noted_property_ids if noted_property_ids is not None else {"p1"}
-        )
         self.calls = []
 
     async def get_overviews_by_ids(self, property_ids):
         self.calls.append({"fn": "get_overviews_by_ids", "property_ids": property_ids})
         return self.properties
-
-    async def get_noted_property_ids(self, user_id: str, property_ids: list[str]):
-        self.calls.append(
-            {
-                "fn": "get_noted_property_ids",
-                "user_id": user_id,
-                "property_ids": property_ids,
-            }
-        )
-        return self.noted_property_ids
 
 
 class AppleAuthServiceStub:
@@ -560,7 +548,17 @@ def test_get_user_favorite_properties_returns_property_overviews(
     property_entity_factory,
 ):
     current_user = user_entity_factory(
-        identifier="u1", name="Ben", favorite_property_ids=["p1", "p2"]
+        identifier="u1",
+        name="Ben",
+        favorite_property_ids=["p1", "p2"],
+        property_notes=[
+            PropertyNoteEntity(
+                property_id="p1",
+                content="saved",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+        ],
     )
     properties = [
         property_entity_factory(identifier="p1", name="Cafe 1"),
@@ -578,14 +576,8 @@ def test_get_user_favorite_properties_returns_property_overviews(
     assert [item["id"] for item in data] == ["p1", "p2"]
     assert [item["name"] for item in data] == ["Cafe 1", "Cafe 2"]
     assert [item["has_note"] for item in data] == [True, False]
-    assert service.calls == [
-        {"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]},
-        {
-            "fn": "get_noted_property_ids",
-            "user_id": "u1",
-            "property_ids": ["p1", "p2"],
-        },
-    ]
+    assert [item["is_favorite"] for item in data] == [True, True]
+    assert service.calls == [{"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}]
 
 
 def test_get_user_favorite_properties_sorts_noted_items_first(
@@ -595,7 +587,17 @@ def test_get_user_favorite_properties_sorts_noted_items_first(
     property_entity_factory,
 ):
     current_user = user_entity_factory(
-        identifier="u1", name="Ben", favorite_property_ids=["p2", "p1"]
+        identifier="u1",
+        name="Ben",
+        favorite_property_ids=["p2", "p1"],
+        property_notes=[
+            PropertyNoteEntity(
+                property_id="p1",
+                content="saved",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+        ],
     )
     properties = [
         property_entity_factory(identifier="p2", name="Cafe 2"),
@@ -612,14 +614,8 @@ def test_get_user_favorite_properties_sorts_noted_items_first(
     data = response.json()
     assert [item["id"] for item in data] == ["p1", "p2"]
     assert [item["has_note"] for item in data] == [True, False]
-    assert service.calls == [
-        {"fn": "get_overviews_by_ids", "property_ids": ["p2", "p1"]},
-        {
-            "fn": "get_noted_property_ids",
-            "user_id": "u1",
-            "property_ids": ["p2", "p1"],
-        },
-    ]
+    assert [item["is_favorite"] for item in data] == [True, True]
+    assert service.calls == [{"fn": "get_overviews_by_ids", "property_ids": ["p2", "p1"]}]
 
 
 def test_get_user_favorite_properties_returns_empty_list(
@@ -630,7 +626,7 @@ def test_get_user_favorite_properties_returns_empty_list(
     )
     service = override_api_dep(
         get_property_service,
-        FavoritePropertyServiceStub(properties=[], noted_property_ids=set()),
+        FavoritePropertyServiceStub(properties=[]),
     )
     override_api_dep(get_current_user, current_user)
 
@@ -638,10 +634,7 @@ def test_get_user_favorite_properties_returns_empty_list(
 
     assert response.status_code == 200
     assert response.json() == []
-    assert service.calls == [
-        {"fn": "get_overviews_by_ids", "property_ids": []},
-        {"fn": "get_noted_property_ids", "user_id": "u1", "property_ids": []},
-    ]
+    assert service.calls == [{"fn": "get_overviews_by_ids", "property_ids": []}]
 
 
 def test_get_user_search_history_returns_recent_items(

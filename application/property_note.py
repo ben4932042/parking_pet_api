@@ -1,23 +1,23 @@
 from application.exceptions import NotFoundError, ValidationDomainError
 from domain.entities.property_note import PropertyNoteEntity
 from domain.repositories.property import IPropertyRepository
-from domain.repositories.property_note import IPropertyNoteRepository
+from domain.repositories.user import IUserRepository
 
 
 class PropertyNoteService:
     def __init__(
         self,
-        note_repo: IPropertyNoteRepository,
+        user_repo: IUserRepository,
         property_repo: IPropertyRepository,
     ):
-        self.note_repo = note_repo
+        self.user_repo = user_repo
         self.property_repo = property_repo
 
     async def get_note(
         self, user_id: str, property_id: str
     ) -> PropertyNoteEntity | None:
         await self._ensure_property_exists(property_id)
-        return await self.note_repo.get_by_user_and_property(user_id, property_id)
+        return await self.user_repo.get_property_note(user_id, property_id)
 
     async def save_note(
         self, user_id: str, property_id: str, content: str
@@ -31,7 +31,7 @@ class PropertyNoteService:
             )
 
         await self._ensure_property_exists(property_id)
-        return await self.note_repo.upsert(
+        return await self.user_repo.upsert_property_note(
             user_id=user_id,
             property_id=property_id,
             content=normalized_content,
@@ -39,12 +39,12 @@ class PropertyNoteService:
 
     async def delete_note(self, user_id: str, property_id: str) -> bool:
         await self._ensure_property_exists(property_id)
-        return await self.note_repo.delete(user_id, property_id)
+        return await self.user_repo.delete_property_note(user_id, property_id)
 
     async def list_notes(
         self, user_id: str, page: int, size: int, query: str | None = None
     ) -> tuple[list[PropertyNoteEntity], int]:
-        return await self.note_repo.list_by_user(
+        return await self.user_repo.list_property_notes(
             user_id=user_id, page=page, size=size, query=query
         )
 

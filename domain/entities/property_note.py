@@ -2,12 +2,7 @@ from datetime import UTC, datetime
 
 from pydantic import BaseModel, Field, field_validator
 
-from domain.entities import PyObjectId
-
-
 class PropertyNoteEntity(BaseModel):
-    id: PyObjectId | None = Field(default=None, alias="_id")
-    user_id: str
     property_id: str
     content: str = Field(min_length=1, max_length=2000)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

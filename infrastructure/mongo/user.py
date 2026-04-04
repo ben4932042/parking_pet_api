@@ -4,6 +4,7 @@ from typing import Optional
 from bson import ObjectId
 
 from domain.entities import PyObjectId
+from domain.entities.property_note import PropertyNoteEntity
 from domain.entities.user import UserEntity, UserSearchRecord
 from domain.repositories.user import IUserRepository
 
@@ -23,6 +24,7 @@ class UserRepository(IUserRepository):
                 "pet_name": pet_name,
                 "source": "basic",
                 "favorite_property_ids": [],
+                "property_notes": [],
                 "recent_searches": [],
                 "session_version": 0,
                 "refresh_token_hash": None,
@@ -36,6 +38,7 @@ class UserRepository(IUserRepository):
             pet_name=pet_name,
             source="basic",
             favorite_property_ids=[],
+            property_notes=[],
             recent_searches=[],
             session_version=0,
             refresh_token_hash=None,
@@ -60,6 +63,7 @@ class UserRepository(IUserRepository):
                 "source": "apple",
                 "apple_user_identifier": apple_user_identifier,
                 "favorite_property_ids": [],
+                "property_notes": [],
                 "recent_searches": [],
                 "session_version": 0,
                 "refresh_token_hash": None,
@@ -77,6 +81,7 @@ class UserRepository(IUserRepository):
             source="apple",
             apple_user_identifier=apple_user_identifier,
             favorite_property_ids=[],
+            property_notes=[],
             recent_searches=[],
             session_version=0,
             refresh_token_hash=None,
@@ -123,6 +128,102 @@ class UserRepository(IUserRepository):
             {operator: {"favorite_property_ids": str(property_id)}},
         )
         return await self.get_user_by_id(user_id)
+
+    async def get_property_note(
+        self, user_id: str, property_id: str
+    ) -> PropertyNoteEntity | None:
+        user = await self.get_user_by_id(user_id)
+        if user is None:
+            return None
+        return next(
+            (
+                note
+                for note in user.property_notes
+                if note.property_id == property_id
+            ),
+            None,
+        )
+
+    async def upsert_property_note(
+        self, user_id: str, property_id: str, content: str
+    ) -> PropertyNoteEntity:
+        user = await self.get_user_by_id(user_id)
+        now = datetime.now(UTC)
+        if user is None:
+            raise RuntimeError("User not found")
+
+        notes = list(user.property_notes)
+        existing_note = next(
+            (note for note in notes if note.property_id == property_id),
+            None,
+        )
+        if existing_note is None:
+            notes.append(
+                PropertyNoteEntity(
+                    property_id=property_id,
+                    content=content,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        else:
+            existing_note.content = content
+            existing_note.updated_at = now
+
+        await self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "property_notes": [
+                        note.model_dump(mode="json") for note in notes
+                    ],
+                    "updated_at": now,
+                }
+            },
+        )
+        return next(note for note in notes if note.property_id == property_id)
+
+    async def delete_property_note(self, user_id: str, property_id: str) -> bool:
+        user = await self.get_user_by_id(user_id)
+        if user is None:
+            return False
+
+        notes = [note for note in user.property_notes if note.property_id != property_id]
+        deleted = len(notes) != len(user.property_notes)
+        if not deleted:
+            return False
+
+        await self.collection.update_one(
+            {"_id": ObjectId(user_id)},
+            {
+                "$set": {
+                    "property_notes": [
+                        note.model_dump(mode="json") for note in notes
+                    ],
+                    "updated_at": datetime.now(UTC),
+                }
+            },
+        )
+        return True
+
+    async def list_property_notes(
+        self, user_id: str, page: int, size: int, query: str | None = None
+    ) -> tuple[list[PropertyNoteEntity], int]:
+        user = await self.get_user_by_id(user_id)
+        if user is None:
+            return [], 0
+
+        notes = list(user.property_notes)
+        if query:
+            normalized_query = query.lower()
+            notes = [
+                note for note in notes if normalized_query in note.content.lower()
+            ]
+
+        notes.sort(key=lambda note: note.updated_at, reverse=True)
+        total = len(notes)
+        skip = max(0, (page - 1) * size)
+        return notes[skip : skip + size], total
 
     async def record_recent_search(
         self,

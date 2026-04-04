@@ -43,7 +43,7 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 ## Validation
 
 - Keep unit tests stable for favorite update, status, and list behavior.
-- If favorite contracts change, update related stubs, fixtures, and repository doubles in the same change.
+- If favorite contracts change, update-related stubs, fixtures, and repository double in the same change.
 - If favorite list behavior changes, validate note-priority ordering in the related FastAPI adapter tests.
 
 ## Related Files

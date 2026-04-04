@@ -70,24 +70,24 @@ def _response_type_from_plan(
 
 async def _attach_has_note(
     items: list,
-    service: PropertyService,
     current_user: Optional[UserEntity],
 ):
     if not items:
         return []
 
     noted_property_ids: set[str] = set()
+    favorite_property_ids: set[str] = set()
     if current_user is not None:
-        property_ids = [str(item.id) for item in items]
-        noted_property_ids = await service.get_noted_property_ids(
-            user_id=str(current_user.id),
-            property_ids=property_ids,
-        )
+        noted_property_ids = {
+            note.property_id for note in current_user.property_notes
+        }
+        favorite_property_ids = set(current_user.favorite_property_ids)
 
     return [
         {
             **item.model_dump(by_alias=False),
             "has_note": str(item.id) in noted_property_ids,
+            "is_favorite": str(item.id) in favorite_property_ids,
         }
         for item in items
     ]
@@ -154,7 +154,7 @@ async def search_properties_by_keyword(
                 "Failed to record search history",
                 extra={"user_id": str(current_user.id), "query": query},
             )
-    results = await _attach_has_note(items, service, current_user)
+    results = await _attach_has_note(items, current_user)
     return {
         "status": "success",
         "user_query": query,
@@ -249,7 +249,7 @@ async def get_nearby_properties(
     )
     pages = (total + params.size - 1) // params.size if params.size else 0
     return {
-        "items": await _attach_has_note(items, service, current_user),
+        "items": await _attach_has_note(items, current_user),
         "total": total,
         "page": params.page,
         "size": params.size,

@@ -25,7 +25,6 @@ from domain.entities.property import (
 from domain.entities.property_category import PropertyCategoryKey
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
-from domain.repositories.property_note import IPropertyNoteRepository
 from domain.repositories.property import IPropertyRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 
@@ -44,12 +43,10 @@ class PropertyService:
         raw_data_repo: IPlaceRawDataRepository,
         audit_repo: IPropertyAuditRepository,
         enrichment_provider: IEnrichmentProvider,
-        note_repo: IPropertyNoteRepository | None = None,
     ):
         self.repo = repo
         self.raw_data_repo = raw_data_repo
         self.audit_repo = audit_repo
-        self.note_repo = note_repo
         self.enrichment_provider = enrichment_provider
 
     async def search_nearby(
@@ -479,13 +476,6 @@ class PropertyService:
     ) -> tuple[list[PropertyEntity], list[PropertyEntity]]:
         lexical_items = await self.repo.get_by_keyword(q)
         return lexical_items, lexical_items
-
-    async def get_noted_property_ids(
-        self, user_id: str, property_ids: list[str]
-    ) -> set[str]:
-        if self.note_repo is None:
-            return set()
-        return await self.note_repo.get_noted_property_ids(user_id, property_ids)
 
     async def get_details(
         self, property_id: PyObjectId

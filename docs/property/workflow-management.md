@@ -26,7 +26,7 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 - `application/property.py::PropertyService.soft_delete_property`
 - `application/property.py::PropertyService.restore_property`
 - `application/property.py::PropertyService.get_audit_logs`
-- Supporting repository path: `infrastructure/mongo/property.py`
+- Supporting a repository path: `infrastructure/mongo/property.py`
 
 ## Rules
 
@@ -46,8 +46,8 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 ### Renew
 
 - Renew targets an existing property by `property_id`.
-- `basic` mode refreshes from Places Text Search Enterprise + Atmosphere and then Places Details Enterprise + Atmosphere.
-- `details` mode refreshes only from Places Details Enterprise + Atmosphere using the existing raw source snapshot.
+- `basic` mode refreshes from Places Text Search Enterprise and Atmosphere and then Places Details Enterprise and Atmosphere.
+- `details` mode refreshes only from Places Details Enterprise and Atmosphere using the existing raw source snapshot.
 - Renew must not silently switch the property to a different resolved `place_id`.
 - Renew should preserve manual overrides through the sync path.
 - Renew uses the same sync audit behavior when a property entity is actually refreshed.
@@ -60,7 +60,7 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 
 ### Audit Logs
 
-- Audit history should include create, sync, pet-feature override, soft delete, and restore actions.
+- Audit history should include create, sync, pet-feature override, softly delete, and restore actions.
 - Audit queries should validate that the target property exists.
 
 - Property management actions are business logic and belong in `application/`.

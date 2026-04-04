@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from domain.entities.property_note import PropertyNoteEntity
 from domain.entities.property import OpeningPeriod, PropertyEntity, TimePoint
 from domain.entities.user import UserEntity
 from interface.api.exceptions.exception_handlers import register_exception_handlers
@@ -153,6 +154,7 @@ def user_entity_factory():
         email: str | None = None,
         apple_user_identifier: str | None = None,
         favorite_property_ids: list[str] | None = None,
+        property_notes: list[PropertyNoteEntity | dict] | None = None,
         recent_searches: list[dict] | None = None,
     ):
         return UserEntity(
@@ -163,6 +165,7 @@ def user_entity_factory():
             email=email,
             apple_user_identifier=apple_user_identifier,
             favorite_property_ids=favorite_property_ids or [],
+            property_notes=property_notes or [],
             recent_searches=recent_searches or [],
             created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
             updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),

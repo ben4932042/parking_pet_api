@@ -76,6 +76,47 @@ class UserRepoStub(IUserRepository):
         )
         return self.user
 
+    async def get_property_note(self, user_id: str, property_id: str):
+        self.calls.append(
+            {"fn": "get_property_note", "user_id": user_id, "property_id": property_id}
+        )
+        return None
+
+    async def upsert_property_note(self, user_id: str, property_id: str, content: str):
+        self.calls.append(
+            {
+                "fn": "upsert_property_note",
+                "user_id": user_id,
+                "property_id": property_id,
+                "content": content,
+            }
+        )
+        return None
+
+    async def delete_property_note(self, user_id: str, property_id: str):
+        self.calls.append(
+            {
+                "fn": "delete_property_note",
+                "user_id": user_id,
+                "property_id": property_id,
+            }
+        )
+        return False
+
+    async def list_property_notes(
+        self, user_id: str, page: int, size: int, query: str | None = None
+    ):
+        self.calls.append(
+            {
+                "fn": "list_property_notes",
+                "user_id": user_id,
+                "page": page,
+                "size": size,
+                "query": query,
+            }
+        )
+        return [], 0
+
     async def record_recent_search(self, user_id: str, query: str, *, limit: int = 20):
         self.calls.append(
             {

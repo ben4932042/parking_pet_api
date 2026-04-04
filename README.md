@@ -241,8 +241,14 @@ make lint
 
 This project currently uses bearer-token-based user authentication:
 
+- users authenticate through either `POST /api/v1/user/register` or `POST /api/v1/user/auth/apple`
+- Apple `identity_token` is used only during Apple login and is not the bearer token for normal API calls
+- successful login or registration returns a backend-issued `access_token` and `refresh_token`
 - authenticated endpoints expect `Authorization: Bearer <access-token>`
 - `GET /api/v1/user/me` verifies the bearer token, then resolves the current user from MongoDB
+- bearer-token validation also checks the persisted user `source` and `session_version`
+- `POST /api/v1/user/auth/refresh` rotates the refresh token and returns a new auth session
+- `POST /api/v1/user/auth/logout` revokes the session by clearing the stored refresh-token hash and bumping the session version
 - soft-deleted users are treated as invalid credentials
 - some property mutations allow anonymous actors, while others require an authenticated user
 
@@ -311,6 +317,8 @@ Main routes under `/api/v1`:
 ### User routes
 
 - `POST /user/auth/apple`
+- `POST /user/auth/refresh`
+- `POST /user/auth/logout`
 - `POST /user/register`
 - `GET /user/profile`
 - `PATCH /user/profile`

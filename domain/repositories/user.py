@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from domain.entities import PyObjectId
+from domain.entities.property_note import PropertyNoteEntity
 from domain.entities.user import UserEntity
 
 
@@ -41,6 +42,24 @@ class IUserRepository(ABC):
     async def update_favorite_property(
         self, user_id: str, property_id: PyObjectId, is_favorite: bool
     ) -> UserEntity: ...
+
+    @abstractmethod
+    async def get_property_note(
+        self, user_id: str, property_id: str
+    ) -> PropertyNoteEntity | None: ...
+
+    @abstractmethod
+    async def upsert_property_note(
+        self, user_id: str, property_id: str, content: str
+    ) -> PropertyNoteEntity: ...
+
+    @abstractmethod
+    async def delete_property_note(self, user_id: str, property_id: str) -> bool: ...
+
+    @abstractmethod
+    async def list_property_notes(
+        self, user_id: str, page: int, size: int, query: str | None = None
+    ) -> tuple[list[PropertyNoteEntity], int]: ...
 
     @abstractmethod
     async def record_recent_search(

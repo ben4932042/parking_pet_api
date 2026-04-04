@@ -23,6 +23,7 @@ async def test_register_basic_user_persists_pet_name():
     assert user.pet_name == "Mochi"
     assert user.source == "basic"
     assert user.favorite_property_ids == []
+    assert user.property_notes == []
     assert user.recent_searches == []
     collection.insert_one.assert_awaited_once_with(
         {
@@ -30,6 +31,7 @@ async def test_register_basic_user_persists_pet_name():
             "pet_name": "Mochi",
             "source": "basic",
             "favorite_property_ids": [],
+            "property_notes": [],
             "recent_searches": [],
             "session_version": 0,
             "refresh_token_hash": None,
@@ -69,6 +71,7 @@ async def test_register_apple_user_persists_binding_fields():
     assert insert_doc["email"] == "ben@example.com"
     assert insert_doc["session_version"] == 0
     assert insert_doc["refresh_token_hash"] is None
+    assert insert_doc["property_notes"] == []
     assert insert_doc["is_deleted"] is False
     assert insert_doc["deleted_at"] is None
 
@@ -416,3 +419,126 @@ async def test_update_user_profile_updates_name_and_pet_name():
         {"_id": pytest.importorskip("bson").ObjectId("507f1f77bcf86cd799439011")},
         {"$set": {"name": "Ben Updated", "pet_name": "Mochi"}},
     )
+
+
+@pytest.mark.asyncio
+async def test_get_property_note_returns_matching_embedded_note():
+    collection = AsyncMock()
+    collection.find_one.return_value = {
+        "_id": "507f1f77bcf86cd799439011",
+        "name": "Ben",
+        "source": "basic",
+        "favorite_property_ids": [],
+        "property_notes": [
+            {
+                "property_id": "p1",
+                "content": "hello",
+                "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+            }
+        ],
+        "recent_searches": [],
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+    }
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = UserRepository(client=ClientStub(), collection_name="user")
+
+    note = await repo.get_property_note("507f1f77bcf86cd799439011", "p1")
+
+    assert note is not None
+    assert note.property_id == "p1"
+    assert note.content == "hello"
+
+
+@pytest.mark.asyncio
+async def test_upsert_property_note_updates_existing_embedded_note():
+    collection = AsyncMock()
+    collection.find_one.return_value = {
+        "_id": "507f1f77bcf86cd799439011",
+        "name": "Ben",
+        "source": "basic",
+        "favorite_property_ids": [],
+        "property_notes": [
+            {
+                "property_id": "p1",
+                "content": "old",
+                "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+            }
+        ],
+        "recent_searches": [],
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+    }
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = UserRepository(client=ClientStub(), collection_name="user")
+
+    note = await repo.upsert_property_note(
+        "507f1f77bcf86cd799439011",
+        "p1",
+        "new",
+    )
+
+    assert note.content == "new"
+    update_doc = collection.update_one.await_args.args[1]
+    assert update_doc["$set"]["property_notes"][0]["property_id"] == "p1"
+    assert update_doc["$set"]["property_notes"][0]["content"] == "new"
+
+
+@pytest.mark.asyncio
+async def test_list_property_notes_filters_sorts_and_paginates():
+    collection = AsyncMock()
+    collection.find_one.return_value = {
+        "_id": "507f1f77bcf86cd799439011",
+        "name": "Ben",
+        "source": "basic",
+        "favorite_property_ids": [],
+        "property_notes": [
+            {
+                "property_id": "p1",
+                "content": "hello cafe",
+                "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+            },
+            {
+                "property_id": "p2",
+                "content": "dog park",
+                "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "updated_at": datetime(2026, 1, 4, tzinfo=UTC),
+            },
+            {
+                "property_id": "p3",
+                "content": "hello brunch",
+                "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "updated_at": datetime(2026, 1, 3, tzinfo=UTC),
+            },
+        ],
+        "recent_searches": [],
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+    }
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = UserRepository(client=ClientStub(), collection_name="user")
+
+    notes, total = await repo.list_property_notes(
+        "507f1f77bcf86cd799439011",
+        page=1,
+        size=1,
+        query="hello",
+    )
+
+    assert total == 2
+    assert [note.property_id for note in notes] == ["p3"]

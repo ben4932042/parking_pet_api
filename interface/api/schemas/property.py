@@ -56,6 +56,7 @@ class PropertyOverviewResponse(BaseModel):
     rating: float
     is_open: Optional[bool]
     has_note: bool = False
+    is_favorite: bool = False
 
     model_config = {"from_attributes": True}
 

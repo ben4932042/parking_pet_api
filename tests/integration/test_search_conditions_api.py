@@ -5,7 +5,6 @@ from domain.entities.search import SearchPlan
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
-from domain.repositories.property_note import IPropertyNoteRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import get_optional_current_user
@@ -62,27 +61,6 @@ class DummyAuditRepo(IPropertyAuditRepository):
         return []
 
 
-class DummyNoteRepo(IPropertyNoteRepository):
-    async def get_by_user_and_property(self, user_id: str, property_id: str):
-        return None
-
-    async def upsert(self, user_id: str, property_id: str, content: str):
-        raise NotImplementedError
-
-    async def delete(self, user_id: str, property_id: str) -> bool:
-        raise NotImplementedError
-
-    async def list_by_user(
-        self, user_id: str, page: int, size: int, query: str | None = None
-    ):
-        raise NotImplementedError
-
-    async def get_noted_property_ids(
-        self, user_id: str, property_ids: list[str]
-    ) -> set[str]:
-        return set()
-
-
 class _NoopStructuredLLM:
     def with_structured_output(self, schema):
         raise AssertionError(
@@ -128,7 +106,6 @@ def integration_search_setup(api_app):
         repo=repo,
         raw_data_repo=DummyRawDataRepo(),
         audit_repo=DummyAuditRepo(),
-        note_repo=DummyNoteRepo(),
         enrichment_provider=provider,
     )
 
