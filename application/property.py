@@ -4,6 +4,10 @@ import re
 from typing import Any, List, Optional
 
 from application.exceptions import ConflictError, NotFoundError
+from application.property_search.constants import (
+    NON_SEARCH_ROUTE_REASON,
+    PROMPT_INJECTION_ROUTE_REASON,
+)
 from application.property_search.hybrid import (
     is_exact_lexical_match,
     rank_combined_search_results,
@@ -31,8 +35,6 @@ from domain.services.property_enrichment import IEnrichmentProvider
 logger = logging.getLogger(__name__)
 
 
-PROMPT_INJECTION_ROUTE_REASON = "查詢包含 prompt injection 訊號，改用關鍵字搜尋"
-NON_SEARCH_ROUTE_REASON = "查詢內容不像搜尋條件，直接回傳空結果"
 HYBRID_KEYWORD_NEAREST_RADIUS_METERS = 100000
 
 

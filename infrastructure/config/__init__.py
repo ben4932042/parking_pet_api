@@ -46,11 +46,16 @@ class AuthSettings(BaseModel):
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 30
 
 
+class SearchSettings(BaseModel):
+    search_plan_cache_version: str = "v1"
+
+
 class Settings(BaseSettings):
     mongo: MongoSettings = MongoSettings()
     google: GoogleSettings
     apple: AppleSettings = AppleSettings()
     auth: AuthSettings = AuthSettings()
+    search: SearchSettings = SearchSettings()
 
     model_config = SettingsConfigDict(
         env_file=".env",

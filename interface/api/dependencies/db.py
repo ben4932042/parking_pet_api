@@ -6,6 +6,7 @@ from infrastructure.mongo.place_raw_data import PlaceRawDataRepository
 from infrastructure.mongo.property_audit import PropertyAuditRepository
 from infrastructure.mongo.property import PropertyRepository
 from infrastructure.mongo.search_feedback import SearchFeedbackRepository
+from infrastructure.mongo.search_plan_cache import SearchPlanCacheRepository
 from infrastructure.mongo.user import UserRepository
 
 
@@ -45,3 +46,7 @@ def get_search_feedback_repository(
 
 def get_landmark_cache_repository() -> LandmarkCacheRepository:
     return LandmarkCacheRepository(collection_name="landmark_cache")
+
+
+def get_search_plan_cache_repository() -> SearchPlanCacheRepository:
+    return SearchPlanCacheRepository(collection_name="search_plan_cache")
