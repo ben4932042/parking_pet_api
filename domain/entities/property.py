@@ -7,10 +7,7 @@ from domain.entities.audit import ActorInfo
 from domain.entities.property_category import get_primary_category_key
 from domain.entities.enrichment import (
     AIAnalysis,
-    PetEnvironment,
     PetFeatures,
-    PetRules,
-    PetService,
 )
 
 
@@ -37,12 +34,12 @@ class OpeningPeriod(BaseModel):
             if self.open.day == 0 and self.open.hour == 0 and self.open.minute == 0:
                 return [{"s": 0, "e": 10079}]
             else:
-                s = self.open.day * 1440 + self.open.hour * 60 + self.open.minute
+                s = self.open.to_total_minutes()
                 return [{"s": s, "e": s + 1439}]
 
         if self.open and self.close:
-            s_time = self.open.day * 1440 + self.open.hour * 60 + self.open.minute
-            e_time = self.close.day * 1440 + self.close.hour * 60 + self.close.minute
+            s_time = self.open.to_total_minutes()
+            e_time = self.close.to_total_minutes()
             if e_time <= s_time:
                 e_time += 10080
             return [{"s": s_time, "e": e_time}]
@@ -83,6 +80,15 @@ class PetFeaturesOverride(BaseModel):
     environment: Optional[PetEnvironmentOverride] = None
     services: Optional[PetServiceOverride] = None
 
+    def merge_into(self, inferred: PetFeatures) -> PetFeatures:
+        override_payload = self.model_dump(exclude_none=True)
+        if not override_payload:
+            return inferred
+
+        return PetFeatures.model_validate(
+            _deep_merge(inferred.model_dump(), override_payload)
+        )
+
 
 class PropertyManualOverrides(BaseModel):
     pet_features: Optional[PetFeaturesOverride] = None
@@ -99,26 +105,6 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
         else:
             merged[key] = value
     return merged
-
-
-def merge_pet_features(
-    inferred: PetFeatures,
-    overrides: Optional[PetFeaturesOverride],
-) -> PetFeatures:
-    if overrides is None:
-        return inferred
-
-    override_payload = overrides.model_dump(exclude_none=True)
-    if not override_payload:
-        return inferred
-
-    inferred_payload = inferred.model_dump()
-    merged_payload = _deep_merge(inferred_payload, override_payload)
-    return PetFeatures(
-        rules=PetRules(**merged_payload["rules"]),
-        environment=PetEnvironment(**merged_payload["environment"]),
-        services=PetService(**merged_payload["services"]),
-    )
 
 
 class PropertyEntity(BaseModel):
@@ -228,9 +214,11 @@ class PropertyEntity(BaseModel):
 
     @model_validator(mode="after")
     def generate_effective_pet_features(self) -> "PropertyEntity":
-        self.effective_pet_features = merge_pet_features(
-            self.ai_analysis.pet_features,
-            self.manual_overrides.pet_features if self.manual_overrides else None,
+        overrides = self.manual_overrides.pet_features if self.manual_overrides else None
+        self.effective_pet_features = (
+            overrides.merge_into(self.ai_analysis.pet_features)
+            if overrides
+            else self.ai_analysis.pet_features
         )
         return self
 

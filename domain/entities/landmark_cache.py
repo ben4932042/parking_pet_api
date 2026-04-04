@@ -21,4 +21,4 @@ class LandmarkCacheEntity(BaseModel):
     def coordinates(self) -> tuple[float, float] | None:
         if self.longitude is None or self.latitude is None:
             return None
-        return (self.longitude, self.latitude)
+        return self.longitude, self.latitude
