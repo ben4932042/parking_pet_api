@@ -5,6 +5,9 @@ from motor.motor_asyncio import (
     AsyncIOMotorDatabase,
     AsyncIOMotorCollection,
 )
+from pymongo import MongoClient
+from pymongo.collection import Collection
+from pymongo.database import Database
 
 from infrastructure.config import settings
 
@@ -15,13 +18,18 @@ class MongoDBClient:
     Designed to be used as a singleton via DI / bootstrap.
     """
 
+    _async_client: Optional[AsyncIOMotorClient] = None
+    _sync_client: Optional[MongoClient] = None
+
     def __init__(self) -> None:
-        self._client: Optional[AsyncIOMotorClient] = None
+        pass
 
     def get_client(self) -> AsyncIOMotorClient:
-        if self._client is None:
-            self._client = AsyncIOMotorClient(settings.mongo.url.get_secret_value())
-        return self._client
+        if self.__class__._async_client is None:
+            self.__class__._async_client = AsyncIOMotorClient(
+                settings.mongo.url.get_secret_value()
+            )
+        return self.__class__._async_client
 
     def get_database(self) -> AsyncIOMotorDatabase:
         return self.get_client()[settings.mongo.db_name]
@@ -29,17 +37,40 @@ class MongoDBClient:
     def get_collection(self, name: str) -> AsyncIOMotorCollection:
         return self.get_database()[name]
 
+    def get_sync_client(self) -> MongoClient:
+        if self.__class__._sync_client is None:
+            self.__class__._sync_client = MongoClient(
+                settings.mongo.url.get_secret_value()
+            )
+        return self.__class__._sync_client
+
+    def get_sync_database(self) -> Database:
+        return self.get_sync_client()[settings.mongo.db_name]
+
+    def get_sync_collection(self, name: str) -> Collection:
+        return self.get_sync_database()[name]
+
     async def close(self) -> None:
-        if self._client:
-            self._client.close()
-            self._client = None
+        if self.__class__._async_client:
+            self.__class__._async_client.close()
+            self.__class__._async_client = None
+        if self.__class__._sync_client:
+            self.__class__._sync_client.close()
+            self.__class__._sync_client = None
+
+
+_mongodb_client = MongoDBClient()
+
+
+def get_mongodb_client() -> MongoDBClient:
+    return _mongodb_client
 
 
 if __name__ == "__main__":
     import asyncio
 
     async def test_connection():
-        client = MongoDBClient()
+        client = get_mongodb_client()
         try:
             db = client.get_database()
             result = await db.command("ping")

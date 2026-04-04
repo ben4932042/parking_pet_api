@@ -1,6 +1,6 @@
 from fastapi import Depends
 
-from infrastructure.mongo import MongoDBClient
+from infrastructure.mongo import MongoDBClient, get_mongodb_client
 from infrastructure.mongo.landmark_cache import LandmarkCacheRepository
 from infrastructure.mongo.place_raw_data import PlaceRawDataRepository
 from infrastructure.mongo.property_audit import PropertyAuditRepository
@@ -11,7 +11,7 @@ from infrastructure.mongo.user import UserRepository
 
 
 def get_db_client() -> MongoDBClient:
-    return MongoDBClient()
+    return get_mongodb_client()
 
 
 def get_property_repository(
@@ -44,9 +44,15 @@ def get_search_feedback_repository(
     return SearchFeedbackRepository(client=client, collection_name="search_feedback")
 
 
-def get_landmark_cache_repository() -> LandmarkCacheRepository:
-    return LandmarkCacheRepository(collection_name="landmark_cache")
+def get_landmark_cache_repository(
+    client: MongoDBClient = Depends(get_db_client),
+) -> LandmarkCacheRepository:
+    return LandmarkCacheRepository(client=client, collection_name="landmark_cache")
 
 
-def get_search_plan_cache_repository() -> SearchPlanCacheRepository:
-    return SearchPlanCacheRepository(collection_name="search_plan_cache")
+def get_search_plan_cache_repository(
+    client: MongoDBClient = Depends(get_db_client),
+) -> SearchPlanCacheRepository:
+    return SearchPlanCacheRepository(
+        client=client, collection_name="search_plan_cache"
+    )

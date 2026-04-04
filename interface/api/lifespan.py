@@ -3,14 +3,14 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 
-from infrastructure.mongo import MongoDBClient
+from infrastructure.mongo import get_mongodb_client
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    mongodb_client = MongoDBClient()
+    mongodb_client = get_mongodb_client()
 
     _ = mongodb_client.get_client()
     logger.debug("Successfully connected to MongoDB")

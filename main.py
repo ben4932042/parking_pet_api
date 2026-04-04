@@ -15,6 +15,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         log_config=LOGGING_CONFIG,
-        workers=5,
+        workers=3,
         # reload=True,
     )

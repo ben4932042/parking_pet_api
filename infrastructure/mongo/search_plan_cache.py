@@ -1,17 +1,15 @@
 from datetime import UTC, datetime
 
-from pymongo import MongoClient, ReturnDocument
+from pymongo import ReturnDocument
 
 from domain.entities.search_plan_cache import SearchPlanCacheEntity
 from domain.repositories.search_plan_cache import ISearchPlanCacheRepository
-from infrastructure.config import settings
+from infrastructure.mongo import MongoDBClient
 
 
 class SearchPlanCacheRepository(ISearchPlanCacheRepository):
-    def __init__(self, collection_name: str):
-        client = MongoClient(settings.mongo.url.get_secret_value())
-        database = client[settings.mongo.db_name]
-        self.collection = database[collection_name]
+    def __init__(self, client: MongoDBClient, collection_name: str):
+        self.collection = client.get_sync_collection(collection_name)
         self.collection.create_index("cache_key", unique=True)
 
     def get_by_key(self, cache_key: str) -> SearchPlanCacheEntity | None:
