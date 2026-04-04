@@ -16,7 +16,6 @@ from domain.entities.property_category import PropertyCategoryKey
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
     get_current_user,
-    get_optional_current_user,
     get_optional_request_actor,
     get_request_actor,
     get_user_service,
@@ -796,28 +795,11 @@ def test_get_detail_returns_404_when_service_has_no_property(
     client, override_api_dep, user_entity_factory
 ):
     override_api_dep(get_property_service, MissingDetailService())
-    override_api_dep(get_optional_current_user, user_entity_factory(identifier="u1"))
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     response = client.get("/api/v1/property/missing-id")
 
     assert response.status_code == 404
-
-
-def test_get_detail_allows_anonymous_access(
-    client, override_api_dep, property_entity_factory, caplog
-):
-    override_api_dep(
-        get_property_service,
-        DetailService(property_entity_factory(identifier="p1", name="Cafe 1")),
-    )
-
-    with caplog.at_level(logging.INFO, logger="interface.api.events"):
-        response = client.get("/api/v1/property/p1")
-
-    assert response.status_code == 200
-    record = next(record for record in caplog.records if record.event == "property_viewed")
-    assert getattr(record, "user_id", None) is None
-    assert record.resource == {"type": "property", "id": "p1"}
 
 
 def test_get_detail_logs_property_viewed(
@@ -827,7 +809,7 @@ def test_get_detail_logs_property_viewed(
         get_property_service,
         DetailService(property_entity_factory(identifier="p1", name="Cafe 1")),
     )
-    override_api_dep(get_optional_current_user, user_entity_factory(identifier="u1"))
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
     with caplog.at_level(logging.INFO, logger="interface.api.events"):
         response = client.get("/api/v1/property/p1")

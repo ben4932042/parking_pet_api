@@ -22,7 +22,6 @@ from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
     get_current_user,
-    get_optional_current_user,
     get_optional_request_actor,
     get_request_actor,
     get_user_service,
@@ -275,7 +274,7 @@ async def get_detail(
     request: Request,
     property_id: PyObjectId,
     service: PropertyService = Depends(get_property_service),
-    current_user: UserEntity | None = Depends(get_optional_current_user),
+    current_user: UserEntity = Depends(get_current_user),
 ):
     prop = await service.get_details(property_id=property_id)
     if prop is None:
