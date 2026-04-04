@@ -111,7 +111,9 @@ class AuthSessionServiceStub:
         self.calls = []
 
     async def start_session(self, *, user):
-        self.calls.append({"fn": "start_session", "user_id": str(user.id), "source": user.source})
+        self.calls.append(
+            {"fn": "start_session", "user_id": str(user.id), "source": user.source}
+        )
         return AuthSession(
             access_token=self.access_token,
             refresh_token=self.refresh_token,
@@ -131,7 +133,9 @@ class AuthSessionServiceStub:
         return None
 
 
-def test_user_register_returns_user_detail(client, override_api_dep, user_entity_factory):
+def test_user_register_returns_user_detail(
+    client, override_api_dep, user_entity_factory
+):
     user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
     service = override_api_dep(get_user_service, UserServiceStub(user=user))
     auth_session_service = override_api_dep(
@@ -171,7 +175,9 @@ def test_user_register_returns_user_detail(client, override_api_dep, user_entity
     ]
 
 
-def test_apple_auth_returns_existing_user(client, override_api_dep, user_entity_factory):
+def test_apple_auth_returns_existing_user(
+    client, override_api_dep, user_entity_factory
+):
     user = user_entity_factory(
         identifier="u1",
         name="Ben",
@@ -357,7 +363,7 @@ def test_get_user_profile_returns_name_and_pet_name(
     assert data == {"name": "Ben", "pet_name": "Mochi"}
 
 
-def test_update_user_profile_returns_updated_profile(
+def test_update_user_profile_rejects_post_method(
     client, override_api_dep, user_entity_factory
 ):
     current_user = user_entity_factory(identifier="u1", name="Ben")
@@ -385,7 +391,7 @@ def test_update_user_profile_returns_updated_profile(
         "/api/v1/user/profile",
         json={"name": "Ben Updated", "pet_name": "Mochi"},
     )
- 
+
     assert response.status_code == 200
     data = response.json()
     assert data == {"name": "Ben Updated", "pet_name": "Mochi"}
@@ -577,7 +583,9 @@ def test_get_user_favorite_properties_returns_property_overviews(
     assert [item["name"] for item in data] == ["Cafe 1", "Cafe 2"]
     assert [item["has_note"] for item in data] == [True, False]
     assert [item["is_favorite"] for item in data] == [True, True]
-    assert service.calls == [{"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}]
+    assert service.calls == [
+        {"fn": "get_overviews_by_ids", "property_ids": ["p1", "p2"]}
+    ]
 
 
 def test_get_user_favorite_properties_sorts_noted_items_first(
@@ -615,7 +623,9 @@ def test_get_user_favorite_properties_sorts_noted_items_first(
     assert [item["id"] for item in data] == ["p1", "p2"]
     assert [item["has_note"] for item in data] == [True, False]
     assert [item["is_favorite"] for item in data] == [True, True]
-    assert service.calls == [{"fn": "get_overviews_by_ids", "property_ids": ["p2", "p1"]}]
+    assert service.calls == [
+        {"fn": "get_overviews_by_ids", "property_ids": ["p2", "p1"]}
+    ]
 
 
 def test_get_user_favorite_properties_returns_empty_list(

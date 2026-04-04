@@ -89,9 +89,7 @@ class AuthTokenService:
             raise AuthenticationError("Invalid access token signature")
 
         try:
-            payload = json.loads(
-                self._b64url_decode(encoded_payload).decode("utf-8")
-            )
+            payload = json.loads(self._b64url_decode(encoded_payload).decode("utf-8"))
         except Exception as exc:
             raise AuthenticationError("Malformed access token") from exc
 

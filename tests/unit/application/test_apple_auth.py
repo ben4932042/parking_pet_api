@@ -94,7 +94,10 @@ async def test_authenticate_returns_existing_apple_user(user_entity_factory):
 
     assert result == existing_user
     assert repo.calls == [
-        {"fn": "get_user_by_apple_user_identifier", "apple_user_identifier": "apple-sub-1"}
+        {
+            "fn": "get_user_by_apple_user_identifier",
+            "apple_user_identifier": "apple-sub-1",
+        }
     ]
 
 
@@ -121,7 +124,10 @@ async def test_authenticate_restores_deleted_apple_user(user_entity_factory):
 
     assert result.is_deleted is False
     assert repo.calls == [
-        {"fn": "get_user_by_apple_user_identifier", "apple_user_identifier": "apple-sub-1"},
+        {
+            "fn": "get_user_by_apple_user_identifier",
+            "apple_user_identifier": "apple-sub-1",
+        },
         {"fn": "restore_user", "user_id": "u1"},
     ]
 
@@ -154,8 +160,14 @@ async def test_authenticate_creates_user_when_verified_payload_is_sufficient(
 
     assert result == created_user
     assert repo.calls == [
-        {"fn": "get_user_by_apple_user_identifier", "apple_user_identifier": "apple-sub-2"},
-        {"fn": "get_user_by_apple_user_identifier", "apple_user_identifier": "apple-user-2"},
+        {
+            "fn": "get_user_by_apple_user_identifier",
+            "apple_user_identifier": "apple-sub-2",
+        },
+        {
+            "fn": "get_user_by_apple_user_identifier",
+            "apple_user_identifier": "apple-user-2",
+        },
         {
             "fn": "register_apple_user",
             "apple_user_identifier": "apple-sub-2",

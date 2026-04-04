@@ -185,9 +185,7 @@ def test_extract_search_plan_saves_cache_on_miss(monkeypatch):
     expected_plan = SearchPlan(
         execution_modes=["semantic"],
         route_reason="查詢包含分類或偏好條件",
-        filter_condition=PropertyFilterCondition(
-            mongo_query={"primary_type": "cafe"}
-        ),
+        filter_condition=PropertyFilterCondition(mongo_query={"primary_type": "cafe"}),
         semantic_extraction={"category": "cafe"},
     )
     monkeypatch.setattr(

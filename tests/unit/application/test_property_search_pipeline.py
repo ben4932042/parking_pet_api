@@ -112,7 +112,9 @@ async def test_search_by_keyword_forces_keyword_only_when_category_is_provided(
 ):
     keyword_item = property_entity_factory(identifier="keyword-hit")
     repo = CaptureRepo(
-        query_items=[property_entity_factory(identifier="semantic-hit", primary_type="park")],
+        query_items=[
+            property_entity_factory(identifier="semantic-hit", primary_type="park")
+        ],
         keyword_items=[keyword_item],
     )
     service = PropertyService(

@@ -79,6 +79,7 @@ class CapturePropertyService:
         )
         return self.items, len(self.items)
 
+
 class MissingDetailService:
     async def get_details(self, property_id):
         return None
@@ -393,7 +394,9 @@ def test_nearby_route_includes_note_and_favorite_flags_for_authenticated_user(
 def test_search_route_passes_category_and_returns_keyword_search_when_present(
     client, override_api_dep
 ):
-    service = override_api_dep(get_property_service, CapturePropertyService(route="keyword"))
+    service = override_api_dep(
+        get_property_service, CapturePropertyService(route="keyword")
+    )
 
     response = client.get(
         "/api/v1/property",

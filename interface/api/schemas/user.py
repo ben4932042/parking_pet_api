@@ -124,17 +124,15 @@ class AppleAuthRequest(BaseModel):
     ] = Field(description="Apple identity token returned by Sign in with Apple.")
     authorization_code: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1)
-    ] = Field(
-        description="Apple authorization code returned by Sign in with Apple."
-    )
+    ] = Field(description="Apple authorization code returned by Sign in with Apple.")
     user_identifier: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1)
     ] = Field(
         description="Stable Apple user identifier from the client credential payload."
     )
-    email: Annotated[
-        str, StringConstraints(strip_whitespace=True, min_length=1)
-    ] | None = Field(
+    email: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None
+    ) = Field(
         default=None,
         description="Optional email returned by Apple, usually only on first consent.",
     )

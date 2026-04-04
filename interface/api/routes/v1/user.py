@@ -261,9 +261,7 @@ async def get_user_favorite_properties(
     property_service: PropertyService = Depends(get_property_service),
 ):
     favorite_property_ids = set(current_user.favorite_property_ids)
-    noted_property_ids = {
-        note.property_id for note in current_user.property_notes
-    }
+    noted_property_ids = {note.property_id for note in current_user.property_notes}
     properties = await property_service.get_overviews_by_ids(
         current_user.favorite_property_ids
     )

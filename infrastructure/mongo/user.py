@@ -136,11 +136,7 @@ class UserRepository(IUserRepository):
         if user is None:
             return None
         return next(
-            (
-                note
-                for note in user.property_notes
-                if note.property_id == property_id
-            ),
+            (note for note in user.property_notes if note.property_id == property_id),
             None,
         )
 
@@ -174,9 +170,7 @@ class UserRepository(IUserRepository):
             {"_id": ObjectId(user_id)},
             {
                 "$set": {
-                    "property_notes": [
-                        note.model_dump(mode="json") for note in notes
-                    ],
+                    "property_notes": [note.model_dump(mode="json") for note in notes],
                     "updated_at": now,
                 }
             },
@@ -188,7 +182,9 @@ class UserRepository(IUserRepository):
         if user is None:
             return False
 
-        notes = [note for note in user.property_notes if note.property_id != property_id]
+        notes = [
+            note for note in user.property_notes if note.property_id != property_id
+        ]
         deleted = len(notes) != len(user.property_notes)
         if not deleted:
             return False
@@ -197,9 +193,7 @@ class UserRepository(IUserRepository):
             {"_id": ObjectId(user_id)},
             {
                 "$set": {
-                    "property_notes": [
-                        note.model_dump(mode="json") for note in notes
-                    ],
+                    "property_notes": [note.model_dump(mode="json") for note in notes],
                     "updated_at": datetime.now(UTC),
                 }
             },
@@ -216,9 +210,7 @@ class UserRepository(IUserRepository):
         notes = list(user.property_notes)
         if query:
             normalized_query = query.lower()
-            notes = [
-                note for note in notes if normalized_query in note.content.lower()
-            ]
+            notes = [note for note in notes if normalized_query in note.content.lower()]
 
         notes.sort(key=lambda note: note.updated_at, reverse=True)
         total = len(notes)

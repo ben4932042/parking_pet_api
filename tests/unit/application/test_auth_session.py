@@ -41,13 +41,17 @@ class UserRepoStub:
 
 
 class TokenServiceStub:
-    def __init__(self, *, access_token: str = "access-1", refresh_token: str = "refresh-1"):
+    def __init__(
+        self, *, access_token: str = "access-1", refresh_token: str = "refresh-1"
+    ):
         self.access_token = access_token
         self.refresh_token = refresh_token
         self.claims = None
         self.calls = []
 
-    def issue_access_token(self, *, user_id: str, source: str, session_version: int) -> str:
+    def issue_access_token(
+        self, *, user_id: str, source: str, session_version: int
+    ) -> str:
         self.calls.append(
             {
                 "fn": "issue_access_token",
@@ -58,7 +62,9 @@ class TokenServiceStub:
         )
         return self.access_token
 
-    def issue_refresh_token(self, *, user_id: str, source: str, session_version: int) -> str:
+    def issue_refresh_token(
+        self, *, user_id: str, source: str, session_version: int
+    ) -> str:
         self.calls.append(
             {
                 "fn": "issue_refresh_token",
@@ -88,7 +94,9 @@ class ClaimsStub:
 
 
 @pytest.mark.asyncio
-async def test_start_session_issues_tokens_for_incremented_session_version(user_entity_factory):
+async def test_start_session_issues_tokens_for_incremented_session_version(
+    user_entity_factory,
+):
     user = user_entity_factory(identifier="u1", name="Ben", source="basic")
     session_user = user.model_copy(update={"session_version": 1})
     repo = UserRepoStub(user=session_user)
@@ -155,7 +163,9 @@ async def test_refresh_session_rotates_refresh_token(user_entity_factory):
 
 
 @pytest.mark.asyncio
-async def test_refresh_session_rejects_mismatched_refresh_token_hash(user_entity_factory):
+async def test_refresh_session_rejects_mismatched_refresh_token_hash(
+    user_entity_factory,
+):
     user = user_entity_factory(identifier="u1", name="Ben", source="apple").model_copy(
         update={"session_version": 1, "refresh_token_hash": "other-hash"}
     )

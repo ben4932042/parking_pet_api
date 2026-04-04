@@ -513,7 +513,9 @@ class PropertyService:
         if existing.is_deleted:
             raise ConflictError("Property is soft-deleted. Restore it before renewing.")
 
-        previous_source_data = await self.raw_data_repo.get_by_place_id(existing.place_id)
+        previous_source_data = await self.raw_data_repo.get_by_place_id(
+            existing.place_id
+        )
 
         if mode == "details":
             if previous_source_data is None:
@@ -599,7 +601,9 @@ class PropertyService:
             else:
                 return existing, False
         else:
-            ai_result = self.enrichment_provider.generate_ai_analysis(merged_source_data)
+            ai_result = self.enrichment_provider.generate_ai_analysis(
+                merged_source_data
+            )
             if ai_result is None:
                 raise ValueError(
                     "Failed to generate AI analysis for the resolved property."
@@ -629,7 +633,10 @@ class PropertyService:
         )
         logging.info(
             "Property upsert completed successfully",
-            extra={"place_id": saved_property.place_id, "property_id": saved_property.id},
+            extra={
+                "place_id": saved_property.place_id,
+                "property_id": saved_property.id,
+            },
         )
         return saved_property, True
 

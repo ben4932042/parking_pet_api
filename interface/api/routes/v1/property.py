@@ -78,9 +78,7 @@ async def _attach_has_note(
     noted_property_ids: set[str] = set()
     favorite_property_ids: set[str] = set()
     if current_user is not None:
-        noted_property_ids = {
-            note.property_id for note in current_user.property_notes
-        }
+        noted_property_ids = {note.property_id for note in current_user.property_notes}
         favorite_property_ids = set(current_user.favorite_property_ids)
 
     return [

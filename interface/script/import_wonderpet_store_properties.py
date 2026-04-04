@@ -222,7 +222,9 @@ def post_create_property(base_url: str, store_name: str) -> tuple[int, str]:
 def main() -> int:
     args = parse_args()
     names = build_target_names(args)
-    print(json.dumps({"count": len(names), "dry_run": args.dry_run}, ensure_ascii=False))
+    print(
+        json.dumps({"count": len(names), "dry_run": args.dry_run}, ensure_ascii=False)
+    )
 
     for index, store_name in enumerate(names, start=1):
         if args.dry_run:

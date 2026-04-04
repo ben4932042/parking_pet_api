@@ -112,7 +112,7 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "library",
             "preschool",
             "primary_school",
-            "athletic_field"
+            "athletic_field",
         ],
     ),
     PropertyCategoryEntity(

@@ -492,7 +492,9 @@ async def test_renew_property_in_basic_mode_rejects_place_id_mismatch(
     existing = property_entity_factory(identifier="p1", place_id="place-1", name="old")
     repo = InMemoryPropertyRepo(existing)
     raw_data_repo = DummyRawDataRepo(
-        existing=build_source("place-1").model_copy(update={"origin_search_name": "old"})
+        existing=build_source("place-1").model_copy(
+            update={"origin_search_name": "old"}
+        )
     )
     mismatched_source = build_source("place-2")
     provider = SyncEnrichmentProvider(mismatched_source, existing)
