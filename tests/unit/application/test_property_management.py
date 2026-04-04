@@ -150,7 +150,7 @@ async def test_update_pet_features_merges_manual_override_and_writes_audit_log(
         ),
     )
 
-    detail = await service.update_pet_features(
+    result = await service.update_pet_features(
         property_id="p1",
         pet_rules=PetRulesOverride(allow_on_floor=True),
         pet_environment=None,
@@ -159,9 +159,9 @@ async def test_update_pet_features_merges_manual_override_and_writes_audit_log(
         reason="verified on site",
     )
 
-    assert detail.effective_pet_features.rules.allow_on_floor is True
-    assert detail.effective_pet_features.services.free_water is True
-    assert detail.manual_overrides.pet_features.services.free_water is True
+    assert result.effective_pet_features.rules.allow_on_floor is True
+    assert result.effective_pet_features.services.free_water is True
+    assert result.manual_pet_features.services.free_water is True
     assert audit_repo.logs[-1].action == PropertyAuditAction.PET_FEATURES_OVERRIDE
 
 

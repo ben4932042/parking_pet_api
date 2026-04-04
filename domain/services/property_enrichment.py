@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 
 from domain.entities.enrichment import AnalysisSource
-from domain.entities.property import PropertyEntity, PropertyFilterCondition
-from domain.entities.search import SearchPlan
+from domain.entities.property import PropertyEntity
+from domain.entities.search import PropertyFilterCondition, SearchPlan
 
 
 class IEnrichmentProvider(ABC):

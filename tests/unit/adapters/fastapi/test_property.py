@@ -2,16 +2,15 @@ from datetime import datetime, timezone
 
 import pytest
 
+from application.dto.property import ActorDto
 from domain.entities.audit import PropertyAuditAction, PropertyAuditLog
 from domain.entities.property_note import PropertyNoteEntity
 from domain.entities.property import (
     PropertyEntity,
-    PropertyFilterCondition,
     PropertyManualOverrides,
     PetFeaturesOverride,
     PetServiceOverride,
 )
-from domain.entities.search import SearchPlan
 from domain.entities.property_category import PropertyCategoryKey
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
@@ -21,6 +20,87 @@ from interface.api.dependencies.user import (
     get_user_service,
 )
 from interface.api.exceptions.error import ConflictError
+
+
+def _overview_payload(item, *, has_note=False, is_favorite=False):
+    return {
+        "id": item.id,
+        "name": item.name,
+        "address": item.address,
+        "latitude": item.latitude,
+        "longitude": item.longitude,
+        "category": item.category,
+        "types": item.types,
+        "rating": item.rating,
+        "is_open": item.is_open,
+        "has_note": has_note,
+        "is_favorite": is_favorite,
+    }
+
+
+def _actor_payload(actor):
+    if actor is None:
+        return None
+    if isinstance(actor, dict):
+        return actor
+    return ActorDto(
+        user_id=actor.user_id,
+        name=actor.name,
+        role=actor.role,
+        source=actor.source,
+    ).model_dump()
+
+
+def _pet_features_payload(features):
+    return features.model_dump() if features else None
+
+
+def _pet_features_override_payload(features):
+    return features.model_dump(exclude_none=True) if features else None
+
+
+def _detail_payload(item):
+    return {
+        "id": item.id,
+        "name": item.name,
+        "aliases": item.aliases,
+        "manual_aliases": item.manual_aliases,
+        "address": item.address,
+        "latitude": item.latitude,
+        "longitude": item.longitude,
+        "types": item.types,
+        "rating": item.ai_analysis.ai_rating,
+        "tags": item.ai_analysis.highlights,
+        "regular_opening_hours": item.regular_opening_hours,
+        "ai_analysis": {
+            "venue_type": item.ai_analysis.venue_type,
+            "ai_summary": item.ai_analysis.ai_summary,
+            "pet_features": item.ai_analysis.pet_features.model_dump(),
+            "highlights": item.ai_analysis.highlights,
+            "warnings": item.ai_analysis.warnings,
+            "rating": item.ai_analysis.ai_rating,
+        },
+        "manual_overrides": (
+            {
+                "pet_features": _pet_features_override_payload(
+                    item.manual_overrides.pet_features
+                ),
+                "updated_by": _actor_payload(item.manual_overrides.updated_by),
+                "updated_at": item.manual_overrides.updated_at,
+                "reason": item.manual_overrides.reason,
+            }
+            if item.manual_overrides
+            else None
+        ),
+        "effective_pet_features": _pet_features_payload(item.effective_pet_features),
+        "created_by": _actor_payload(item.created_by),
+        "updated_by": _actor_payload(item.updated_by),
+        "created_at": item.created_at,
+        "updated_at": item.updated_at,
+        "deleted_by": _actor_payload(item.deleted_by),
+        "deleted_at": item.deleted_at,
+        "is_deleted": item.is_deleted,
+    }
 
 
 class CapturePropertyService:
@@ -39,7 +119,7 @@ class CapturePropertyService:
         self.execution_modes = execution_modes
         self.fallback_reason = fallback_reason
 
-    async def search_by_keyword(
+    async def search_properties(
         self,
         q,
         category=None,
@@ -47,6 +127,7 @@ class CapturePropertyService:
         map_coords=None,
         radius=None,
         open_at_minutes=None,
+        current_user=None,
     ):
         self.calls.append(
             {
@@ -58,15 +139,46 @@ class CapturePropertyService:
                 "open_at_minutes": open_at_minutes,
             }
         )
-        plan = SearchPlan(
-            execution_modes=self.execution_modes or [self.route],
-            filter_condition=PropertyFilterCondition(preferences=[]),
-            used_fallback=self.used_fallback,
-            fallback_reason=self.fallback_reason,
+        noted_property_ids = (
+            {note.property_id for note in current_user.property_notes}
+            if current_user is not None
+            else set()
         )
-        return self.items, plan
+        favorite_property_ids = (
+            set(current_user.favorite_property_ids) if current_user is not None else set()
+        )
+        results = [
+            _overview_payload(
+                item,
+                has_note=item.id in noted_property_ids,
+                is_favorite=item.id in favorite_property_ids,
+            )
+            for item in self.items
+        ]
+        categories = []
+        for item in results:
+            category_name = item["category"]
+            if category_name and category_name not in categories:
+                categories.append(category_name)
+        response_type = (
+            "hybrid_search"
+            if set(self.execution_modes or [self.route]) == {"semantic", "keyword"}
+            else "keyword_search"
+            if (self.execution_modes or [self.route]) == ["keyword"] or self.used_fallback
+            else "semantic_search"
+        )
+        return {
+            "status": "success",
+            "user_query": q,
+            "response_type": response_type,
+            "preferences": [],
+            "categories": categories,
+            "results": results,
+        }
 
-    async def search_nearby(self, lat, lng, radius, types, page, size):
+    async def get_nearby_overviews(
+        self, lat, lng, radius, types, page, size, current_user=None
+    ):
         self.calls.append(
             {
                 "lat": lat,
@@ -77,7 +189,25 @@ class CapturePropertyService:
                 "size": size,
             }
         )
-        return self.items, len(self.items)
+        noted_property_ids = (
+            {note.property_id for note in current_user.property_notes}
+            if current_user is not None
+            else set()
+        )
+        favorite_property_ids = (
+            set(current_user.favorite_property_ids) if current_user is not None else set()
+        )
+        return (
+            [
+                _overview_payload(
+                    item,
+                    has_note=item.id in noted_property_ids,
+                    is_favorite=item.id in favorite_property_ids,
+                )
+                for item in self.items
+            ],
+            len(self.items),
+        )
 
 
 class MissingDetailService:
@@ -141,7 +271,27 @@ class PropertyMutationService:
                 "reason": reason,
             }
         )
-        return self.property_entity
+        return {
+            "property_id": self.property_entity.id,
+            "inferred_pet_features": self.property_entity.ai_analysis.pet_features.model_dump(),
+            "manual_pet_features": (
+                _pet_features_override_payload(
+                    self.property_entity.manual_overrides.pet_features
+                )
+                if self.property_entity.manual_overrides
+                else None
+            ),
+            "effective_pet_features": _pet_features_payload(
+                self.property_entity.effective_pet_features
+            ),
+            "updated_by": _actor_payload(self.property_entity.updated_by),
+            "updated_at": self.property_entity.updated_at,
+            "reason": (
+                self.property_entity.manual_overrides.reason
+                if self.property_entity.manual_overrides
+                else None
+            ),
+        }
 
     async def update_aliases(self, property_id, manual_aliases, actor, reason=None):
         self.calls.append(
@@ -153,7 +303,14 @@ class PropertyMutationService:
                 "reason": reason,
             }
         )
-        return self.property_entity
+        return {
+            "property_id": self.property_entity.id,
+            "aliases": self.property_entity.aliases,
+            "manual_aliases": self.property_entity.manual_aliases,
+            "updated_by": _actor_payload(self.property_entity.updated_by),
+            "updated_at": self.property_entity.updated_at,
+            "reason": reason,
+        }
 
     async def soft_delete_property(self, property_id, actor, reason=None):
         self.calls.append(
@@ -164,7 +321,15 @@ class PropertyMutationService:
                 "reason": reason,
             }
         )
-        return self.property_entity
+        return {
+            "property_id": self.property_entity.id,
+            "status": "deleted",
+            "is_deleted": self.property_entity.is_deleted,
+            "updated_by": _actor_payload(self.property_entity.updated_by),
+            "updated_at": self.property_entity.updated_at,
+            "deleted_by": _actor_payload(self.property_entity.deleted_by),
+            "deleted_at": self.property_entity.deleted_at,
+        }
 
     async def restore_property(self, property_id, actor, reason=None):
         self.calls.append(
@@ -175,9 +340,17 @@ class PropertyMutationService:
                 "reason": reason,
             }
         )
-        return self.property_entity
+        return {
+            "property_id": self.property_entity.id,
+            "status": "restored",
+            "is_deleted": self.property_entity.is_deleted,
+            "updated_by": _actor_payload(self.property_entity.updated_by),
+            "updated_at": self.property_entity.updated_at,
+            "deleted_by": _actor_payload(self.property_entity.deleted_by),
+            "deleted_at": self.property_entity.deleted_at,
+        }
 
-    async def renew_property(self, property_id, mode, actor, reason=None):
+    async def renew_property_result(self, property_id, mode, actor, reason=None):
         self.calls.append(
             {
                 "fn": "renew_property",
@@ -187,7 +360,15 @@ class PropertyMutationService:
                 "reason": reason,
             }
         )
-        return self.property_entity, self.renew_changed
+        return {
+            "property_id": self.property_entity.id,
+            "status": "renewed" if self.renew_changed else "unchanged",
+            "is_deleted": self.property_entity.is_deleted,
+            "updated_by": _actor_payload(self.property_entity.updated_by),
+            "updated_at": self.property_entity.updated_at,
+            "deleted_by": _actor_payload(self.property_entity.deleted_by),
+            "deleted_at": self.property_entity.deleted_at,
+        }
 
     async def get_audit_logs(self, property_id, limit=50):
         self.calls.append(
@@ -197,7 +378,20 @@ class PropertyMutationService:
                 "limit": limit,
             }
         )
-        return self.logs
+        return [
+            {
+                "property_id": log.property_id,
+                "action": log.action.value,
+                "actor": _actor_payload(log.actor),
+                "reason": log.reason,
+                "source": log.source,
+                "changes": log.changes,
+                "before": log.before,
+                "after": log.after,
+                "created_at": log.created_at,
+            }
+            for log in self.logs
+        ]
 
 
 @pytest.fixture

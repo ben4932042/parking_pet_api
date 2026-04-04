@@ -2,8 +2,7 @@ import pytest
 
 from application.property import PropertyService
 from domain.entities.property_category import PropertyCategoryKey
-from domain.entities.search import SearchPlan
-from domain.entities.property import PropertyFilterCondition
+from domain.entities.search import PropertyFilterCondition, SearchPlan
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository

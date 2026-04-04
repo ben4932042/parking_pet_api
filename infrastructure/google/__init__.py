@@ -1,9 +1,4 @@
-import hashlib
-
-from application.property_search.cache_policy import (
-    normalize_search_query,
-    should_cache_search_plan,
-)
+from application.property_search.planner import SearchPlanWorkflow
 from infrastructure.runtime_warnings import apply_runtime_warning_filters
 
 from google.oauth2 import service_account
@@ -13,10 +8,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from domain.entities.enrichment import AnalysisSource
 from domain.entities.landmark_cache import LandmarkCacheEntity
 from domain.entities.property import PropertyEntity
-from domain.entities.search import SearchPlan
-from domain.entities.search_plan_cache import SearchPlanCacheEntity
 from domain.repositories.landmark_cache import ILandmarkCacheRepository
-from domain.repositories.search_plan_cache import ISearchPlanCacheRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from infrastructure.config import settings
 from infrastructure.google.place_api import (
@@ -33,10 +25,8 @@ apply_runtime_warning_filters()
 class GoogleEnrichmentProvider(IEnrichmentProvider):
     def __init__(
         self,
-        client,
-        collection_name,
         landmark_cache_repo: ILandmarkCacheRepository | None = None,
-        search_plan_cache_repo: ISearchPlanCacheRepository | None = None,
+        search_plan_workflow: SearchPlanWorkflow | None = None,
     ):
         creds = service_account.Credentials.from_service_account_file(
             settings.google.service_account_file,
@@ -58,16 +48,11 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
             response_mime_type="application/json",
         )
         self.landmark_cache_repo = landmark_cache_repo
-        self.search_plan_cache_repo = search_plan_cache_repo
+        self.search_plan_workflow = search_plan_workflow
 
     @staticmethod
     def _build_landmark_cache_key(landmark_name: str) -> str:
         return " ".join(landmark_name.split()).strip().casefold()
-
-    @staticmethod
-    def _build_search_plan_cache_key(version: str, normalized_query: str) -> str:
-        payload = f"{version}\n{normalized_query}".encode("utf-8")
-        return hashlib.sha256(payload).hexdigest()
 
     def create_property_by_name(self, property_name: str) -> AnalysisSource:
         basic_info = search_basic_information_by_name(property_name)
@@ -82,30 +67,9 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
         return distill_property_insights(source)
 
     def extract_search_plan(self, query: str):
-        normalized_query = normalize_search_query(query)
-        version = settings.search.search_plan_cache_version
-        cache_key = self._build_search_plan_cache_key(version, normalized_query)
-
-        if self.search_plan_cache_repo is not None:
-            cached = self.search_plan_cache_repo.touch(cache_key)
-            if cached is not None:
-                return SearchPlan.model_validate(cached.plan_payload)
-
-        plan = extract_search_plan(self.llm, query)
-        if self.search_plan_cache_repo is None or not should_cache_search_plan(plan):
-            return plan
-
-        self.search_plan_cache_repo.save(
-            SearchPlanCacheEntity(
-                cache_key=cache_key,
-                query_text=query,
-                normalized_query=normalized_query,
-                version=version,
-                plan_payload=plan.model_dump(mode="json"),
-                hit_count=0,
-            )
-        )
-        return plan
+        if self.search_plan_workflow is None:
+            return extract_search_plan(self.llm, query)
+        return self.search_plan_workflow.extract(query)
 
     def geocode_landmark(self, landmark_name: str):
         normalized_name = " ".join(landmark_name.split()).strip()

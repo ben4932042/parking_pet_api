@@ -1,6 +1,16 @@
 import json
 from typing import Any
 
+from application.property_search.planning import (
+    apply_confidence_gate,
+    build_keyword_plan,
+    build_search_plan,
+)
+from application.property_search.routing import (
+    normalize_router_decision,
+    route_decision_by_rule,
+    should_use_llm_location_as_route,
+)
 from application.property_search.rules import (
     extract_address_by_rule,
     extract_category_by_rule,
@@ -12,12 +22,7 @@ from application.property_search.rules import (
     has_feature_hints,
     has_quality_hints,
     has_time_hints,
-    is_basic_prompt_injection,
-    is_obviously_non_search_query,
-    normalize_llm_execution_modes,
     normalize_category_intent,
-    normalize_text_for_match,
-    should_run_keyword_with_semantic,
     should_run_typo_normalizer,
     should_use_current_location_context,
 )
@@ -36,11 +41,6 @@ from domain.entities.search import (
     SearchRouteDecision,
     TimeIntent,
     TypoCorrectionIntent,
-)
-from infrastructure.search.merge import (
-    confidence_gate_node,
-    keyword_plan_node,
-    merge_plan_node,
 )
 from infrastructure.search.prompts import (
     CATEGORY_PARSER_PROMPT,
@@ -116,83 +116,13 @@ def typo_node(llm, state: SearchGraphState) -> dict[str, Any]:
 
 def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
     query = current_query(state)
-    if is_basic_prompt_injection(query):
-        return {
-            "route_decision": SearchRouteDecision(
-                execution_modes=["keyword"],
-                confidence=0.99,
-                reason="查詢包含 prompt injection 訊號，改用關鍵字搜尋",
-            )
-        }
-
-    if is_obviously_non_search_query(query):
-        return {
-            "route_decision": SearchRouteDecision(
-                execution_modes=["keyword"],
-                confidence=0.98,
-                reason="查詢內容不像搜尋條件，直接回傳空結果",
-            )
-        }
-
-    rule_based_address = extract_address_by_rule(query)
-    rule_based_category = extract_category_by_rule(query)
-    rule_based_feature = extract_feature_by_rule(query)
-    rule_based_quality = extract_quality_by_rule(query)
-    rule_based_time = extract_time_by_rule(query)
-    rule_based_distance = extract_distance_by_rule(query)
-    normalized_query = normalize_text_for_match(query)
-    if rule_based_address and normalized_query == rule_based_address:
-        return {
-            "route_decision": SearchRouteDecision(
-                execution_modes=["semantic"],
-                confidence=0.98,
-                reason="查詢本身就是行政區或地址條件",
-            )
-        }
-
-    if rule_based_address and rule_based_category:
-        return {
-            "route_decision": SearchRouteDecision(
-                execution_modes=["semantic"],
-                confidence=0.98,
-                reason="包含地點和分類條件",
-            )
-        }
-
-    rule_based_landmark = extract_landmark_by_rule(query)
-    if rule_based_landmark:
-        return {
-            "route_decision": SearchRouteDecision(
-                execution_modes=["semantic"],
-                confidence=0.98,
-                reason="查詢本身就是地標條件",
-            ),
-            "location_intent": LocationIntent(
-                kind="landmark",
-                value=rule_based_landmark,
-                confidence=0.98,
-                evidence="matched landmark keyword or suffix by rule",
-            ),
-        }
-
-    if (
-        rule_based_category
-        or rule_based_feature
-        or rule_based_quality
-        or rule_based_time
-        or rule_based_distance
-        or should_use_current_location_context(query)
-    ):
-        execution_modes = ["semantic"]
-        if should_run_keyword_with_semantic(query):
-            execution_modes.append("keyword")
-        return {
-            "route_decision": SearchRouteDecision(
-                execution_modes=execution_modes,
-                confidence=0.95,
-                reason="查詢包含分類或偏好條件",
-            )
-        }
+    rule_based = route_decision_by_rule(query)
+    if rule_based is not None:
+        decision, location_intent = rule_based
+        result: dict[str, Any] = {"route_decision": decision}
+        if location_intent is not None:
+            result["location_intent"] = location_intent
+        return result
 
     entity_schema = PropertyEntity.model_json_schema()
     location_intent = invoke_structured(
@@ -202,16 +132,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
         schema=LocationIntent,
         extra_variables={"entity_schema": str(entity_schema)},
     )
-    normalized_landmark = normalize_text_for_match(location_intent.value or "")
-    if (
-        location_intent.kind == "landmark"
-        and location_intent.value
-        and (
-            normalized_query in normalized_landmark
-            or normalized_landmark in normalized_query
-        )
-        and location_intent.confidence >= 0.7
-    ):
+    if should_use_llm_location_as_route(query, location_intent):
         return {
             "route_decision": SearchRouteDecision(
                 execution_modes=["semantic"],
@@ -227,10 +148,7 @@ def route_node(llm, state: SearchGraphState) -> dict[str, Any]:
         user_input=query,
         schema=SearchRouteDecision,
     )
-    decision.execution_modes = normalize_llm_execution_modes(
-        query,
-        decision.execution_modes,
-    )
+    decision = normalize_router_decision(query, decision)
     return {"route_decision": decision}
 
 
@@ -397,7 +315,15 @@ def extract_search_plan(llm, user_input: str) -> SearchPlan:
     graph = StateGraph(SearchGraphState)
     graph.add_node("typo_normalizer", lambda state: typo_node(llm, state))
     graph.add_node("router", lambda state: route_node(llm, state))
-    graph.add_node("keyword_plan", keyword_plan_node)
+    graph.add_node(
+        "keyword_plan",
+        lambda state: {
+            "plan": build_keyword_plan(
+                route_reason=state["route_decision"].reason,
+                route_confidence=state["route_decision"].confidence,
+            )
+        },
+    )
     graph.add_node("semantic_fanout", semantic_fanout_node)
     graph.add_node("location_parser", lambda state: location_node(llm, state))
     graph.add_node("category_parser", lambda state: category_node(llm, state))
@@ -405,8 +331,36 @@ def extract_search_plan(llm, user_input: str) -> SearchPlan:
     graph.add_node("quality_parser", lambda state: quality_node(llm, state))
     graph.add_node("time_parser", time_node)
     graph.add_node("distance_parser", distance_node)
-    graph.add_node("merge_plan", merge_plan_node)
-    graph.add_node("confidence_gate", confidence_gate_node)
+    graph.add_node(
+        "merge_plan",
+        lambda state: {
+            "plan": build_search_plan(
+                execution_modes=state["route_decision"].execution_modes,
+                route_reason=state["route_decision"].reason,
+                route_confidence=state["route_decision"].confidence,
+                location_intent=state.get("location_intent", LocationIntent()),
+                category_intent=state.get("category_intent", CategoryIntent()),
+                feature_intent=state.get("feature_intent", PetFeatureIntent()),
+                quality_intent=state.get("quality_intent", QualityIntent()),
+                time_intent=state.get("time_intent", TimeIntent()),
+                distance_intent=state.get("distance_intent", DistanceIntent()),
+            )
+        },
+    )
+    graph.add_node(
+        "confidence_gate",
+        lambda state: {
+            "plan": apply_confidence_gate(
+                plan=state["plan"],
+                location_intent=state.get("location_intent", LocationIntent()),
+                category_intent=state.get("category_intent", CategoryIntent()),
+                feature_intent=state.get("feature_intent", PetFeatureIntent()),
+                quality_intent=state.get("quality_intent", QualityIntent()),
+                time_intent=state.get("time_intent", TimeIntent()),
+                distance_intent=state.get("distance_intent", DistanceIntent()),
+            )
+        },
+    )
 
     graph.add_edge(START, "typo_normalizer")
     graph.add_edge("typo_normalizer", "router")

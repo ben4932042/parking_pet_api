@@ -1,39 +1,22 @@
-from datetime import datetime
-from typing import List, Optional
-
 from pydantic import BaseModel, Field
 
-from domain.entities.audit import ActorInfo, PropertyAuditAction
-from domain.entities.enrichment import AIAnalysis
-from domain.entities.property_category import PropertyCategoryKey
-from domain.entities.property import (
-    OpeningPeriod,
-    PetEnvironmentOverride,
-    PetFeatures,
-    PetFeaturesOverride,
-    PropertyManualOverrides,
-    PetRulesOverride,
-    PetServiceOverride,
+from application.dto.property import (
+    PropertyAliasesDto,
+    PropertyAuditLogDto,
+    PropertyDetailDto,
+    PropertyMutationDto,
+    PropertyOverviewDto,
+    PropertyPetFeaturesDto,
+    PropertySearchResultDto,
 )
-
-
-class PreferenceTag(BaseModel):
-    key: str
-    label: str
-
-
-class PropertyKeywordRequest(BaseModel):
-    q: str
-    type: Optional[str] = Field(default=None)
-    page: int = Field(default=1, ge=1)
-    size: int = Field(default=20, ge=1, le=100)
+from domain.entities.property_category import PropertyCategoryKey
 
 
 class PropertyNearbyRequest(BaseModel):
     lat: float = Field(ge=-90, le=90, description="User or map center latitude.")
     lng: float = Field(ge=-180, le=180, description="User or map center longitude.")
     radius: int = Field(default=10000, description="Radius in meters")
-    category: Optional[PropertyCategoryKey] = Field(
+    category: PropertyCategoryKey | None = Field(
         default=None,
         description=(
             "Frontend category filter. "
@@ -45,109 +28,68 @@ class PropertyNearbyRequest(BaseModel):
     size: int = Field(default=20, ge=1, le=100)
 
 
-class PropertyOverviewResponse(BaseModel):
-    id: str
-    name: str
-    address: str
-    latitude: float
-    longitude: float
-    category: Optional[str]
-    types: List[str]
-    rating: float
-    is_open: Optional[bool]
-    has_note: bool = False
-    is_favorite: bool = False
-
-    model_config = {"from_attributes": True}
+class PetRulesPatchRequest(BaseModel):
+    leash_required: bool | None = None
+    stroller_required: bool | None = None
+    allow_on_floor: bool | None = None
 
 
-class PropertySearchResponse(BaseModel):
-    status: str
-    user_query: str
-    response_type: str
-    preferences: List[PreferenceTag] = Field(default_factory=list)
-    categories: List[str] = Field(default_factory=list)
-    results: List[PropertyOverviewResponse] = Field(default_factory=list)
+class PetEnvironmentPatchRequest(BaseModel):
+    stairs: bool | None = None
+    outdoor_seating: bool | None = None
+    spacious: bool | None = None
+    indoor_ac: bool | None = None
+    off_leash_possible: bool | None = None
+    pet_friendly_floor: bool | None = None
+    has_shop_pet: bool | None = None
 
 
-class PropertyDetailSchema(BaseModel):
-    id: str
-    name: str
-    address: str
-    latitude: float
-    longitude: float
-    types: List[str]
-    rating: float
-    tags: List[str]
-    regular_opening_hours: Optional[List[OpeningPeriod]]
-    ai_analysis: AIAnalysis
-    manual_overrides: Optional[PropertyManualOverrides] = None
-    effective_pet_features: Optional[PetFeatures] = None
-    created_by: Optional[ActorInfo] = None
-    updated_by: Optional[ActorInfo] = None
-    created_at: datetime
-    updated_at: datetime
-    deleted_by: Optional[ActorInfo] = None
-    deleted_at: Optional[datetime] = None
-    is_deleted: bool = False
-
-
-class PropertyDetailResponse(PropertyDetailSchema):
-    model_config = {"from_attributes": True}
+class PetServicePatchRequest(BaseModel):
+    pet_menu: bool | None = None
+    free_water: bool | None = None
+    free_treats: bool | None = None
+    pet_seating: bool | None = None
 
 
 class PropertyPetFeaturesPatchRequest(BaseModel):
-    pet_rules: Optional[PetRulesOverride] = None
-    pet_environment: Optional[PetEnvironmentOverride] = None
-    pet_service: Optional[PetServiceOverride] = None
-    reason: Optional[str] = None
+    pet_rules: PetRulesPatchRequest | None = None
+    pet_environment: PetEnvironmentPatchRequest | None = None
+    pet_service: PetServicePatchRequest | None = None
+    reason: str | None = None
 
 
 class PropertyAliasesPatchRequest(BaseModel):
-    manual_aliases: List[str] = Field(default_factory=list)
-    reason: Optional[str] = None
+    manual_aliases: list[str] = Field(default_factory=list)
+    reason: str | None = None
 
 
-class PropertyPetFeaturesResponse(BaseModel):
-    property_id: str
-    inferred_pet_features: PetFeatures
-    manual_pet_features: Optional[PetFeaturesOverride] = None
-    effective_pet_features: PetFeatures
-    updated_by: Optional[ActorInfo] = None
-    updated_at: Optional[datetime] = None
-    reason: Optional[str] = None
+class PropertyOverviewResponse(PropertyOverviewDto):
+    model_config = {"from_attributes": True}
 
 
-class PropertyAliasesResponse(BaseModel):
-    property_id: str
-    aliases: List[str] = Field(default_factory=list)
-    manual_aliases: List[str] = Field(default_factory=list)
-    updated_by: Optional[ActorInfo] = None
-    updated_at: Optional[datetime] = None
-    reason: Optional[str] = None
+class PropertySearchResponse(PropertySearchResultDto):
+    model_config = {"from_attributes": True}
 
 
-class PropertyMutationResponse(BaseModel):
-    property_id: str
-    status: str
-    is_deleted: bool
-    updated_by: Optional[ActorInfo] = None
-    updated_at: Optional[datetime] = None
-    deleted_by: Optional[ActorInfo] = None
-    deleted_at: Optional[datetime] = None
+class PropertyDetailResponse(PropertyDetailDto):
+    model_config = {"from_attributes": True}
+
+
+class PropertyPetFeaturesResponse(PropertyPetFeaturesDto):
+    model_config = {"from_attributes": True}
+
+
+class PropertyAliasesResponse(PropertyAliasesDto):
+    model_config = {"from_attributes": True}
+
+
+class PropertyMutationResponse(PropertyMutationDto):
+    model_config = {"from_attributes": True}
 
 
 class PropertyCreateResponse(BaseModel):
     property_id: str
 
 
-class PropertyAuditLogResponse(BaseModel):
-    property_id: str
-    action: PropertyAuditAction
-    actor: ActorInfo
-    reason: Optional[str] = None
-    source: str
-    changes: dict
-    before: Optional[dict] = None
-    after: Optional[dict] = None
-    created_at: datetime
+class PropertyAuditLogResponse(PropertyAuditLogDto):
+    model_config = {"from_attributes": True}

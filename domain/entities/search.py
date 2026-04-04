@@ -3,7 +3,22 @@ from typing import Any, Dict, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
 from domain.entities.property_category import PropertyCategoryKey
-from domain.entities.property import PropertyFilterCondition
+
+
+DEFAULT_SEARCH_RADIUS_METERS = 10000
+
+
+class PropertyFilterCondition(BaseModel):
+    mongo_query: dict = Field(default_factory=dict)
+    matched_fields: list[str] = Field(default_factory=list)
+    preferences: list[dict] = Field(default_factory=list)
+    min_rating: float = Field(default=0.0)
+    landmark_context: str | None = Field(default=None)
+    travel_time_limit_min: int | None = Field(default=None)
+    open_window_start_minutes: int | None = Field(default=None)
+    open_window_end_minutes: int | None = Field(default=None)
+    search_radius_meters: int = Field(default=DEFAULT_SEARCH_RADIUS_METERS)
+    explanation: str = Field(default="")
 
 
 SearchExecutionMode = Literal["keyword", "semantic"]

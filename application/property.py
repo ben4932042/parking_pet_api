@@ -3,6 +3,28 @@ import math
 import re
 from typing import Any, List, Optional
 
+from application.dto.property import (
+    AIAnalysisDto,
+    ActorDto,
+    OpeningPeriodDto,
+    PetEnvironmentDto,
+    PetEnvironmentOverrideDto,
+    PetFeaturesDto,
+    PetFeaturesOverrideDto,
+    PetRulesDto,
+    PetRulesOverrideDto,
+    PetServiceDto,
+    PetServiceOverrideDto,
+    PropertyAliasesDto,
+    PropertyAuditLogDto,
+    PropertyDetailDto,
+    PropertyManualOverridesDto,
+    PropertyMutationDto,
+    PropertyOverviewDto,
+    PropertyPetFeaturesDto,
+    PropertySearchResultDto,
+    TimePointDto,
+)
 from application.exceptions import ConflictError, NotFoundError
 from application.property_search.constants import (
     NON_SEARCH_ROUTE_REASON,
@@ -22,11 +44,11 @@ from domain.entities.property import (
     PetFeaturesOverride,
     PetRulesOverride,
     PetServiceOverride,
-    PropertyDetailEntity,
     PropertyEntity,
     PropertyManualOverrides,
 )
 from domain.entities.property_category import PropertyCategoryKey
+from domain.entities.user import UserEntity
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property import IPropertyRepository
@@ -61,6 +83,50 @@ class PropertyService:
         size: int,
     ):
         return await self.repo.get_nearby(lat, lng, radius, types, page, size)
+
+    async def get_nearby_overviews(
+        self,
+        lat: float,
+        lng: float,
+        radius: int,
+        types: List[str],
+        page: int,
+        size: int,
+        current_user: UserEntity | None = None,
+    ) -> tuple[list[PropertyOverviewDto], int]:
+        items, total = await self.search_nearby(lat, lng, radius, types, page, size)
+        return self._to_overview_dtos(items, current_user=current_user), total
+
+    async def search_properties(
+        self,
+        q: str,
+        category: Optional[PropertyCategoryKey] = None,
+        user_coords: Optional[tuple[float, float]] = None,
+        map_coords: Optional[tuple[float, float]] = None,
+        radius: Optional[int] = None,
+        open_at_minutes: Optional[int] = None,
+        current_user: UserEntity | None = None,
+    ) -> PropertySearchResultDto:
+        items, plan = await self.search_by_keyword(
+            q=q,
+            category=category,
+            user_coords=user_coords,
+            map_coords=map_coords,
+            radius=radius,
+            open_at_minutes=open_at_minutes,
+        )
+        overview_items = self._to_overview_dtos(items, current_user=current_user)
+        return PropertySearchResultDto(
+            status="success",
+            user_query=q,
+            response_type=self._response_type_from_plan(
+                plan.execution_modes,
+                plan.used_fallback,
+            ),
+            preferences=plan.filter_condition.preferences,
+            categories=self._collect_result_categories(overview_items),
+            results=overview_items,
+        )
 
     async def search_by_keyword(
         self,
@@ -467,8 +533,18 @@ class PropertyService:
 
         return user_coords is None and map_coords is None
 
-    async def get_overviews_by_ids(self, property_ids: list[str]):
-        return await self.repo.get_properties_by_ids(property_ids)
+    async def get_overviews_by_ids(
+        self,
+        property_ids: list[str],
+        current_user: UserEntity | None = None,
+        note_first: bool = False,
+    ) -> list[PropertyOverviewDto]:
+        items = await self.repo.get_properties_by_ids(property_ids)
+        return self._to_overview_dtos(
+            items,
+            current_user=current_user,
+            note_first=note_first,
+        )
 
     async def _search_keyword(self, q: str) -> list[PropertyEntity]:
         return await self.repo.get_by_keyword(q)
@@ -481,11 +557,11 @@ class PropertyService:
 
     async def get_details(
         self, property_id: PyObjectId
-    ) -> Optional[PropertyDetailEntity]:
+    ) -> Optional[PropertyDetailDto]:
         output: PropertyEntity = await self.repo.get_property_by_id(property_id)
         if output is None:
             return None
-        return self._to_detail_entity(output)
+        return self._to_detail_dto(output)
 
     async def create_property(self, name: str, actor: Optional[ActorInfo] = None):
         actor = actor or self._system_actor()
@@ -550,6 +626,24 @@ class PropertyService:
             actor=actor,
             reason=reason,
             allow_create=False,
+        )
+
+    async def renew_property_result(
+        self,
+        property_id: PyObjectId,
+        mode: str,
+        actor: Optional[ActorInfo] = None,
+        reason: Optional[str] = None,
+    ) -> PropertyMutationDto:
+        renewed_property, changed = await self.renew_property(
+            property_id=property_id,
+            mode=mode,
+            actor=actor,
+            reason=reason,
+        )
+        return self._to_mutation_dto(
+            renewed_property,
+            status="renewed" if changed else "unchanged",
         )
 
     async def _upsert_property_from_source(
@@ -646,7 +740,7 @@ class PropertyService:
         manual_aliases: list[str],
         actor: ActorInfo,
         reason: Optional[str] = None,
-    ) -> PropertyDetailEntity:
+    ) -> PropertyAliasesDto:
         existing = await self.repo.get_property_by_id(property_id)
         if existing is None:
             raise NotFoundError("Property not found")
@@ -669,7 +763,14 @@ class PropertyService:
             after=saved_property,
             reason=reason,
         )
-        return self._to_detail_entity(saved_property)
+        return PropertyAliasesDto(
+            property_id=saved_property.id,
+            aliases=saved_property.aliases,
+            manual_aliases=saved_property.manual_aliases,
+            updated_by=self._to_actor_dto(saved_property.updated_by),
+            updated_at=saved_property.updated_at,
+            reason=reason,
+        )
 
     async def update_pet_features(
         self,
@@ -679,7 +780,7 @@ class PropertyService:
         pet_service: Optional[PetServiceOverride],
         actor: ActorInfo,
         reason: Optional[str] = None,
-    ) -> PropertyDetailEntity:
+    ) -> PropertyPetFeaturesDto:
         existing = await self.repo.get_property_by_id(property_id)
         if existing is None:
             raise NotFoundError("Property not found")
@@ -720,14 +821,34 @@ class PropertyService:
             after=saved_property,
             reason=reason,
         )
-        return self._to_detail_entity(saved_property)
+        return PropertyPetFeaturesDto(
+            property_id=saved_property.id,
+            inferred_pet_features=self._to_pet_features_dto(
+                saved_property.ai_analysis.pet_features
+            ),
+            manual_pet_features=self._to_pet_features_override_dto(
+                saved_property.manual_overrides.pet_features
+                if saved_property.manual_overrides
+                else None
+            ),
+            effective_pet_features=self._to_pet_features_dto(
+                saved_property.effective_pet_features
+            ),
+            updated_by=self._to_actor_dto(saved_property.updated_by),
+            updated_at=saved_property.updated_at,
+            reason=(
+                saved_property.manual_overrides.reason
+                if saved_property.manual_overrides
+                else None
+            ),
+        )
 
     async def soft_delete_property(
         self,
         property_id: PyObjectId,
         actor: ActorInfo,
         reason: Optional[str] = None,
-    ) -> PropertyDetailEntity:
+    ) -> PropertyMutationDto:
         existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
         if existing is None:
             raise NotFoundError("Property not found")
@@ -753,14 +874,14 @@ class PropertyService:
             after=saved_property,
             reason=reason,
         )
-        return self._to_detail_entity(saved_property)
+        return self._to_mutation_dto(saved_property, status="deleted")
 
     async def restore_property(
         self,
         property_id: PyObjectId,
         actor: ActorInfo,
         reason: Optional[str] = None,
-    ) -> PropertyDetailEntity:
+    ) -> PropertyMutationDto:
         existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
         if existing is None:
             raise NotFoundError("Property not found")
@@ -786,17 +907,18 @@ class PropertyService:
             after=saved_property,
             reason=reason,
         )
-        return self._to_detail_entity(saved_property)
+        return self._to_mutation_dto(saved_property, status="restored")
 
     async def get_audit_logs(
         self, property_id: PyObjectId, limit: int = 50
-    ) -> list[PropertyAuditLog]:
+    ) -> list[PropertyAuditLogDto]:
         existing = await self.repo.get_property_by_id(property_id, include_deleted=True)
         if existing is None:
             raise NotFoundError("Property not found")
-        return await self.audit_repo.list_by_property_id(
+        logs = await self.audit_repo.list_by_property_id(
             property_id=str(property_id), limit=limit
         )
+        return [self._to_audit_log_dto(log) for log in logs]
 
     @staticmethod
     def _system_actor() -> ActorInfo:
@@ -903,8 +1025,189 @@ class PropertyService:
         return payload
 
     @staticmethod
-    def _to_detail_entity(output: PropertyEntity) -> PropertyDetailEntity:
-        return PropertyDetailEntity(
+    def _response_type_from_plan(
+        execution_modes: list[str],
+        used_fallback: bool,
+    ) -> str:
+        modes = set(execution_modes)
+        if modes == {"semantic", "keyword"}:
+            return "hybrid_search"
+        if modes == {"keyword"}:
+            return "keyword_search"
+        if used_fallback:
+            return "keyword_search"
+        return "semantic_search"
+
+    @staticmethod
+    def _collect_result_categories(results: list[PropertyOverviewDto]) -> list[str]:
+        categories: list[str] = []
+        for item in results:
+            if item.category is None or item.category in categories:
+                continue
+            categories.append(item.category)
+        return categories
+
+    @staticmethod
+    def _noted_property_ids(current_user: UserEntity | None) -> set[str]:
+        if current_user is None:
+            return set()
+        return {note.property_id for note in current_user.property_notes}
+
+    @staticmethod
+    def _favorite_property_ids(current_user: UserEntity | None) -> set[str]:
+        if current_user is None:
+            return set()
+        return set(current_user.favorite_property_ids)
+
+    def _to_overview_dtos(
+        self,
+        items: list[PropertyEntity],
+        current_user: UserEntity | None = None,
+        note_first: bool = False,
+    ) -> list[PropertyOverviewDto]:
+        noted_property_ids = self._noted_property_ids(current_user)
+        favorite_property_ids = self._favorite_property_ids(current_user)
+        overview_items = [
+            PropertyOverviewDto(
+                id=item.id,
+                name=item.name,
+                address=item.address,
+                latitude=item.latitude,
+                longitude=item.longitude,
+                category=item.category,
+                types=item.types,
+                rating=item.rating or 0.0,
+                is_open=item.is_open,
+                has_note=item.id in noted_property_ids,
+                is_favorite=item.id in favorite_property_ids,
+            )
+            for item in items
+        ]
+        if note_first:
+            overview_items.sort(key=lambda item: not item.has_note)
+        return overview_items
+
+    @staticmethod
+    def _to_actor_dto(actor: ActorInfo | None) -> ActorDto | None:
+        if actor is None:
+            return None
+        return ActorDto(
+            user_id=actor.user_id,
+            name=actor.name,
+            role=actor.role,
+            source=actor.source,
+        )
+
+    @staticmethod
+    def _to_time_point_dto(time_point) -> TimePointDto:
+        return TimePointDto(
+            day=time_point.day,
+            hour=time_point.hour,
+            minute=time_point.minute,
+        )
+
+    @classmethod
+    def _to_opening_period_dto(cls, period) -> OpeningPeriodDto:
+        return OpeningPeriodDto(
+            open=cls._to_time_point_dto(period.open),
+            close=cls._to_time_point_dto(period.close) if period.close else None,
+        )
+
+    @staticmethod
+    def _to_pet_features_dto(features) -> PetFeaturesDto | None:
+        if features is None:
+            return None
+        return PetFeaturesDto(
+            rules=PetRulesDto(
+                leash_required=features.rules.leash_required,
+                stroller_required=features.rules.stroller_required,
+                allow_on_floor=features.rules.allow_on_floor,
+            ),
+            environment=PetEnvironmentDto(
+                stairs=features.environment.stairs,
+                outdoor_seating=features.environment.outdoor_seating,
+                spacious=features.environment.spacious,
+                indoor_ac=features.environment.indoor_ac,
+                off_leash_possible=features.environment.off_leash_possible,
+                pet_friendly_floor=features.environment.pet_friendly_floor,
+                has_shop_pet=features.environment.has_shop_pet,
+            ),
+            services=PetServiceDto(
+                pet_menu=features.services.pet_menu,
+                free_water=features.services.free_water,
+                free_treats=features.services.free_treats,
+                pet_seating=features.services.pet_seating,
+            ),
+        )
+
+    @staticmethod
+    def _to_pet_features_override_dto(
+        features: PetFeaturesOverride | None,
+    ) -> PetFeaturesOverrideDto | None:
+        if features is None:
+            return None
+        return PetFeaturesOverrideDto(
+            rules=(
+                PetRulesOverrideDto(
+                    leash_required=features.rules.leash_required,
+                    stroller_required=features.rules.stroller_required,
+                    allow_on_floor=features.rules.allow_on_floor,
+                )
+                if features.rules
+                else None
+            ),
+            environment=(
+                PetEnvironmentOverrideDto(
+                    stairs=features.environment.stairs,
+                    outdoor_seating=features.environment.outdoor_seating,
+                    spacious=features.environment.spacious,
+                    indoor_ac=features.environment.indoor_ac,
+                    off_leash_possible=features.environment.off_leash_possible,
+                    pet_friendly_floor=features.environment.pet_friendly_floor,
+                    has_shop_pet=features.environment.has_shop_pet,
+                )
+                if features.environment
+                else None
+            ),
+            services=(
+                PetServiceOverrideDto(
+                    pet_menu=features.services.pet_menu,
+                    free_water=features.services.free_water,
+                    free_treats=features.services.free_treats,
+                    pet_seating=features.services.pet_seating,
+                )
+                if features.services
+                else None
+            ),
+        )
+
+    @classmethod
+    def _to_ai_analysis_dto(cls, analysis) -> AIAnalysisDto:
+        return AIAnalysisDto(
+            venue_type=analysis.venue_type,
+            ai_summary=analysis.ai_summary,
+            pet_features=cls._to_pet_features_dto(analysis.pet_features),
+            highlights=analysis.highlights,
+            warnings=analysis.warnings,
+            rating=analysis.ai_rating,
+        )
+
+    @classmethod
+    def _to_manual_overrides_dto(
+        cls, overrides: PropertyManualOverrides | None
+    ) -> PropertyManualOverridesDto | None:
+        if overrides is None:
+            return None
+        return PropertyManualOverridesDto(
+            pet_features=cls._to_pet_features_override_dto(overrides.pet_features),
+            updated_by=cls._to_actor_dto(overrides.updated_by),
+            updated_at=overrides.updated_at,
+            reason=overrides.reason,
+        )
+
+    @classmethod
+    def _to_detail_dto(cls, output: PropertyEntity) -> PropertyDetailDto:
+        return PropertyDetailDto(
             id=output.id,
             name=output.name,
             aliases=output.aliases,
@@ -915,17 +1218,50 @@ class PropertyService:
             types=output.types,
             rating=output.ai_analysis.ai_rating,
             tags=output.ai_analysis.highlights,
-            regular_opening_hours=output.regular_opening_hours,
-            ai_analysis=output.ai_analysis,
-            manual_overrides=output.manual_overrides,
-            effective_pet_features=output.effective_pet_features,
-            created_by=output.created_by,
-            updated_by=output.updated_by,
+            regular_opening_hours=(
+                [cls._to_opening_period_dto(period) for period in output.regular_opening_hours]
+                if output.regular_opening_hours
+                else None
+            ),
+            ai_analysis=cls._to_ai_analysis_dto(output.ai_analysis),
+            manual_overrides=cls._to_manual_overrides_dto(output.manual_overrides),
+            effective_pet_features=cls._to_pet_features_dto(
+                output.effective_pet_features
+            ),
+            created_by=cls._to_actor_dto(output.created_by),
+            updated_by=cls._to_actor_dto(output.updated_by),
             created_at=output.created_at,
             updated_at=output.updated_at,
-            deleted_by=output.deleted_by,
+            deleted_by=cls._to_actor_dto(output.deleted_by),
             deleted_at=output.deleted_at,
             is_deleted=output.is_deleted,
+        )
+
+    def _to_mutation_dto(
+        self, property_entity: PropertyEntity, status: str
+    ) -> PropertyMutationDto:
+        return PropertyMutationDto(
+            property_id=property_entity.id,
+            status=status,
+            is_deleted=property_entity.is_deleted,
+            updated_by=self._to_actor_dto(property_entity.updated_by),
+            updated_at=property_entity.updated_at,
+            deleted_by=self._to_actor_dto(property_entity.deleted_by),
+            deleted_at=property_entity.deleted_at,
+        )
+
+    @classmethod
+    def _to_audit_log_dto(cls, log: PropertyAuditLog) -> PropertyAuditLogDto:
+        return PropertyAuditLogDto(
+            property_id=log.property_id,
+            action=log.action.value if hasattr(log.action, "value") else str(log.action),
+            actor=cls._to_actor_dto(log.actor),
+            reason=log.reason,
+            source=log.source,
+            changes=log.changes,
+            before=log.before,
+            after=log.after,
+            created_at=log.created_at,
         )
 
     def _apply_search_projection(

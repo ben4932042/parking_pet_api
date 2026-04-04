@@ -10,6 +10,11 @@ from application.property_note import PropertyNoteService
 from application.user import UserService
 from domain.entities.audit import ActorInfo
 from domain.entities import PyObjectId
+from domain.entities.property import (
+    PetEnvironmentOverride,
+    PetRulesOverride,
+    PetServiceOverride,
+)
 from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.user import UserEntity
@@ -53,54 +58,6 @@ def _coords_or_none(
         return None
     return lng, lat
 
-
-def _response_type_from_plan(
-    execution_modes: list[str],
-    used_fallback: bool,
-) -> str:
-    modes = set(execution_modes)
-    if modes == {"semantic", "keyword"}:
-        return "hybrid_search"
-    if modes == {"keyword"}:
-        return "keyword_search"
-    if used_fallback:
-        return "keyword_search"
-    return "semantic_search"
-
-
-async def _attach_has_note(
-    items: list,
-    current_user: Optional[UserEntity],
-):
-    if not items:
-        return []
-
-    noted_property_ids: set[str] = set()
-    favorite_property_ids: set[str] = set()
-    if current_user is not None:
-        noted_property_ids = {note.property_id for note in current_user.property_notes}
-        favorite_property_ids = set(current_user.favorite_property_ids)
-
-    return [
-        {
-            **item.model_dump(by_alias=False),
-            "has_note": str(item.id) in noted_property_ids,
-            "is_favorite": str(item.id) in favorite_property_ids,
-        }
-        for item in items
-    ]
-
-
-def _collect_result_categories(results: list[dict]) -> list[str]:
-    categories: list[str] = []
-    for item in results:
-        category = item.get("category")
-        if category is None or category in categories:
-            continue
-        categories.append(category)
-    return categories
-
-
 @router.get(
     "",
     status_code=status.HTTP_200_OK,
@@ -134,12 +91,13 @@ async def search_properties_by_keyword(
     user_service: UserService = Depends(get_user_service),
     current_user: Optional[UserEntity] = Depends(get_optional_current_user),
 ):
-    items, plan = await service.search_by_keyword(
+    result = await service.search_properties(
         q=query,
         category=category,
         user_coords=_coords_or_none(user_lat, user_lng),
         map_coords=_coords_or_none(map_lat, map_lng),
         radius=radius,
+        current_user=current_user,
     )
     if current_user is not None:
         try:
@@ -152,18 +110,7 @@ async def search_properties_by_keyword(
                 "Failed to record search history",
                 extra={"user_id": str(current_user.id), "query": query},
             )
-    results = await _attach_has_note(items, current_user)
-    return {
-        "status": "success",
-        "user_query": query,
-        "response_type": _response_type_from_plan(
-            plan.execution_modes,
-            plan.used_fallback,
-        ),
-        "preferences": plan.filter_condition.preferences,
-        "categories": _collect_result_categories(results),
-        "results": results,
-    }
+    return result
 
 
 @router.get(
@@ -242,12 +189,18 @@ async def get_nearby_properties(
     types = (
         get_primary_types_by_category_key(params.category) if params.category else []
     )
-    items, total = await service.search_nearby(
-        params.lat, params.lng, params.radius, types, params.page, params.size
+    items, total = await service.get_nearby_overviews(
+        params.lat,
+        params.lng,
+        params.radius,
+        types,
+        params.page,
+        params.size,
+        current_user=current_user,
     )
     pages = (total + params.size - 1) // params.size if params.size else 0
     return {
-        "items": await _attach_has_note(items, current_user),
+        "items": items,
         "total": total,
         "page": params.page,
         "size": params.size,
@@ -333,19 +286,10 @@ async def renew_property(
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
-    renewed_property, changed = await service.renew_property(
+    return await service.renew_property_result(
         property_id=property_id,
         mode=mode,
         actor=actor,
-    )
-    return PropertyMutationResponse(
-        property_id=renewed_property.id,
-        status="renewed" if changed else "unchanged",
-        is_deleted=renewed_property.is_deleted,
-        updated_by=renewed_property.updated_by,
-        updated_at=renewed_property.updated_at,
-        deleted_by=renewed_property.deleted_by,
-        deleted_at=renewed_property.deleted_at,
     )
 
 
@@ -368,27 +312,25 @@ async def update_property_pet_features(
 ):
     updated_property = await service.update_pet_features(
         property_id=property_id,
-        pet_rules=payload.pet_rules,
-        pet_environment=payload.pet_environment,
-        pet_service=payload.pet_service,
+        pet_rules=(
+            PetRulesOverride(**payload.pet_rules.model_dump())
+            if payload.pet_rules
+            else None
+        ),
+        pet_environment=(
+            PetEnvironmentOverride(**payload.pet_environment.model_dump())
+            if payload.pet_environment
+            else None
+        ),
+        pet_service=(
+            PetServiceOverride(**payload.pet_service.model_dump())
+            if payload.pet_service
+            else None
+        ),
         actor=actor,
         reason=payload.reason,
     )
-    return PropertyPetFeaturesResponse(
-        property_id=updated_property.id,
-        inferred_pet_features=updated_property.ai_analysis.pet_features,
-        manual_pet_features=(
-            updated_property.manual_overrides.pet_features
-            if updated_property.manual_overrides
-            else None
-        ),
-        effective_pet_features=updated_property.effective_pet_features,
-        updated_by=updated_property.updated_by,
-        updated_at=updated_property.updated_at,
-        reason=updated_property.manual_overrides.reason
-        if updated_property.manual_overrides
-        else None,
-    )
+    return updated_property
 
 
 @router.patch(
@@ -413,14 +355,7 @@ async def update_property_aliases(
         actor=actor,
         reason=payload.reason,
     )
-    return PropertyAliasesResponse(
-        property_id=updated_property.id,
-        aliases=updated_property.aliases,
-        manual_aliases=updated_property.manual_aliases,
-        updated_by=updated_property.updated_by,
-        updated_at=updated_property.updated_at,
-        reason=payload.reason,
-    )
+    return updated_property
 
 
 @router.delete(
@@ -438,19 +373,10 @@ async def soft_delete_property(
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
-    deleted_property = await service.soft_delete_property(
+    return await service.soft_delete_property(
         property_id=property_id,
         actor=actor,
         reason=reason,
-    )
-    return PropertyMutationResponse(
-        property_id=deleted_property.id,
-        status="deleted",
-        is_deleted=deleted_property.is_deleted,
-        updated_by=deleted_property.updated_by,
-        updated_at=deleted_property.updated_at,
-        deleted_by=deleted_property.deleted_by,
-        deleted_at=deleted_property.deleted_at,
     )
 
 
@@ -469,19 +395,10 @@ async def restore_property(
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
-    restored_property = await service.restore_property(
+    return await service.restore_property(
         property_id=property_id,
         actor=actor,
         reason=reason,
-    )
-    return PropertyMutationResponse(
-        property_id=restored_property.id,
-        status="restored",
-        is_deleted=restored_property.is_deleted,
-        updated_by=restored_property.updated_by,
-        updated_at=restored_property.updated_at,
-        deleted_by=restored_property.deleted_by,
-        deleted_at=restored_property.deleted_at,
     )
 
 

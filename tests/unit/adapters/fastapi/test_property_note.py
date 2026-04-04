@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 
+from application.dto.property import PropertyOverviewDto
 from domain.entities.property_note import PropertyNoteEntity
 from interface.api.dependencies.property_note import get_property_note_service
 from interface.api.dependencies.property import get_property_service
@@ -55,9 +56,34 @@ class PropertyOverviewServiceStub:
         self.properties = properties or []
         self.calls = []
 
-    async def get_overviews_by_ids(self, property_ids):
+    async def get_overviews_by_ids(
+        self, property_ids, current_user=None, note_first=False
+    ):
         self.calls.append({"fn": "get_overviews_by_ids", "property_ids": property_ids})
-        return self.properties
+        noted_property_ids = (
+            {note.property_id for note in current_user.property_notes}
+            if current_user is not None
+            else set()
+        )
+        favorite_property_ids = (
+            set(current_user.favorite_property_ids) if current_user is not None else set()
+        )
+        return [
+            PropertyOverviewDto(
+                id=item.id,
+                name=item.name,
+                address=item.address,
+                latitude=item.latitude,
+                longitude=item.longitude,
+                category=item.category,
+                types=item.types,
+                rating=item.rating,
+                is_open=item.is_open,
+                has_note=item.id in noted_property_ids,
+                is_favorite=item.id in favorite_property_ids,
+            )
+            for item in self.properties
+        ]
 
 
 def test_get_property_note_returns_note(client, override_api_dep, user_entity_factory):
