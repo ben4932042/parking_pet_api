@@ -107,3 +107,22 @@ def test_logging_middleware_sets_500_status_when_exception_bubbles(caplog):
     assert record.event == "http_access"
     assert record.route_name == "boom_route"
     assert record.status_code == 500
+
+
+def test_logging_middleware_skips_excluded_paths(caplog):
+    app = FastAPI()
+    app.add_middleware(LoggingMiddleware, exclude_paths={"/metrics"})
+
+    @app.get("/metrics", name="metrics_route")
+    async def metrics():
+        return {"ok": True}
+
+    client = TestClient(app)
+
+    with caplog.at_level(
+        logging.DEBUG, logger="interface.api.middlewares.logging"
+    ):
+        response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert not any(record.message == "HTTP access" for record in caplog.records)
