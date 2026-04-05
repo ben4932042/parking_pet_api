@@ -1,5 +1,6 @@
 import hashlib
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict
 
 from application.auth_tokens import IAuthTokenService
 from application.exceptions import AuthenticationError
@@ -7,11 +8,12 @@ from domain.entities.user import UserEntity
 from domain.repositories.user import IUserRepository
 
 
-@dataclass(frozen=True)
-class AuthSession:
+class AuthSession(BaseModel):
     access_token: str
     refresh_token: str
     user: UserEntity
+
+    model_config = ConfigDict(frozen=True)
 
 
 class AuthSessionService:

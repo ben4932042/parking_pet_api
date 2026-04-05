@@ -1,7 +1,7 @@
 import logging
 
 from infrastructure.runtime_warnings import apply_runtime_warning_filters
-from infrastructure.prompt import GEOCODE_LANDMARK_PROMPT
+from infrastructure.search.prompts import GEOCODE_LANDMARK_PROMPT
 
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate
