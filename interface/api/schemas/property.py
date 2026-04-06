@@ -1,9 +1,11 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from application.dto.property import (
     PropertyAliasesDto,
     PropertyAuditLogDto,
     PropertyDetailDto,
+    PropertyMapBboxDto,
+    PropertyMapResultDto,
     PropertyMutationDto,
     PropertyOverviewDto,
     PropertyPetFeaturesDto,
@@ -26,6 +28,26 @@ class PropertyNearbyRequest(BaseModel):
     )
     page: int = Field(default=1, ge=1)
     size: int = Field(default=20, ge=1, le=10000)
+
+
+class PropertyMapRequest(BaseModel):
+    min_lat: float = Field(ge=-90, le=90)
+    max_lat: float = Field(ge=-90, le=90)
+    min_lng: float = Field(ge=-180, le=180)
+    max_lng: float = Field(ge=-180, le=180)
+    query: str | None = Field(default=None, min_length=1)
+    category: PropertyCategoryKey | None = Field(default=None)
+    limit: int = Field(default=200, ge=1, le=1000)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "PropertyMapRequest":
+        if self.min_lat >= self.max_lat:
+            raise ValueError("min_lat must be less than max_lat")
+        if self.min_lng >= self.max_lng:
+            raise ValueError("min_lng must be less than max_lng")
+        if self.query is not None:
+            self.query = self.query.strip() or None
+        return self
 
 
 class PetRulesPatchRequest(BaseModel):
@@ -64,6 +86,14 @@ class PropertyAliasesPatchRequest(BaseModel):
 
 
 class PropertyOverviewResponse(PropertyOverviewDto):
+    model_config = {"from_attributes": True}
+
+
+class PropertyMapBboxResponse(PropertyMapBboxDto):
+    model_config = {"from_attributes": True}
+
+
+class PropertyMapResponse(PropertyMapResultDto):
     model_config = {"from_attributes": True}
 
 

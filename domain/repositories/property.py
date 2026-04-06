@@ -19,6 +19,17 @@ class IPropertyRepository(ABC):
         size: int,
     ) -> Tuple[List[PropertyEntity], int]: ...
     @abstractmethod
+    async def get_in_bbox(
+        self,
+        min_lat: float,
+        max_lat: float,
+        min_lng: float,
+        max_lng: float,
+        types: List[str],
+        query: Optional[str],
+        limit: int,
+    ) -> Tuple[List[PropertyEntity], int]: ...
+    @abstractmethod
     async def get_property_by_id(
         self,
         property_id: PyObjectId,

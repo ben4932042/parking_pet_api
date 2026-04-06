@@ -170,6 +170,46 @@ class PropertyRepository(IPropertyRepository):
 
         return items, total
 
+    async def get_in_bbox(
+        self,
+        min_lat: float,
+        max_lat: float,
+        min_lng: float,
+        max_lng: float,
+        types: List[str],
+        query: Optional[str],
+        limit: int,
+    ) -> Tuple[List[PropertyEntity], int]:
+        filters: dict = {
+            "location": {
+                "$geoWithin": {
+                    "$box": [[min_lng, min_lat], [max_lng, max_lat]]
+                }
+            }
+        }
+
+        if types:
+            filters["primary_type"] = {"$in": types}
+
+        if query:
+            regex = self._build_variant_regex(query)
+            filters["$or"] = [
+                {"name": {"$regex": regex, "$options": "i"}},
+                {"aliases": {"$regex": regex, "$options": "i"}},
+                {"address": {"$regex": regex, "$options": "i"}},
+            ]
+
+        mongo_filter = self._merge_active_filter(filters)
+        total: int = await self.collection.count_documents(mongo_filter)
+        cursor = (
+            self.collection.find(mongo_filter)
+            .sort("rating", -1)
+            .limit(limit)
+            .max_time_ms(DEFAULT_QUERY_MAX_TIME_MS)
+        )
+        docs = await cursor.to_list(length=limit)
+        return [PropertyEntity(**doc) for doc in docs], total
+
     async def get_property_by_id(
         self, property_id: PyObjectId, include_deleted: bool = False
     ) -> Optional[PropertyEntity]:

@@ -19,6 +19,8 @@ from application.dto.property import (
     PropertyAliasesDto,
     PropertyAuditLogDto,
     PropertyDetailDto,
+    PropertyMapBboxDto,
+    PropertyMapResultDto,
     PropertyCreateResultDto,
     PropertyManualOverridesDto,
     PropertyMutationDto,
@@ -113,6 +115,46 @@ class PropertyService:
     ) -> tuple[list[PropertyOverviewDto], int]:
         items, total = await self.search_nearby(lat, lng, radius, types, page, size)
         return self._to_overview_dtos(items, current_user=current_user), total
+
+    async def get_map_overviews(
+        self,
+        min_lat: float,
+        max_lat: float,
+        min_lng: float,
+        max_lng: float,
+        types: list[str],
+        query: str | None,
+        limit: int,
+        category: PropertyCategoryKey | None = None,
+        current_user: UserEntity | None = None,
+    ) -> PropertyMapResultDto:
+        items, total = await self.repo.get_in_bbox(
+            min_lat=min_lat,
+            max_lat=max_lat,
+            min_lng=min_lng,
+            max_lng=max_lng,
+            types=types,
+            query=query,
+            limit=limit,
+        )
+        overview_items = self._to_overview_dtos(items, current_user=current_user)
+        returned_count = len(overview_items)
+        truncated = total > returned_count
+        return PropertyMapResultDto(
+            bbox=PropertyMapBboxDto(
+                min_lat=min_lat,
+                max_lat=max_lat,
+                min_lng=min_lng,
+                max_lng=max_lng,
+            ),
+            query=query,
+            category=category.value if category is not None else None,
+            items=overview_items,
+            total_in_bbox=total,
+            returned_count=returned_count,
+            truncated=truncated,
+            suggest_clustering=truncated,
+        )
 
     async def search_properties(
         self,

@@ -117,6 +117,24 @@ class PropertyOverviewDto(BaseModel):
     is_favorite: bool = False
 
 
+class PropertyMapBboxDto(BaseModel):
+    min_lat: float
+    max_lat: float
+    min_lng: float
+    max_lng: float
+
+
+class PropertyMapResultDto(BaseModel):
+    bbox: PropertyMapBboxDto
+    query: str | None = None
+    category: str | None = None
+    items: list[PropertyOverviewDto] = Field(default_factory=list)
+    total_in_bbox: int
+    returned_count: int
+    truncated: bool
+    suggest_clustering: bool
+
+
 class PropertySearchResultDto(BaseModel):
     status: str
     user_query: str

@@ -186,3 +186,91 @@ async def test_get_by_keyword_searches_aliases_in_lexical_query():
             },
         ]
     }
+
+
+@pytest.mark.asyncio
+async def test_get_in_bbox_applies_geo_keyword_and_category_filters():
+    find_cursor = MagicMock()
+    find_cursor.sort.return_value = find_cursor
+    find_cursor.limit.return_value = find_cursor
+    find_cursor.max_time_ms.return_value = find_cursor
+    find_cursor.to_list = AsyncMock(return_value=[])
+    collection = MagicMock()
+    collection.count_documents = AsyncMock(return_value=2)
+    collection.find.return_value = find_cursor
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = PropertyRepository(client=ClientStub(), collection_name="property_v3")
+
+    items, total = await repo.get_in_bbox(
+        min_lat=25.0,
+        max_lat=25.1,
+        min_lng=121.5,
+        max_lng=121.6,
+        types=["cafe", "bakery"],
+        query="台北",
+        limit=200,
+    )
+
+    assert items == []
+    assert total == 2
+    expected_filter = {
+        "$and": [
+            {"is_deleted": {"$ne": True}},
+            {
+                "location": {
+                    "$geoWithin": {"$box": [[121.5, 25.0], [121.6, 25.1]]}
+                },
+                "primary_type": {"$in": ["cafe", "bakery"]},
+                "$or": [
+                    {"name": {"$regex": "[台臺]北", "$options": "i"}},
+                    {"aliases": {"$regex": "[台臺]北", "$options": "i"}},
+                    {"address": {"$regex": "[台臺]北", "$options": "i"}},
+                ],
+            },
+        ]
+    }
+    assert collection.count_documents.await_args.args[0] == expected_filter
+    assert collection.find.call_args.args[0] == expected_filter
+
+
+@pytest.mark.asyncio
+async def test_get_in_bbox_omits_optional_filters_when_not_provided():
+    find_cursor = MagicMock()
+    find_cursor.sort.return_value = find_cursor
+    find_cursor.limit.return_value = find_cursor
+    find_cursor.max_time_ms.return_value = find_cursor
+    find_cursor.to_list = AsyncMock(return_value=[])
+    collection = MagicMock()
+    collection.count_documents = AsyncMock(return_value=0)
+    collection.find.return_value = find_cursor
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = PropertyRepository(client=ClientStub(), collection_name="property_v3")
+
+    await repo.get_in_bbox(
+        min_lat=25.0,
+        max_lat=25.1,
+        min_lng=121.5,
+        max_lng=121.6,
+        types=[],
+        query=None,
+        limit=100,
+    )
+
+    assert collection.find.call_args.args[0] == {
+        "$and": [
+            {"is_deleted": {"$ne": True}},
+            {
+                "location": {
+                    "$geoWithin": {"$box": [[121.5, 25.0], [121.6, 25.1]]}
+                }
+            },
+        ]
+    }

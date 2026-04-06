@@ -28,6 +28,11 @@ class InMemoryPropertyRepo(IPropertyRepository):
     async def get_nearby(self, lat, lng, radius, types, page, size):
         return [], 0
 
+    async def get_in_bbox(
+        self, min_lat, max_lat, min_lng, max_lng, types, query, limit
+    ):
+        return [], 0
+
     async def get_property_by_id(self, property_id, include_deleted=False):
         if self.property_entity is None:
             return None

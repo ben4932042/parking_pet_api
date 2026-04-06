@@ -14,12 +14,19 @@ from domain.services.property_enrichment import IEnrichmentProvider
 class BoundaryRepo(IPropertyRepository):
     def __init__(self, items=None):
         self.items = items or []
+        self.map_items = list(self.items)
+        self.map_total = len(self.map_items)
 
     async def get_by_keyword(self, q: str):
         return list(self.items)
 
     async def get_nearby(self, lat, lng, radius, types, page, size):
         return list(self.items), len(self.items)
+
+    async def get_in_bbox(
+        self, min_lat, max_lat, min_lng, max_lng, types, query, limit
+    ):
+        return list(self.map_items)[:limit], self.map_total
 
     async def get_property_by_id(self, property_id, include_deleted=False):
         for item in self.items:
@@ -191,3 +198,52 @@ async def test_get_details_returns_property_detail_dto(property_entity_factory):
     assert detail.id == "p1"
     assert detail.ai_analysis.rating == item.ai_analysis.ai_rating
     assert detail.effective_pet_features.services.free_water is True
+
+
+@pytest.mark.asyncio
+async def test_get_map_overviews_returns_marker_metadata_and_personalization(
+    property_entity_factory, user_entity_factory
+):
+    items = [property_entity_factory(identifier="p1", primary_type="cafe")]
+    repo = BoundaryRepo(items)
+    repo.map_items = list(items)
+    repo.map_total = 3
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=BoundaryRawRepo(),
+        audit_repo=BoundaryAuditRepo(),
+        enrichment_provider=BoundaryEnrichmentProvider(
+            SearchPlan(execution_modes=["keyword"])
+        ),
+    )
+    current_user = user_entity_factory(
+        identifier="u1",
+        favorite_property_ids=["p1"],
+        property_notes=[
+            PropertyNoteEntity(
+                property_id="p1",
+                content="saved",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+        ],
+    )
+
+    result = await service.get_map_overviews(
+        min_lat=25.0,
+        max_lat=25.1,
+        min_lng=121.5,
+        max_lng=121.6,
+        types=[],
+        query="咖啡",
+        limit=1,
+        current_user=current_user,
+    )
+
+    assert result.query == "咖啡"
+    assert result.total_in_bbox == 3
+    assert result.returned_count == 1
+    assert result.truncated is True
+    assert result.suggest_clustering is True
+    assert result.items[0].has_note is True
+    assert result.items[0].is_favorite is True

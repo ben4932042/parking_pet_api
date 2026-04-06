@@ -38,6 +38,8 @@ from interface.api.schemas.property import (
     PropertyAliasesResponse,
     PropertyCreateResponse,
     PropertyDetailResponse,
+    PropertyMapRequest,
+    PropertyMapResponse,
     PropertyMutationResponse,
     PropertyNearbyRequest,
     PropertyOverviewResponse,
@@ -262,6 +264,59 @@ async def get_nearby_properties(
         "size": params.size,
         "pages": pages,
     }
+
+
+@router.get(
+    "/map",
+    name="list_map_properties",
+    status_code=status.HTTP_200_OK,
+    response_model=PropertyMapResponse,
+    summary="Get properties for a map viewport",
+    description=(
+        "Returns marker-ready properties inside the requested map bounding box. "
+        "This endpoint is intended for map rendering rather than paginated list browsing."
+    ),
+)
+async def get_map_properties(
+    request: Request,
+    params: PropertyMapRequest = Depends(),
+    service: PropertyService = Depends(get_property_service),
+    current_user: UserEntity = Depends(get_current_user),
+):
+    types = (
+        get_primary_types_by_category_key(params.category) if params.category else []
+    )
+    result = await service.get_map_overviews(
+        min_lat=params.min_lat,
+        max_lat=params.max_lat,
+        min_lng=params.min_lng,
+        max_lng=params.max_lng,
+        types=types,
+        query=params.query,
+        limit=params.limit,
+        category=params.category,
+        current_user=current_user,
+    )
+    log_api_event(
+        "property_map_search_executed",
+        request=request,
+        user_id=optional_user_id(current_user),
+        extra={
+            "bbox": {
+                "min_lat": params.min_lat,
+                "max_lat": params.max_lat,
+                "min_lng": params.min_lng,
+                "max_lng": params.max_lng,
+            },
+            "query": params.query,
+            "category": params.category,
+            "limit": params.limit,
+            "result_count": _read_result_field(result, "returned_count"),
+            "total_in_bbox": _read_result_field(result, "total_in_bbox"),
+            "truncated": _read_result_field(result, "truncated"),
+        },
+    )
+    return result
 
 
 @router.get(

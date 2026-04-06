@@ -21,6 +21,11 @@ class PropertyRepoStub(IPropertyRepository):
     async def get_nearby(self, lat, lng, radius, types, page, size):
         raise NotImplementedError
 
+    async def get_in_bbox(
+        self, min_lat, max_lat, min_lng, max_lng, types, query, limit
+    ):
+        raise NotImplementedError
+
     async def get_property_by_id(self, property_id, include_deleted=False):
         self.calls.append(
             {

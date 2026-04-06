@@ -12,7 +12,10 @@ from domain.entities.property import (
     PetFeaturesOverride,
     PetServiceOverride,
 )
-from domain.entities.property_category import PropertyCategoryKey
+from domain.entities.property_category import (
+    PropertyCategoryKey,
+    get_primary_types_by_category_key,
+)
 from interface.api.dependencies.property import get_property_service
 from interface.api.dependencies.user import (
     get_current_user,
@@ -209,6 +212,62 @@ class CapturePropertyService:
             ],
             len(self.items),
         )
+
+    async def get_map_overviews(
+        self,
+        min_lat,
+        max_lat,
+        min_lng,
+        max_lng,
+        types,
+        query,
+        limit,
+        category=None,
+        current_user=None,
+    ):
+        self.calls.append(
+            {
+                "min_lat": min_lat,
+                "max_lat": max_lat,
+                "min_lng": min_lng,
+                "max_lng": max_lng,
+                "types": types,
+                "query": query,
+                "limit": limit,
+                "category": category,
+            }
+        )
+        noted_property_ids = (
+            {note.property_id for note in current_user.property_notes}
+            if current_user is not None
+            else set()
+        )
+        favorite_property_ids = (
+            set(current_user.favorite_property_ids) if current_user is not None else set()
+        )
+        items = [
+            _overview_payload(
+                item,
+                has_note=item.id in noted_property_ids,
+                is_favorite=item.id in favorite_property_ids,
+            )
+            for item in self.items
+        ]
+        return {
+            "bbox": {
+                "min_lat": min_lat,
+                "max_lat": max_lat,
+                "min_lng": min_lng,
+                "max_lng": max_lng,
+            },
+            "query": query,
+            "category": category.value if category is not None else None,
+            "items": items,
+            "total_in_bbox": len(self.items),
+            "returned_count": len(items),
+            "truncated": False,
+            "suggest_clustering": False,
+        }
 
 
 class MissingDetailService:
@@ -654,6 +713,112 @@ def test_nearby_route_includes_note_and_favorite_flags_for_authenticated_user(
             "size": 20,
         }
     ]
+
+
+def test_map_route_expands_category_and_passes_bbox_query_to_service(
+    client, override_api_dep, user_entity_factory, caplog
+):
+    service = override_api_dep(get_property_service, CapturePropertyService())
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
+
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.get(
+            "/api/v1/property/map",
+            params={
+                "min_lat": 25.0,
+                "max_lat": 25.1,
+                "min_lng": 121.5,
+                "max_lng": 121.6,
+                "query": " 咖啡 ",
+                "category": PropertyCategoryKey.RESTAURANT,
+                "limit": 300,
+            },
+        )
+
+    assert response.status_code == 200
+    assert service.calls == [
+        {
+            "min_lat": 25.0,
+            "max_lat": 25.1,
+            "min_lng": 121.5,
+            "max_lng": 121.6,
+            "types": get_primary_types_by_category_key(PropertyCategoryKey.RESTAURANT),
+            "query": "咖啡",
+            "limit": 300,
+            "category": PropertyCategoryKey.RESTAURANT,
+        }
+    ]
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "property_map_search_executed"
+    )
+    assert record.total_in_bbox == 0
+    assert record.truncated is False
+
+
+def test_map_route_returns_marker_payload_with_personalization(
+    client, override_api_dep, property_entity_factory, user_entity_factory
+):
+    override_api_dep(
+        get_property_service,
+        CapturePropertyService(items=[property_entity_factory(identifier="p1")]),
+    )
+    current_user = user_entity_factory(
+        identifier="u1",
+        favorite_property_ids=["p1"],
+        property_notes=[
+            PropertyNoteEntity(
+                property_id="p1",
+                content="saved",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+        ],
+    )
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get(
+        "/api/v1/property/map",
+        params={
+            "min_lat": 25.0,
+            "max_lat": 25.1,
+            "min_lng": 121.5,
+            "max_lng": 121.6,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["returned_count"] == 1
+    assert data["truncated"] is False
+    assert data["suggest_clustering"] is False
+    assert data["items"][0]["id"] == "p1"
+    assert data["items"][0]["has_note"] is True
+    assert data["items"][0]["is_favorite"] is True
+    assert data["bbox"] == {
+        "min_lat": 25.0,
+        "max_lat": 25.1,
+        "min_lng": 121.5,
+        "max_lng": 121.6,
+    }
+
+
+def test_map_route_rejects_invalid_bbox(client, override_api_dep, user_entity_factory):
+    override_api_dep(get_property_service, CapturePropertyService())
+    override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
+
+    response = client.get(
+        "/api/v1/property/map",
+        params={
+            "min_lat": 25.1,
+            "max_lat": 25.0,
+            "min_lng": 121.5,
+            "max_lng": 121.6,
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_search_route_passes_category_and_returns_keyword_search_when_present(
