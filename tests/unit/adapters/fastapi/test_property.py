@@ -821,11 +821,12 @@ def test_map_route_rejects_invalid_bbox(client, override_api_dep, user_entity_fa
     assert response.status_code == 422
 
 
-def test_search_route_passes_category_and_returns_keyword_search_when_present(
+def test_search_route_passes_category_without_forcing_keyword_only_response_type(
     client, override_api_dep, user_entity_factory
 ):
     service = override_api_dep(
-        get_property_service, CapturePropertyService(route="keyword")
+        get_property_service,
+        CapturePropertyService(execution_modes=["semantic", "keyword"]),
     )
     override_api_dep(get_current_user, user_entity_factory(identifier="u1"))
 
@@ -835,7 +836,7 @@ def test_search_route_passes_category_and_returns_keyword_search_when_present(
     )
 
     assert response.status_code == 200
-    assert response.json()["response_type"] == "keyword_search"
+    assert response.json()["response_type"] == "hybrid_search"
     assert service.calls == [
         {
             "q": "寵物公園",

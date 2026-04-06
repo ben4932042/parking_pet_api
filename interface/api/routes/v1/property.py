@@ -83,7 +83,10 @@ async def search_properties_by_keyword(
     query: str = Query(..., description="Natural-language search query."),
     category: PropertyCategoryKey | None = Query(
         default=None,
-        description="Optional frontend category selector. When provided, search uses keyword-only mode.",
+        description=(
+            "Optional frontend category selector. "
+            "When provided, the final search results are constrained to that category."
+        ),
     ),
     user_lat: float = Query(default=None, description="Current user latitude."),
     user_lng: float = Query(default=None, description="Current user longitude."),

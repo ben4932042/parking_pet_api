@@ -53,6 +53,7 @@ from domain.entities.property import (
     PropertyManualOverrides,
 )
 from domain.entities.property_category import PropertyCategoryKey
+from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.user import UserEntity
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
@@ -197,8 +198,6 @@ class PropertyService:
         open_at_minutes: Optional[int] = None,
     ):
         search_plan = await self.enrichment_provider.extract_search_plan(q)
-        if category is not None:
-            search_plan.execution_modes = ["keyword"]
         self._apply_radius_override(search_plan, radius)
         logger.debug(f"Search plan: {search_plan}")
 
@@ -344,10 +343,10 @@ class PropertyService:
                 semantic_items=semantic_items,
                 semantic_query=generate_query,
             )
-            return items, search_plan
+            return self._filter_items_by_category(items, category), search_plan
         if run_semantic:
-            return semantic_items, search_plan
-        return keyword_items, search_plan
+            return self._filter_items_by_category(semantic_items, category), search_plan
+        return self._filter_items_by_category(keyword_items, category), search_plan
 
     @staticmethod
     def _apply_radius_override(search_plan, radius: Optional[int]) -> None:
@@ -383,6 +382,18 @@ class PropertyService:
                 open_at_minutes=open_at_minutes,
             )
         ]
+
+    @staticmethod
+    def _filter_items_by_category(
+        items: list[PropertyEntity],
+        category: Optional[PropertyCategoryKey],
+    ) -> list[PropertyEntity]:
+        if category is None:
+            return items
+        allowed_types = set(get_primary_types_by_category_key(category))
+        if not allowed_types:
+            return []
+        return [item for item in items if item.primary_type in allowed_types]
 
     @staticmethod
     def _should_use_nearest_keyword_hybrid_result(

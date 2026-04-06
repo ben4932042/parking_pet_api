@@ -111,13 +111,16 @@ async def test_search_by_keyword_uses_keyword_route_directly(
 
 
 @pytest.mark.asyncio
-async def test_search_by_keyword_forces_keyword_only_when_category_is_provided(
+async def test_search_by_keyword_filters_final_results_by_category_without_changing_execution_modes(
     property_entity_factory,
 ):
-    keyword_item = property_entity_factory(identifier="keyword-hit")
+    keyword_item = property_entity_factory(
+        identifier="keyword-hit",
+        primary_type="restaurant",
+    )
     repo = CaptureRepo(
         query_items=[
-            property_entity_factory(identifier="semantic-hit", primary_type="park")
+            property_entity_factory(identifier="semantic-hit", primary_type="restaurant")
         ],
         keyword_items=[keyword_item],
     )
@@ -125,25 +128,58 @@ async def test_search_by_keyword_forces_keyword_only_when_category_is_provided(
         repo=repo,
         raw_data_repo=DummyRawDataRepo(),
         audit_repo=DummyAuditRepo(),
+            enrichment_provider=DummyEnrichmentProvider(
+                SearchPlan(
+                    execution_modes=["semantic", "keyword"],
+                    filter_condition=PropertyFilterCondition(),
+                )
+            ),
+        )
+
+    results, plan = await service.search_by_keyword(
+        "寵物公園",
+        category=PropertyCategoryKey.RESTAURANT,
+    )
+
+    assert [item.id for item in results] == ["keyword-hit", "semantic-hit"]
+    assert plan.execution_modes == ["semantic", "keyword"]
+    assert repo.calls == [
+        ("get_by_keyword", "寵物公園"),
+        ("find_by_query", {}, None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_search_by_keyword_filters_semantic_only_results_by_category_at_end(
+    property_entity_factory,
+):
+    repo = CaptureRepo(
+        query_items=[
+            property_entity_factory(identifier="semantic-cafe", primary_type="cafe"),
+            property_entity_factory(
+                identifier="semantic-restaurant", primary_type="restaurant"
+            ),
+        ]
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=DummyRawDataRepo(),
+        audit_repo=DummyAuditRepo(),
         enrichment_provider=DummyEnrichmentProvider(
             SearchPlan(
-                execution_modes=["semantic", "keyword"],
-                filter_condition=PropertyFilterCondition(
-                    mongo_query={"primary_type": "park"},
-                ),
-                semantic_extraction={"category": "park"},
+                execution_modes=["semantic"],
+                filter_condition=PropertyFilterCondition(),
             )
         ),
     )
 
     results, plan = await service.search_by_keyword(
-        "寵物公園",
-        category=PropertyCategoryKey.OUTDOOR,
+        "推薦的店",
+        category=PropertyCategoryKey.RESTAURANT,
     )
 
-    assert [item.id for item in results] == ["keyword-hit"]
-    assert plan.execution_modes == ["keyword"]
-    assert repo.calls == [("get_by_keyword", "寵物公園")]
+    assert [item.id for item in results] == ["semantic-restaurant"]
+    assert plan.execution_modes == ["semantic"]
 
 
 @pytest.mark.asyncio
