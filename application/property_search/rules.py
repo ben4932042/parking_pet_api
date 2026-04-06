@@ -126,6 +126,27 @@ TIME_OF_DAY_WINDOWS = {
     "晚上": (18, 0, 22, 59),
 }
 
+PROPER_NAME_LOOKUP_SUFFIXES = (
+    "森林公園",
+    "運動園區",
+    "公園",
+    "園區",
+    "廣場",
+    "車站",
+    "夜市",
+    "老街",
+)
+GENERIC_LOOKUP_PREFIX_TERMS = (
+    "寵物",
+    "狗狗",
+    "毛孩",
+    "友善",
+    "運動",
+    "親子",
+    "戶外",
+    "森林",
+)
+
 
 def normalize_text_for_match(value: str) -> str:
     return re.sub(r"\s+", "", value).strip()
@@ -177,6 +198,52 @@ def should_run_keyword_with_semantic(query: str) -> bool:
             break
 
     return bool(normalized_without_category)
+
+
+def is_probable_proper_name_lookup(query: str) -> bool:
+    normalized_query = normalize_text_for_match(query)
+    if not normalized_query or len(normalized_query) < 6 or len(normalized_query) > 20:
+        return False
+
+    if normalized_query in {
+        normalize_text_for_match(item) for item in HYBRID_EXACT_QUERIES
+    }:
+        return False
+
+    if "的" in query:
+        return False
+
+    if any(phrase in query for phrase in SEMANTIC_SEARCH_INTENT_PHRASES):
+        return False
+
+    if (
+        extract_address_by_rule(query)
+        or extract_landmark_by_rule(query)
+        or extract_feature_by_rule(query)
+        or extract_quality_by_rule(query)
+        or extract_time_by_rule(query)
+        or extract_distance_by_rule(query)
+        or should_use_current_location_context(query)
+    ):
+        return False
+
+    for suffix in sorted(PROPER_NAME_LOOKUP_SUFFIXES, key=len, reverse=True):
+        normalized_suffix = normalize_text_for_match(suffix)
+        if not normalized_query.endswith(normalized_suffix):
+            continue
+
+        prefix = normalized_query[: -len(normalized_suffix)]
+        if len(prefix) < 2:
+            return False
+
+        normalized_prefix = prefix
+        for term in sorted(GENERIC_LOOKUP_PREFIX_TERMS, key=len, reverse=True):
+            normalized_term = normalize_text_for_match(term)
+            normalized_prefix = normalized_prefix.replace(normalized_term, "")
+
+        return len(normalized_prefix) >= 2
+
+    return False
 
 
 def normalize_llm_execution_modes(
@@ -271,6 +338,10 @@ def extract_address_by_rule(query: str) -> str | None:
     if match:
         value = match.group("value")
         if value in TRANSPORT_PHRASES:
+            return None
+        if normalize_text_for_match(value).endswith(
+            normalize_text_for_match("園區")
+        ):
             return None
         return value
 

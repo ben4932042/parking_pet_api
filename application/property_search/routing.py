@@ -9,6 +9,7 @@ from application.property_search.rules import (
     extract_quality_by_rule,
     extract_time_by_rule,
     is_basic_prompt_injection,
+    is_probable_proper_name_lookup,
     is_obviously_non_search_query,
     normalize_llm_execution_modes,
     normalize_text_for_match,
@@ -36,6 +37,16 @@ def route_decision_by_rule(
                 execution_modes=["keyword"],
                 confidence=0.98,
                 reason="查詢內容不像搜尋條件，直接回傳空結果",
+            ),
+            None,
+        )
+
+    if is_probable_proper_name_lookup(query):
+        return (
+            SearchRouteDecision(
+                execution_modes=["keyword"],
+                confidence=0.96,
+                reason="查詢較像完整地點名稱，優先使用關鍵字查找",
             ),
             None,
         )

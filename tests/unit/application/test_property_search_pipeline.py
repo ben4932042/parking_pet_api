@@ -900,6 +900,51 @@ def test_route_node_enables_hybrid_execution_for_ambiguous_short_category_query(
     assert result["route_decision"].reason == "查詢包含分類或偏好條件"
 
 
+def test_route_node_prefers_keyword_for_probable_proper_name_lookup():
+    from infrastructure.search.pipeline import route_node
+
+    result = route_node(llm=None, state={"raw_query": "中正狗狗運動園區"})
+
+    assert result["route_decision"].execution_modes == ["keyword"]
+    assert result["route_decision"].reason == "查詢較像完整地點名稱，優先使用關鍵字查找"
+
+
+def test_route_node_prefers_keyword_for_full_named_park_lookup():
+    from infrastructure.search.pipeline import route_node
+
+    result = route_node(llm=None, state={"raw_query": "大安森林公園"})
+
+    assert result["route_decision"].execution_modes == ["keyword"]
+    assert result["route_decision"].reason == "查詢較像完整地點名稱，優先使用關鍵字查找"
+
+
+def test_route_node_does_not_treat_generic_pet_park_phrase_as_keyword_only_named_lookup():
+    from infrastructure.search.pipeline import route_node
+
+    result = route_node(llm=None, state={"raw_query": "狗狗運動公園"})
+
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+
+
+def test_route_node_does_not_treat_generic_family_park_phrase_as_keyword_only_named_lookup():
+    from infrastructure.search.pipeline import route_node
+
+    result = route_node(llm=None, state={"raw_query": "親子公園"})
+
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+
+
+def test_route_node_keeps_generic_nearby_park_search_semantic():
+    from infrastructure.search.pipeline import route_node
+
+    result = route_node(llm=None, state={"raw_query": "附近的狗狗運動公園"})
+
+    assert result["route_decision"].execution_modes == ["semantic"]
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+
+
 def test_should_run_keyword_with_semantic_supports_exact_hybrid_whitelist():
     from application.property_search.rules import should_run_keyword_with_semantic
 
@@ -1429,6 +1474,12 @@ def test_rule_based_category_parser_skips_negated_park_keyword():
     intent = extract_category_by_rule("不是公園的地方")
 
     assert intent is None
+
+
+def test_address_rule_does_not_treat_named_park_zone_as_address():
+    from application.property_search.rules import extract_address_by_rule
+
+    assert extract_address_by_rule("中正狗狗運動園區") is None
 
 
 def test_comma_separated_primary_type_is_normalized_by_query_rule():
