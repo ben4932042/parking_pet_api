@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 from domain.entities.property_category import PropertyCategoryKey
 
 
-DEFAULT_SEARCH_RADIUS_METERS = 10000
+DEFAULT_SEARCH_RADIUS_METERS = 50000
 
 
 class PropertyFilterCondition(BaseModel):
