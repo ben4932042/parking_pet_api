@@ -1046,6 +1046,14 @@ def test_quality_node_uses_rule_based_open_hint_for_you_kai_de():
     assert result["quality_intent"].is_open is True
 
 
+def test_quality_node_uses_rule_based_open_hint_for_you_ying_ye_de():
+    from infrastructure.search.pipeline import quality_node
+
+    result = quality_node(llm=None, state={"raw_query": "有營業的"})
+
+    assert result["quality_intent"].is_open is True
+
+
 def test_quality_node_does_not_force_open_now_when_query_targets_afternoon_window():
     from infrastructure.search.pipeline import quality_node
 

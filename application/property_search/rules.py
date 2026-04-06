@@ -389,7 +389,7 @@ def extract_quality_by_rule(query: str) -> QualityIntent | None:
         )
 
     open_now_keywords = ("現在有開", "營業中", "現在營業", "開著", "不想白跑")
-    generic_open_keywords = ("有開", "有開的")
+    generic_open_keywords = ("有開", "有開的", "有營業", "有營業的")
     if any(keyword in query for keyword in open_now_keywords):
         is_open = True
         matched_keywords.extend(

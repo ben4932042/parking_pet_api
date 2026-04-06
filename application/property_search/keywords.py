@@ -107,7 +107,17 @@ NEGATIVE_FEATURE_HINT_KEYWORDS = {
 
 QUALITY_HINT_KEYWORDS = {
     "min_rating": ("推薦", "評價", "熱門", "最好", "頂級"),
-    "is_open": ("現在有開", "營業中", "現在營業", "開著", "不想白跑", "有開", "有開的"),
+    "is_open": (
+        "現在有開",
+        "營業中",
+        "現在營業",
+        "開著",
+        "不想白跑",
+        "有開",
+        "有開的",
+        "有營業",
+        "有營業的",
+    ),
 }
 
 NON_SEARCH_EXACT_QUERIES = {
