@@ -179,6 +179,25 @@ class PropertyMutationDto(BaseModel):
     deleted_at: datetime | None = None
 
 
+class PropertyCreateResultDto(BaseModel):
+    property_id: str
+    place_id: str
+    outcome: str
+    changed: bool
+    existing_before: bool
+
+
+class PropertyMutationResultDto(BaseModel):
+    mutation: PropertyMutationDto
+    place_id: str
+    operation: str
+    outcome: str
+    changed: bool
+    existing_before: bool
+    reason: str | None = None
+    mode: str | None = None
+
+
 class PropertyAuditLogDto(BaseModel):
     property_id: str
     action: str

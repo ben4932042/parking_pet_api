@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -306,6 +307,7 @@ async def get_detail(
     ),
 )
 async def create_property(
+    request: Request,
     name: str = Query(
         ...,
         description="Property keyword or business name used for Google Places lookup.",
@@ -314,9 +316,37 @@ async def create_property(
     actor: ActorInfo = Depends(get_optional_request_actor),
 ):
     try:
-        created_property = await service.create_property(name, actor=actor)
-        return PropertyCreateResponse(property_id=created_property.id)
+        created = await service.create_property_result(name, actor=actor)
+        log_api_event(
+            "property_mutation_result",
+            request=request,
+            user_id=actor.user_id if actor else None,
+            extra={
+                "operation": "create",
+                "outcome": created.result.outcome,
+                "property_id": created.result.property_id,
+                "resolved_place_id": created.result.place_id,
+                "input_name": name,
+                "changed": created.result.changed,
+                "existing_before": created.result.existing_before,
+            },
+        )
+        return PropertyCreateResponse(property_id=created.result.property_id)
     except ApplicationError as exc:
+        log_api_event(
+            "property_mutation_result",
+            request=request,
+            level=logging.WARNING,
+            user_id=actor.user_id if actor else None,
+            extra={
+                "operation": "create",
+                "outcome": "rejected_soft_deleted"
+                if "soft-deleted" in exc.message
+                else "failed_application",
+                "input_name": name,
+                "reason": exc.message,
+            },
+        )
         api_error = exc if isinstance(exc, AppError) else from_application_error(exc)
         raise HTTPException(
             status_code=api_error.http_status,
@@ -340,6 +370,7 @@ async def create_property(
     ),
 )
 async def renew_property(
+    request: Request,
     property_id: PyObjectId,
     mode: str = Query(
         ...,
@@ -351,11 +382,52 @@ async def renew_property(
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
-    return await service.renew_property_result(
-        property_id=property_id,
-        mode=mode,
-        actor=actor,
-    )
+    try:
+        result = await service.renew_property_result_with_outcome(
+            property_id=property_id,
+            mode=mode,
+            actor=actor,
+        )
+        log_api_event(
+            "property_mutation_result",
+            request=request,
+            user_id=actor.user_id if actor else None,
+            extra={
+                "operation": "renew",
+                "outcome": result.outcome,
+                "property_id": _read_result_field(result.mutation, "property_id"),
+                "resolved_place_id": result.place_id,
+                "mode": result.mode,
+                "changed": result.changed,
+                "existing_before": result.existing_before,
+            },
+        )
+        return result.mutation
+    except ApplicationError as exc:
+        log_api_event(
+            "property_mutation_result",
+            request=request,
+            level=logging.WARNING,
+            user_id=actor.user_id if actor else None,
+            extra={
+                "operation": "renew",
+                "requested_property_id": str(property_id),
+                "mode": mode,
+                "outcome": "rejected_not_found"
+                if "not found" in exc.message.lower()
+                else "rejected_soft_deleted"
+                if "soft-deleted" in exc.message
+                else "rejected_place_id_mismatch"
+                if "different place_id" in exc.message
+                else "failed_application",
+                "reason": exc.message,
+            },
+        )
+        api_error = exc if isinstance(exc, AppError) else from_application_error(exc)
+        raise HTTPException(
+            status_code=api_error.http_status,
+            detail=api_error.message or "Failed to renew property.",
+        )
 
 
 @router.patch(

@@ -31,6 +31,18 @@ def apply_runtime_warning_filters() -> None:
         category=DeprecationWarning,
         module=r"langchain_google_vertexai",
     )
+    warnings.filterwarnings(
+        "ignore",
+        message="'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16",
+        category=DeprecationWarning,
+        module=r"pytest_asyncio\.plugin",
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message="'asyncio.set_event_loop_policy' is deprecated and slated for removal in Python 3.16",
+        category=DeprecationWarning,
+        module=r"pytest_asyncio\.plugin",
+    )
 
 
 apply_runtime_warning_filters()

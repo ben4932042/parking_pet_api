@@ -253,10 +253,27 @@ class CreatePropertyService:
         self.created_property = created_property
         self.error = error
 
-    async def create_property(self, name, actor=None):
+    async def create_property_result(self, name, actor=None):
         if self.error:
             raise self.error
-        return self.created_property
+        return type(
+            "CreateResultEnvelope",
+            (),
+            {
+                "property": self.created_property,
+                "result": type(
+                    "CreateResult",
+                    (),
+                    {
+                        "property_id": self.created_property.id,
+                        "place_id": self.created_property.place_id,
+                        "outcome": "created",
+                        "changed": True,
+                        "existing_before": False,
+                    },
+                )(),
+            },
+        )()
 
 
 class PropertyMutationService:
@@ -359,7 +376,9 @@ class PropertyMutationService:
             "deleted_at": self.property_entity.deleted_at,
         }
 
-    async def renew_property_result(self, property_id, mode, actor, reason=None):
+    async def renew_property_result_with_outcome(
+        self, property_id, mode, actor, reason=None
+    ):
         self.calls.append(
             {
                 "fn": "renew_property",
@@ -369,7 +388,7 @@ class PropertyMutationService:
                 "reason": reason,
             }
         )
-        return {
+        mutation = {
             "property_id": self.property_entity.id,
             "status": "renewed" if self.renew_changed else "unchanged",
             "is_deleted": self.property_entity.is_deleted,
@@ -378,6 +397,20 @@ class PropertyMutationService:
             "deleted_by": _actor_payload(self.property_entity.deleted_by),
             "deleted_at": self.property_entity.deleted_at,
         }
+        return type(
+            "MutationResult",
+            (),
+            {
+                "mutation": mutation,
+                "place_id": self.property_entity.place_id,
+                "operation": "renew",
+                "outcome": "renewed" if self.renew_changed else "unchanged",
+                "changed": self.renew_changed,
+                "existing_before": True,
+                "reason": reason,
+                "mode": mode,
+            },
+        )()
 
     async def get_audit_logs(self, property_id, limit=50):
         self.calls.append(
@@ -751,6 +784,7 @@ def test_create_property_route_returns_property_id_on_success(
     override_api_dep,
     property_entity_factory,
     anonymous_actor_override,
+    caplog,
 ):
     service = override_api_dep(
         get_property_service,
@@ -760,17 +794,28 @@ def test_create_property_route_returns_property_id_on_success(
     )
     override_api_dep(get_optional_request_actor, anonymous_actor_override)
 
-    response = client.post("/api/v1/property", params={"name": "Dessert Cafe"})
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.post("/api/v1/property", params={"name": "Dessert Cafe"})
 
     assert response.status_code == 201
     assert response.json() == {"property_id": "p1"}
     assert service.created_property.id == "p1"
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "property_mutation_result" and record.operation == "create"
+    )
+    assert record.outcome == "created"
+    assert record.resolved_place_id == service.created_property.place_id
+    assert record.changed is True
+    assert record.existing_before is False
 
 
 def test_create_property_route_returns_409_with_reason_on_failure(
     client,
     override_api_dep,
     anonymous_actor_override,
+    caplog,
 ):
     override_api_dep(
         get_property_service,
@@ -782,13 +827,21 @@ def test_create_property_route_returns_409_with_reason_on_failure(
     )
     override_api_dep(get_optional_request_actor, anonymous_actor_override)
 
-    response = client.post("/api/v1/property", params={"name": "Dessert Cafe"})
+    with caplog.at_level(logging.WARNING, logger="interface.api.events"):
+        response = client.post("/api/v1/property", params={"name": "Dessert Cafe"})
 
     assert response.status_code == 409
     assert (
         response.json()["detail"]
         == "Property is soft-deleted. Restore it before syncing again."
     )
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "property_mutation_result" and record.operation == "create"
+    )
+    assert record.outcome == "rejected_soft_deleted"
+    assert record.reason == "Property is soft-deleted. Restore it before syncing again."
 
 
 def test_get_detail_returns_404_when_service_has_no_property(
@@ -965,6 +1018,7 @@ def test_renew_route_forwards_mode(
     override_api_dep,
     property_entity_factory,
     request_actor_override,
+    caplog,
 ):
     renewed_property = property_entity_factory(
         identifier="p1", place_id="place-1"
@@ -978,10 +1032,11 @@ def test_renew_route_forwards_mode(
     )
     override_api_dep(get_request_actor, request_actor_override)
 
-    response = client.post(
-        "/api/v1/property/p1/renew",
-        params={"mode": "details"},
-    )
+    with caplog.at_level(logging.INFO, logger="interface.api.events"):
+        response = client.post(
+            "/api/v1/property/p1/renew",
+            params={"mode": "details"},
+        )
 
     assert response.status_code == 200
     data = response.json()
@@ -991,6 +1046,14 @@ def test_renew_route_forwards_mode(
     assert service.calls[0]["fn"] == "renew_property"
     assert service.calls[0]["mode"] == "details"
     assert service.calls[0]["reason"] is None
+    record = next(
+        record
+        for record in caplog.records
+        if record.event == "property_mutation_result" and record.operation == "renew"
+    )
+    assert record.outcome == "renewed"
+    assert record.mode == "details"
+    assert record.resolved_place_id == renewed_property.place_id
 
 
 def test_renew_route_returns_unchanged_status_when_no_data_changed(

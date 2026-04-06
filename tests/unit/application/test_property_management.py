@@ -320,6 +320,33 @@ async def test_create_property_new_record_writes_create_audit_and_actor(
 
 
 @pytest.mark.asyncio
+async def test_create_property_result_marks_duplicate_as_unchanged(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    existing_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=existing_source)
+    provider = SyncEnrichmentProvider(existing_source, existing.model_copy())
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    result = await service.create_property_result(name="test", actor=actor_factory())
+
+    assert result.result.outcome == "unchanged"
+    assert result.result.changed is False
+    assert result.result.existing_before is True
+    assert result.result.property_id == existing.id
+
+
+@pytest.mark.asyncio
 async def test_sync_skips_llm_when_user_rating_count_and_reviews_are_unchanged(
     property_entity_factory, actor_factory
 ):
@@ -545,6 +572,41 @@ async def test_renew_property_returns_unchanged_when_reviews_and_rating_count_ma
     assert saved == existing
     assert provider.generate_calls == []
     assert audit_repo.logs == []
+
+
+@pytest.mark.asyncio
+async def test_renew_property_result_with_outcome_marks_unchanged(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    previous_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    renewed_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=previous_source)
+    provider = SyncEnrichmentProvider(renewed_source, existing)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    result = await service.renew_property_result_with_outcome(
+        property_id="p1",
+        mode="details",
+        actor=actor_factory(),
+    )
+
+    assert result.outcome == "unchanged"
+    assert result.changed is False
+    assert result.existing_before is True
+    assert result.place_id == existing.place_id
+    assert result.mutation.status == "unchanged"
 
 
 @pytest.mark.asyncio

@@ -1,6 +1,7 @@
 import logging
 import math
 import re
+from dataclasses import dataclass
 from typing import Any, List, Optional
 
 from application.dto.property import (
@@ -18,8 +19,10 @@ from application.dto.property import (
     PropertyAliasesDto,
     PropertyAuditLogDto,
     PropertyDetailDto,
+    PropertyCreateResultDto,
     PropertyManualOverridesDto,
     PropertyMutationDto,
+    PropertyMutationResultDto,
     PropertyOverviewDto,
     PropertyPetFeaturesDto,
     PropertySearchResultDto,
@@ -58,6 +61,20 @@ logger = logging.getLogger(__name__)
 
 
 HYBRID_KEYWORD_NEAREST_RADIUS_METERS = 100000
+
+
+@dataclass
+class PropertyUpsertResult:
+    property: PropertyEntity
+    changed: bool
+    existing_before: bool
+    outcome: str
+
+
+@dataclass
+class PropertyCreateResultEnvelope:
+    property: PropertyEntity
+    result: PropertyCreateResultDto
 
 
 class PropertyService:
@@ -564,16 +581,31 @@ class PropertyService:
         return self._to_detail_dto(output)
 
     async def create_property(self, name: str, actor: Optional[ActorInfo] = None):
+        return (await self.create_property_result(name=name, actor=actor)).property
+
+    async def create_property_result(
+        self, name: str, actor: Optional[ActorInfo] = None
+    ) -> PropertyCreateResultEnvelope:
         actor = actor or self._system_actor()
         source_data = self.enrichment_provider.create_property_by_name(name)
         if source_data is None:
             raise ValueError("Failed to resolve property from the provided keyword.")
-        saved_property, _ = await self._upsert_property_from_source(
+        result = await self._upsert_property_from_source(
             source_data,
             actor=actor,
             allow_create=True,
+            update_outcome="synced",
         )
-        return saved_property
+        return PropertyCreateResultEnvelope(
+            property=result.property,
+            result=PropertyCreateResultDto(
+                property_id=result.property.id,
+                place_id=result.property.place_id,
+                outcome=result.outcome,
+                changed=result.changed,
+                existing_before=result.existing_before,
+            ),
+        )
 
     async def renew_property(
         self,
@@ -621,12 +653,14 @@ class PropertyService:
         if source_data is None:
             raise ValueError("Failed to renew property from the upstream provider.")
 
-        return await self._upsert_property_from_source(
+        result = await self._upsert_property_from_source(
             source_data,
             actor=actor,
             reason=reason,
             allow_create=False,
+            update_outcome="renewed",
         )
+        return result.property, result.changed
 
     async def renew_property_result(
         self,
@@ -635,15 +669,41 @@ class PropertyService:
         actor: Optional[ActorInfo] = None,
         reason: Optional[str] = None,
     ) -> PropertyMutationDto:
+        return (
+            await self.renew_property_result_with_outcome(
+                property_id=property_id,
+                mode=mode,
+                actor=actor,
+                reason=reason,
+            )
+        ).mutation
+
+    async def renew_property_result_with_outcome(
+        self,
+        property_id: PyObjectId,
+        mode: str,
+        actor: Optional[ActorInfo] = None,
+        reason: Optional[str] = None,
+    ) -> PropertyMutationResultDto:
         renewed_property, changed = await self.renew_property(
             property_id=property_id,
             mode=mode,
             actor=actor,
             reason=reason,
         )
-        return self._to_mutation_dto(
+        mutation = self._to_mutation_dto(
             renewed_property,
             status="renewed" if changed else "unchanged",
+        )
+        return PropertyMutationResultDto(
+            mutation=mutation,
+            place_id=renewed_property.place_id,
+            operation="renew",
+            outcome="renewed" if changed else "unchanged",
+            changed=changed,
+            existing_before=True,
+            reason=reason,
+            mode=mode,
         )
 
     async def _upsert_property_from_source(
@@ -653,7 +713,8 @@ class PropertyService:
         actor: ActorInfo,
         reason: Optional[str] = None,
         allow_create: bool,
-    ) -> tuple[PropertyEntity, bool]:
+        update_outcome: str,
+    ) -> "PropertyUpsertResult":
         previous_source_data = await self.raw_data_repo.get_by_place_id(
             source_data.place_id
         )
@@ -693,7 +754,12 @@ class PropertyService:
                 action = PropertyAuditAction.SYNC
                 before = existing
             else:
-                return existing, False
+                return PropertyUpsertResult(
+                    property=existing,
+                    changed=False,
+                    existing_before=True,
+                    outcome="unchanged",
+                )
         else:
             ai_result = self.enrichment_provider.generate_ai_analysis(
                 merged_source_data
@@ -732,7 +798,12 @@ class PropertyService:
                 "property_id": saved_property.id,
             },
         )
-        return saved_property, True
+        return PropertyUpsertResult(
+            property=saved_property,
+            changed=True,
+            existing_before=existing is not None,
+            outcome=update_outcome if existing else "created",
+        )
 
     async def update_aliases(
         self,
