@@ -1,14 +1,19 @@
 import pytest
 
 from application.apple_auth import AppleAuthService
-from application.exceptions import AuthenticationError, ValidationDomainError
+from application.exceptions import (
+    AuthenticationError,
+    ConflictError,
+    ValidationDomainError,
+)
 from infrastructure.apple.auth import AppleIdentity
 
 
 class UserRepoStub:
-    def __init__(self, existing_user=None, created_user=None):
+    def __init__(self, existing_user=None, created_user=None, linked_user=None):
         self.existing_user = existing_user
         self.created_user = created_user
+        self.linked_user = linked_user
         self.calls = []
 
     async def get_user_by_apple_user_identifier(self, apple_user_identifier: str):
@@ -46,6 +51,23 @@ class UserRepoStub:
         return self.existing_user.model_copy(
             update={"is_deleted": False, "deleted_at": None}
         )
+
+    async def link_guest_user_to_apple(
+        self,
+        *,
+        user_id: str,
+        apple_user_identifier: str,
+        email: str | None = None,
+    ):
+        self.calls.append(
+            {
+                "fn": "link_guest_user_to_apple",
+                "user_id": user_id,
+                "apple_user_identifier": apple_user_identifier,
+                "email": email,
+            }
+        )
+        return self.linked_user
 
 
 class AppleVerifierStub:
@@ -214,3 +236,95 @@ async def test_authenticate_rejects_blank_authorization_code():
         )
 
     assert exc_info.value.message == "Apple authorization code is required"
+
+
+@pytest.mark.asyncio
+async def test_link_guest_user_upgrades_guest_account(user_entity_factory):
+    guest_user = user_entity_factory(identifier="u1", name="Ben", source="guest")
+    linked_user = guest_user.model_copy(
+        update={
+            "source": "apple",
+            "email": "ben@example.com",
+            "apple_user_identifier": "apple-sub-5",
+        }
+    )
+    repo = UserRepoStub(linked_user=linked_user)
+    verifier = AppleVerifierStub(
+        identity=AppleIdentity(subject="apple-sub-5", email="ben@example.com")
+    )
+    service = AppleAuthService(repo=repo, verifier=verifier)
+
+    result = await service.link_guest_user(
+        current_user=guest_user,
+        identity_token="token",
+        authorization_code="code",
+        user_identifier="apple-user-5",
+        email=None,
+    )
+
+    assert result == linked_user
+    assert repo.calls == [
+        {
+            "fn": "get_user_by_apple_user_identifier",
+            "apple_user_identifier": "apple-sub-5",
+        },
+        {
+            "fn": "get_user_by_apple_user_identifier",
+            "apple_user_identifier": "apple-user-5",
+        },
+        {
+            "fn": "link_guest_user_to_apple",
+            "user_id": "u1",
+            "apple_user_identifier": "apple-sub-5",
+            "email": "ben@example.com",
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_link_guest_user_rejects_existing_apple_binding(user_entity_factory):
+    guest_user = user_entity_factory(identifier="guest-1", name="Ben", source="guest")
+    existing_apple_user = user_entity_factory(
+        identifier="apple-1",
+        name="Ben Apple",
+        source="apple",
+        apple_user_identifier="apple-sub-6",
+    )
+    repo = UserRepoStub(existing_user=existing_apple_user)
+    verifier = AppleVerifierStub(identity=AppleIdentity(subject="apple-sub-6"))
+    service = AppleAuthService(repo=repo, verifier=verifier)
+
+    with pytest.raises(ConflictError) as exc_info:
+        await service.link_guest_user(
+            current_user=guest_user,
+            identity_token="token",
+            authorization_code="code",
+            user_identifier="apple-user-6",
+            email=None,
+        )
+
+    assert exc_info.value.message == "Apple account is already linked to another user"
+
+
+@pytest.mark.asyncio
+async def test_link_guest_user_rejects_non_guest_user(user_entity_factory):
+    apple_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        source="apple",
+        apple_user_identifier="apple-sub-7",
+    )
+    repo = UserRepoStub()
+    verifier = AppleVerifierStub(identity=AppleIdentity(subject="apple-sub-7"))
+    service = AppleAuthService(repo=repo, verifier=verifier)
+
+    with pytest.raises(ValidationDomainError) as exc_info:
+        await service.link_guest_user(
+            current_user=apple_user,
+            identity_token="token",
+            authorization_code="code",
+            user_identifier="apple-user-7",
+            email=None,
+        )
+
+    assert exc_info.value.message == "Only guest users can link an Apple account"

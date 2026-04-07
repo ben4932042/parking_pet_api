@@ -4,7 +4,7 @@
 
 This guide explains the current user authentication flow in a human-oriented way.
 
-Use it when you want a quick walkthrough of registration, Apple login, authenticated requests, refresh, and logout before reading the implementation-oriented docs.
+Use it when you want a quick walkthrough of guest auth, Apple login, Apple linking, authenticated requests, refresh, and logout before reading the implementation-oriented docs.
 
 ## When To Read This Doc
 
@@ -26,10 +26,10 @@ sequenceDiagram
     participant Apple
     participant MongoDB
 
-    Note over Client,API: 1. Login or registration
-    alt Basic registration
-        Client->>API: POST /api/v1/user/register
-        API->>MongoDB: Create basic user
+    Note over Client,API: 1. Login or guest auth
+    alt Guest auth
+        Client->>API: POST /api/v1/user/auth/guest
+        API->>MongoDB: Create guest user
         MongoDB-->>API: User
     else Apple login
         Client->>API: POST /api/v1/user/auth/apple
@@ -38,6 +38,13 @@ sequenceDiagram
         API->>MongoDB: Find or create Apple user
         MongoDB-->>API: User
     end
+
+    Note over Client,API: 1b. Guest links Apple
+    Client->>API: POST /api/v1/user/auth/apple/link
+    API->>Apple: Verify identity_token
+    Apple-->>API: Valid token with subject
+    API->>MongoDB: Upgrade guest user to Apple user
+    MongoDB-->>API: User
 
     API->>MongoDB: Start auth session\nstore refresh_token_hash\nincrement session_version
     MongoDB-->>API: Updated user
@@ -72,9 +79,11 @@ The current auth system has two stages that are easy to confuse if they are read
 1. Identity verification
 2. Backend session authentication
 
-For `basic` users, the backend creates a user directly during registration.
+For `guest` users, the backend creates a user directly during guest auth.
 
 For `apple` users, the backend first verifies the Apple `identity_token`, then uses the verified Apple `sub` to find, create, or restore the matching user.
+
+For guest users who later link Apple, the backend verifies the Apple identity and upgrades the same user record in place before issuing a new session.
 
 After either path succeeds, the backend starts its own auth session. From that point on, normal API requests no longer use the original Apple credential. They use backend-issued bearer tokens instead.
 

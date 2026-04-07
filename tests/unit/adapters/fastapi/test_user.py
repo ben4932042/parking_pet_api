@@ -18,9 +18,9 @@ class UserServiceStub:
         self.user = user
         self.calls = []
 
-    async def register_basic_user(self, name: str, pet_name: str | None = None):
+    async def register_guest_user(self, name: str, pet_name: str | None = None):
         self.calls.append(
-            {"fn": "register_basic_user", "name": name, "pet_name": pet_name}
+            {"fn": "register_guest_user", "name": name, "pet_name": pet_name}
         )
         return self.user
 
@@ -126,6 +126,28 @@ class AppleAuthServiceStub:
             raise self.error
         return self.user
 
+    async def link_guest_user(
+        self,
+        *,
+        current_user,
+        identity_token: str,
+        authorization_code: str,
+        user_identifier: str,
+        email: str | None = None,
+    ):
+        self.calls.append(
+            {
+                "current_user_id": str(current_user.id),
+                "identity_token": identity_token,
+                "authorization_code": authorization_code,
+                "user_identifier": user_identifier,
+                "email": email,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.user
+
 
 class AuthSessionServiceStub:
     def __init__(
@@ -163,7 +185,7 @@ class AuthSessionServiceStub:
         return None
 
 
-def test_user_register_returns_user_detail(
+def test_guest_auth_returns_user_detail(
     client, override_api_dep, user_entity_factory, caplog
 ):
     user = user_entity_factory(identifier="u1", name="Ben", pet_name="Mochi")
@@ -171,41 +193,41 @@ def test_user_register_returns_user_detail(
     auth_session_service = override_api_dep(
         get_auth_session_service,
         AuthSessionServiceStub(
-            access_token="basic-access-token",
-            refresh_token="basic-refresh-token",
+            access_token="guest-access-token",
+            refresh_token="guest-refresh-token",
         ),
     )
 
     with caplog.at_level(logging.INFO, logger="interface.api.events"):
         response = client.post(
-            "/api/v1/user/register",
+            "/api/v1/user/auth/guest",
             json={"name": "Ben", "pet_name": "Mochi"},
         )
 
     assert response.status_code == 200
     data = response.json()
     assert data == {
-        "access_token": "basic-access-token",
-        "refresh_token": "basic-refresh-token",
+        "access_token": "guest-access-token",
+        "refresh_token": "guest-refresh-token",
         "token_type": "Bearer",
         "user": {
             "_id": "u1",
             "name": "Ben",
             "pet_name": "Mochi",
-            "source": "basic",
+            "source": "guest",
             "favorite_property_ids": [],
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
         },
     }
     assert service.calls == [
-        {"fn": "register_basic_user", "name": "Ben", "pet_name": "Mochi"}
+        {"fn": "register_guest_user", "name": "Ben", "pet_name": "Mochi"}
     ]
     record = next(record for record in caplog.records if record.event == "auth_registered")
     assert record.user_id == "u1"
-    assert record.source == "basic"
+    assert record.source == "guest"
     assert auth_session_service.calls == [
-        {"fn": "start_session", "user_id": "u1", "source": "basic"}
+        {"fn": "start_session", "user_id": "u1", "source": "guest"}
     ]
 
 
@@ -268,10 +290,69 @@ def test_apple_auth_returns_existing_user(
     ]
 
 
+def test_apple_link_upgrades_guest_user(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(identifier="u1", name="Ben", source="guest")
+    linked_user = current_user.model_copy(
+        update={
+            "source": "apple",
+            "email": "ben@example.com",
+            "apple_user_identifier": "apple-sub-1",
+        }
+    )
+    service = override_api_dep(
+        get_apple_auth_service, AppleAuthServiceStub(user=linked_user)
+    )
+    override_api_dep(get_current_user, current_user)
+    auth_session_service = override_api_dep(
+        get_auth_session_service,
+        AuthSessionServiceStub(),
+    )
+
+    response = client.post(
+        "/api/v1/user/auth/apple/link",
+        json={
+            "identity_token": "token",
+            "authorization_code": "code",
+            "user_identifier": "apple-user-1",
+            "email": "ben@example.com",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["source"] == "apple"
+    assert service.calls == [
+        {
+            "current_user_id": "u1",
+            "identity_token": "token",
+            "authorization_code": "code",
+            "user_identifier": "apple-user-1",
+            "email": "ben@example.com",
+        }
+    ]
+    assert auth_session_service.calls == [
+        {"fn": "start_session", "user_id": "u1", "source": "apple"}
+    ]
+
+
+def test_apple_link_requires_guest_authentication(client):
+    response = client.post(
+        "/api/v1/user/auth/apple/link",
+        json={
+            "identity_token": "token",
+            "authorization_code": "code",
+            "user_identifier": "apple-user-1",
+        },
+    )
+
+    assert response.status_code == 403
+
+
 def test_refresh_user_session_returns_rotated_tokens(
     client, override_api_dep, user_entity_factory
 ):
-    user = user_entity_factory(identifier="u1", name="Ben", source="basic")
+    user = user_entity_factory(identifier="u1", name="Ben", source="guest")
     auth_session_service = override_api_dep(
         get_auth_session_service,
         AuthSessionServiceStub(
@@ -295,7 +376,7 @@ def test_refresh_user_session_returns_rotated_tokens(
             "_id": "u1",
             "name": "Ben",
             "pet_name": None,
-            "source": "basic",
+            "source": "guest",
             "favorite_property_ids": [],
             "created_at": "2026-01-01T00:00:00Z",
             "updated_at": "2026-01-01T00:00:00Z",
@@ -309,7 +390,7 @@ def test_refresh_user_session_returns_rotated_tokens(
 def test_logout_user_revokes_current_session(
     client, override_api_dep, user_entity_factory
 ):
-    current_user = user_entity_factory(identifier="u1", name="Ben", source="basic")
+    current_user = user_entity_factory(identifier="u1", name="Ben", source="guest")
     override_api_dep(get_current_user, current_user)
     auth_session_service = override_api_dep(
         get_auth_session_service,
@@ -460,11 +541,11 @@ def test_get_me_returns_authentication_status(
     assert response.json() == {"authenticated": True}
 
 
-def test_register_rejects_blank_name(client, override_api_dep):
+def test_guest_auth_rejects_blank_name(client, override_api_dep):
     override_api_dep(get_user_service, UserServiceStub())
 
     response = client.post(
-        "/api/v1/user/register",
+        "/api/v1/user/auth/guest",
         json={"name": "   ", "pet_name": "Mochi"},
     )
 

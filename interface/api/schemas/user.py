@@ -72,8 +72,8 @@ class UpdateUserProfileRequest(BaseModel):
     }
 
 
-class RegisterBasicUserRequest(BaseModel):
-    name: RequiredUserName = Field(description="Display name for a basic account.")
+class GuestAuthRequest(BaseModel):
+    name: RequiredUserName = Field(description="Display name for a guest account.")
     pet_name: OptionalPetName | None = Field(
         default=None,
         description="Optional pet name saved on the user profile.",
@@ -161,6 +161,44 @@ class AppleAuthRequest(BaseModel):
                 "email": "ben@example.com",
                 "name": "Ben",
                 "pet_name": "Mochi",
+            }
+        }
+    }
+
+
+class AppleLinkRequest(BaseModel):
+    identity_token: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ] = Field(description="Apple identity token returned by Sign in with Apple.")
+    authorization_code: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ] = Field(description="Apple authorization code returned by Sign in with Apple.")
+    user_identifier: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=1)
+    ] = Field(
+        description="Stable Apple user identifier from the client credential payload."
+    )
+    email: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None
+    ) = Field(
+        default=None,
+        description="Optional email returned by Apple, usually only on first consent.",
+    )
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def empty_optional_email_to_none(cls, value: str | None):
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "identity_token": "apple-identity-token",
+                "authorization_code": "apple-authorization-code",
+                "user_identifier": "apple-user-identifier",
+                "email": "ben@example.com",
             }
         }
     }

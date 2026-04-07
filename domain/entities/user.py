@@ -17,7 +17,7 @@ class UserEntity(BaseModel):
     name: str
     pet_name: str | None = None
     email: str | None = None
-    source: Literal["apple", "basic"] = Field(default="basic")
+    source: Literal["apple", "guest"] = Field(default="guest")
     apple_user_identifier: str | None = None
     favorite_property_ids: list[str] = Field(default_factory=list)
     property_notes: list[PropertyNoteEntity] = Field(default_factory=list)

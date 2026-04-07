@@ -15,14 +15,15 @@ class UserRepository(IUserRepository):
     def __init__(self, client, collection_name: str):
         self.collection = client.get_collection(collection_name)
 
-    async def register_basic_user(
+    async def register_guest_user(
         self, name: str, pet_name: str | None = None
     ) -> UserEntity:
+        now = datetime.now(UTC)
         result = await self.collection.insert_one(
             {
                 "name": name,
                 "pet_name": pet_name,
-                "source": "basic",
+                "source": "guest",
                 "favorite_property_ids": [],
                 "property_notes": [],
                 "recent_searches": [],
@@ -30,13 +31,15 @@ class UserRepository(IUserRepository):
                 "refresh_token_hash": None,
                 "is_deleted": False,
                 "deleted_at": None,
+                "created_at": now,
+                "updated_at": now,
             }
         )
         return UserEntity(
             _id=result.inserted_id,
             name=name,
             pet_name=pet_name,
-            source="basic",
+            source="guest",
             favorite_property_ids=[],
             property_notes=[],
             recent_searches=[],
@@ -44,6 +47,8 @@ class UserRepository(IUserRepository):
             refresh_token_hash=None,
             is_deleted=False,
             deleted_at=None,
+            created_at=now,
+            updated_at=now,
         )
 
     async def register_apple_user(
@@ -102,6 +107,32 @@ class UserRepository(IUserRepository):
     ) -> Optional[UserEntity]:
         doc = await self.collection.find_one(
             {"apple_user_identifier": apple_user_identifier}
+        )
+        if doc:
+            return UserEntity(**doc)
+        return None
+
+    async def link_guest_user_to_apple(
+        self,
+        *,
+        user_id: str,
+        apple_user_identifier: str,
+        email: str | None = None,
+    ) -> UserEntity | None:
+        now = datetime.now(UTC)
+        update_fields = {
+            "source": "apple",
+            "apple_user_identifier": apple_user_identifier,
+            "updated_at": now,
+        }
+        if email is not None:
+            update_fields["email"] = email
+        await self.collection.update_one(
+            {"_id": ObjectId(user_id), "source": "guest", "is_deleted": False},
+            {"$set": update_fields},
+        )
+        doc = await self.collection.find_one(
+            {"_id": ObjectId(user_id), "source": "apple", "is_deleted": False}
         )
         if doc:
             return UserEntity(**doc)

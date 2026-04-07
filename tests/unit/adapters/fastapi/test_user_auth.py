@@ -33,7 +33,7 @@ def test_get_me_rejects_invalid_user_id(client, override_api_dep):
         ),
     )
     token = token_service.issue_access_token(
-        user_id="missing-user", source="basic", session_version=0
+        user_id="missing-user", source="guest", session_version=0
     )
 
     response = client.get(
@@ -66,7 +66,7 @@ def test_get_me_rejects_deleted_user(client, override_api_dep, user_entity_facto
         ),
     )
     token = token_service.issue_access_token(
-        user_id="u1", source="basic", session_version=0
+        user_id="u1", source="guest", session_version=0
     )
 
     response = client.get(
@@ -112,13 +112,13 @@ def test_get_me_accepts_valid_bearer_token_for_apple_user(
     assert repo.calls == [{"fn": "get_user_by_id", "user_id": "u1"}]
 
 
-def test_get_me_accepts_valid_bearer_token_for_basic_user(
+def test_get_me_accepts_valid_bearer_token_for_guest_user(
     client, override_api_dep, user_entity_factory
 ):
     repo = override_api_dep(
         get_user_repository,
         UserRepositoryStub(
-            user=user_entity_factory(identifier="u2", name="Mochi", source="basic")
+            user=user_entity_factory(identifier="u2", name="Mochi", source="guest")
         ),
     )
     token_service = override_api_dep(
@@ -130,7 +130,7 @@ def test_get_me_accepts_valid_bearer_token_for_basic_user(
         ),
     )
     token = token_service.issue_access_token(
-        user_id="u2", source="basic", session_version=0
+        user_id="u2", source="guest", session_version=0
     )
 
     response = client.get(
@@ -149,7 +149,7 @@ def test_get_me_rejects_bearer_token_for_mismatched_user_source(
     repo = override_api_dep(
         get_user_repository,
         UserRepositoryStub(
-            user=user_entity_factory(identifier="u1", name="Ben", source="basic")
+            user=user_entity_factory(identifier="u1", name="Ben", source="guest")
         ),
     )
     token_service = override_api_dep(

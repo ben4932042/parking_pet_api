@@ -6,7 +6,7 @@ from infrastructure.mongo.user import UserRepository
 
 
 @pytest.mark.asyncio
-async def test_register_basic_user_persists_pet_name():
+async def test_register_guest_user_persists_pet_name():
     collection = AsyncMock()
     collection.insert_one.return_value.inserted_id = "507f1f77bcf86cd799439011"
 
@@ -16,12 +16,12 @@ async def test_register_basic_user_persists_pet_name():
 
     repo = UserRepository(client=ClientStub(), collection_name="user")
 
-    user = await repo.register_basic_user(name="Ben", pet_name="Mochi")
+    user = await repo.register_guest_user(name="Ben", pet_name="Mochi")
 
     assert user.id == "507f1f77bcf86cd799439011"
     assert user.name == "Ben"
     assert user.pet_name == "Mochi"
-    assert user.source == "basic"
+    assert user.source == "guest"
     assert user.favorite_property_ids == []
     assert user.property_notes == []
     assert user.recent_searches == []
@@ -29,7 +29,7 @@ async def test_register_basic_user_persists_pet_name():
         {
             "name": "Ben",
             "pet_name": "Mochi",
-            "source": "basic",
+            "source": "guest",
             "favorite_property_ids": [],
             "property_notes": [],
             "recent_searches": [],
@@ -37,6 +37,8 @@ async def test_register_basic_user_persists_pet_name():
             "refresh_token_hash": None,
             "is_deleted": False,
             "deleted_at": None,
+            "created_at": user.created_at,
+            "updated_at": user.updated_at,
         }
     )
 
@@ -110,6 +112,51 @@ async def test_get_user_by_apple_user_identifier_returns_matching_user():
 
 
 @pytest.mark.asyncio
+async def test_link_guest_user_to_apple_updates_binding_fields():
+    collection = AsyncMock()
+    collection.find_one.return_value = {
+        "_id": "507f1f77bcf86cd799439012",
+        "name": "Ben",
+        "pet_name": "Mochi",
+        "email": "ben@example.com",
+        "source": "apple",
+        "apple_user_identifier": "apple-sub-1",
+        "favorite_property_ids": [],
+        "recent_searches": [],
+        "session_version": 0,
+        "refresh_token_hash": None,
+        "is_deleted": False,
+        "deleted_at": None,
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 2, tzinfo=UTC),
+    }
+
+    class ClientStub:
+        def get_collection(self, _collection_name: str):
+            return collection
+
+    repo = UserRepository(client=ClientStub(), collection_name="user")
+
+    user = await repo.link_guest_user_to_apple(
+        user_id="507f1f77bcf86cd799439012",
+        apple_user_identifier="apple-sub-1",
+        email="ben@example.com",
+    )
+
+    assert user is not None
+    assert user.source == "apple"
+    update_filter, update_doc = collection.update_one.await_args.args
+    assert update_filter == {
+        "_id": pytest.importorskip("bson").ObjectId("507f1f77bcf86cd799439012"),
+        "source": "guest",
+        "is_deleted": False,
+    }
+    assert update_doc["$set"]["source"] == "apple"
+    assert update_doc["$set"]["apple_user_identifier"] == "apple-sub-1"
+    assert update_doc["$set"]["email"] == "ben@example.com"
+
+
+@pytest.mark.asyncio
 async def test_delete_user_removes_document():
     collection = AsyncMock()
     collection.update_one.return_value.matched_count = 1
@@ -178,7 +225,7 @@ async def test_record_recent_search_deduplicates_and_prepends_latest_entry():
             "_id": "507f1f77bcf86cd799439011",
             "name": "Ben",
             "pet_name": "Mochi",
-            "source": "basic",
+            "source": "guest",
             "favorite_property_ids": [],
             "recent_searches": [
                 {
@@ -199,7 +246,7 @@ async def test_record_recent_search_deduplicates_and_prepends_latest_entry():
             "_id": "507f1f77bcf86cd799439011",
             "name": "Ben",
             "pet_name": "Mochi",
-            "source": "basic",
+            "source": "guest",
             "favorite_property_ids": [],
             "recent_searches": [
                 {
@@ -244,7 +291,7 @@ async def test_start_auth_session_increments_session_version_and_stores_hash():
     collection.find_one.return_value = {
         "_id": "507f1f77bcf86cd799439011",
         "name": "Ben",
-        "source": "basic",
+        "source": "guest",
         "favorite_property_ids": [],
         "recent_searches": [],
         "session_version": 1,
@@ -281,7 +328,7 @@ async def test_rotate_refresh_token_updates_hash_without_bumping_session_version
     collection.find_one.return_value = {
         "_id": "507f1f77bcf86cd799439011",
         "name": "Ben",
-        "source": "basic",
+        "source": "guest",
         "favorite_property_ids": [],
         "recent_searches": [],
         "session_version": 1,
@@ -315,7 +362,7 @@ async def test_revoke_auth_session_clears_hash_and_bumps_session_version():
     collection.find_one.return_value = {
         "_id": "507f1f77bcf86cd799439011",
         "name": "Ben",
-        "source": "basic",
+        "source": "guest",
         "favorite_property_ids": [],
         "recent_searches": [],
         "session_version": 2,
@@ -348,7 +395,7 @@ async def test_record_recent_search_respects_limit():
             "_id": "507f1f77bcf86cd799439011",
             "name": "Ben",
             "pet_name": "Mochi",
-            "source": "basic",
+            "source": "guest",
             "favorite_property_ids": [],
             "recent_searches": [
                 {"query": "q1", "searched_at": datetime(2026, 1, 1, tzinfo=UTC)},
@@ -361,7 +408,7 @@ async def test_record_recent_search_respects_limit():
             "_id": "507f1f77bcf86cd799439011",
             "name": "Ben",
             "pet_name": "Mochi",
-            "source": "basic",
+            "source": "guest",
             "favorite_property_ids": [],
             "recent_searches": [
                 {"query": "q0", "searched_at": datetime(2026, 1, 2, tzinfo=UTC)},
@@ -394,7 +441,7 @@ async def test_update_user_profile_updates_name_and_pet_name():
         "_id": "507f1f77bcf86cd799439011",
         "name": "Ben Updated",
         "pet_name": "Mochi",
-        "source": "basic",
+        "source": "guest",
         "favorite_property_ids": [],
         "recent_searches": [],
         "created_at": datetime(2026, 1, 1, tzinfo=UTC),
@@ -427,7 +474,7 @@ async def test_get_property_note_returns_matching_embedded_note():
     collection.find_one.return_value = {
         "_id": "507f1f77bcf86cd799439011",
         "name": "Ben",
-        "source": "basic",
+        "source": "guest",
         "favorite_property_ids": [],
         "property_notes": [
             {
@@ -461,7 +508,7 @@ async def test_upsert_property_note_updates_existing_embedded_note():
     collection.find_one.return_value = {
         "_id": "507f1f77bcf86cd799439011",
         "name": "Ben",
-        "source": "basic",
+        "source": "guest",
         "favorite_property_ids": [],
         "property_notes": [
             {
@@ -500,7 +547,7 @@ async def test_list_property_notes_filters_sorts_and_paginates():
     collection.find_one.return_value = {
         "_id": "507f1f77bcf86cd799439011",
         "name": "Ben",
-        "source": "basic",
+        "source": "guest",
         "favorite_property_ids": [],
         "property_notes": [
             {

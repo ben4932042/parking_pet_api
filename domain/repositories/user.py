@@ -8,7 +8,7 @@ from domain.entities.user import UserEntity
 
 class IUserRepository(ABC):
     @abstractmethod
-    async def register_basic_user(
+    async def register_guest_user(
         self, name: str, pet_name: str | None = None
     ) -> UserEntity: ...
 
@@ -29,6 +29,15 @@ class IUserRepository(ABC):
     async def get_user_by_apple_user_identifier(
         self, apple_user_identifier: str
     ) -> Optional[UserEntity]: ...
+
+    @abstractmethod
+    async def link_guest_user_to_apple(
+        self,
+        *,
+        user_id: str,
+        apple_user_identifier: str,
+        email: str | None = None,
+    ) -> UserEntity | None: ...
 
     @abstractmethod
     async def update_user_profile(

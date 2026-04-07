@@ -58,7 +58,7 @@ class UserRepoStub(IUserRepository):
         self.notes = notes or ([] if note is None else [note])
         self.calls = []
 
-    async def register_basic_user(self, name: str, pet_name: str | None = None):
+    async def register_guest_user(self, name: str, pet_name: str | None = None):
         raise NotImplementedError
 
     async def register_apple_user(
@@ -75,6 +75,15 @@ class UserRepoStub(IUserRepository):
         raise NotImplementedError
 
     async def get_user_by_apple_user_identifier(self, apple_user_identifier: str):
+        raise NotImplementedError
+
+    async def link_guest_user_to_apple(
+        self,
+        *,
+        user_id: str,
+        apple_user_identifier: str,
+        email: str | None = None,
+    ):
         raise NotImplementedError
 
     async def update_user_profile(

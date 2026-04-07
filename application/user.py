@@ -6,8 +6,8 @@ class UserService:
     def __init__(self, repo: IUserRepository):
         self.repo = repo
 
-    async def register_basic_user(self, name: str, pet_name: str | None = None):
-        return await self.repo.register_basic_user(name=name, pet_name=pet_name)
+    async def register_guest_user(self, name: str, pet_name: str | None = None):
+        return await self.repo.register_guest_user(name=name, pet_name=pet_name)
 
     async def get_user_by_id(self, user_id: PyObjectId):
         return await self.repo.get_user_by_id(user_id)

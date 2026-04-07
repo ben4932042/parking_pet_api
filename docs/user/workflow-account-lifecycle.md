@@ -2,13 +2,13 @@
 
 ## Scope
 
-This document covers the current user account lifecycle, including registration, Apple login, authenticated profile flows, and account deletion or restoration behavior.
+This document covers the current user account lifecycle, including guest auth, Apple login, Apple linking, authenticated profile flows, and account deletion or restoration behavior.
 
 ## When To Read This Doc
 
 Read this document when:
 
-- changing user registration behavior
+- changing guest-auth behavior
 - changing Apple Login behavior
 - changing header-based authentication behavior
 - changing profile, favorite, search-history, or note flows that depend on the current user
@@ -22,8 +22,9 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 
 ## Entry Points
 
-- Basic registration: `POST /api/v1/user/register`
+- Guest auth: `POST /api/v1/user/auth/guest`
 - Apple login: `POST /api/v1/user/auth/apple`
+- Apple link for guest users: `POST /api/v1/user/auth/apple/link`
 - Refresh auth session: `POST /api/v1/user/auth/refresh`
 - Logout current session: `POST /api/v1/user/auth/logout`
 - Current user auth status: `GET /api/v1/user/me`
@@ -50,7 +51,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - Apple `identity_token` is only used during Apple login. Normal authenticated API calls use backend-issued bearer tokens.
 - `get_current_user` must reject requests with no bearer token, malformed bearer headers, unknown users, or soft-deleted users.
 - `get_optional_current_user` may return `None` for anonymous, unknown, or soft-deleted users.
-- Basic registration creates a new user with `source="basic"`.
+- Guest auth creates a new user with `source="guest"`.
 - Apple login verifies the Apple identity token before any user lookup or creation.
 - Apple identity token verification must validate:
   - the Apple signature against Apple JWKS
@@ -63,13 +64,13 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - If Apple login finds a soft-deleted user, it restores that same user and returns it.
 - If Apple login does not find a user and `name` is missing, it must return a validation error so the client can enter a supplement-information flow.
 - If Apple login does not find a user and the required fields are present, it creates a new `source="apple"` user.
-- Successful basic registration and successful Apple login both start an auth session and return:
+- Successful guest auth, successful Apple login, and successful Apple linking all start an auth session and return:
   - `access_token`
   - `refresh_token`
   - the latest user snapshot
 - Access and refresh tokens are backend-signed and include:
   - `sub` for the user id
-  - `source` for the user source such as `basic` or `apple`
+  - `source` for the user source such as `guest` or `apple`
   - `type` for `access` or `refresh`
   - `sv` for `session_version`
   - `iss`, `iat`, and `exp`
@@ -92,9 +93,9 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 
 ## Current Lifecycle
 
-### 1. Basic registration
+### 1. Guest auth
 
-- Client calls `POST /api/v1/user/register` with `name` and optional `pet_name`.
+- Client calls `POST /api/v1/user/auth/guest` with `name` and optional `pet_name`.
 - Backend creates a new user document.
 - Backend starts an auth session for the newly created user.
 - The response returns the created user payload together with `access_token` and `refresh_token`.
@@ -110,7 +111,16 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - If no matching user exists and required fields are present, backend creates a new Apple user and returns it.
 - Backend starts an auth session and returns backend-issued `access_token` and `refresh_token`.
 
-### 3. Authenticated requests
+### 3. Guest links Apple
+
+- Client calls `POST /api/v1/user/auth/apple/link` with `Authorization: Bearer <access-token>`.
+- Backend requires the authenticated user to still be a guest user.
+- Backend verifies the Apple `identity_token`.
+- Backend rejects the request if the verified Apple identity is already linked to another user.
+- Backend upgrades the same guest user record in place to `source="apple"` and stores the verified Apple `sub`.
+- Backend starts a fresh auth session and returns backend-issued `access_token` and `refresh_token`.
+
+### 4. Authenticated requests
 
 - Client sends `Authorization: Bearer <access-token>` on authenticated routes.
 - Backend verifies the token signature, issuer, expiry, token type, and claims.
@@ -118,7 +128,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - Backend rejects the request unless the stored user still matches the token `source` and `session_version`.
 - Soft-deleted users are treated as invalid credentials.
 
-### 4. Refresh session
+### 5. Refresh session
 
 - Client calls `POST /api/v1/user/auth/refresh` with the current `refresh_token`.
 - Backend verifies the refresh token.
@@ -126,7 +136,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - Backend rotates the refresh token by storing the hash of a newly issued refresh token.
 - Backend returns a new `access_token`, a new `refresh_token`, and the latest user snapshot.
 
-### 5. Logout
+### 6. Logout
 
 - Client calls `POST /api/v1/user/auth/logout` with `Authorization: Bearer <access-token>`.
 - Backend clears the stored `refresh_token_hash`.
@@ -134,7 +144,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - Existing refresh tokens become unusable.
 - Existing access tokens also stop working because the persisted `session_version` no longer matches the token claims.
 
-### 6. User-owned interaction data
+### 7. User-owned interaction data
 
 - Favorite property ids are stored on the user record in `favorite_property_ids`.
 - Search history is stored on the user record in `recent_searches`.
@@ -142,7 +152,7 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 - Property-facing note workflows may still compose property overview data before returning API responses.
 - Search feedback is stored separately and linked by user id.
 
-### 7. Account deletion
+### 8. Account deletion
 
 - Client calls `DELETE /api/v1/user`.
 - Backend marks the current user as deleted.
@@ -153,7 +163,8 @@ Read `docs/property/workflow-favorite.md` when the change is specifically about 
 ## Validation
 
 - Keep unit tests stable for:
-  - basic registration
+  - guest auth
+  - guest-to-Apple linking
   - Apple login success and failure cases
   - auth session creation
   - refresh-token rotation

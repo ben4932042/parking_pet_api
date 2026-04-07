@@ -126,7 +126,7 @@ def integration_search_setup(api_app):
         id = "u1"
         property_notes = []
         favorite_property_ids = []
-        source = "basic"
+        source = "guest"
         session_version = 0
 
     api_app.dependency_overrides[get_property_service] = _property_service_override

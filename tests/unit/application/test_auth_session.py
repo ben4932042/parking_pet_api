@@ -97,7 +97,7 @@ class ClaimsStub:
 async def test_start_session_issues_tokens_for_incremented_session_version(
     user_entity_factory,
 ):
-    user = user_entity_factory(identifier="u1", name="Ben", source="basic")
+    user = user_entity_factory(identifier="u1", name="Ben", source="guest")
     session_user = user.model_copy(update={"session_version": 1})
     repo = UserRepoStub(user=session_user)
     access_service = TokenServiceStub(access_token="access-1")
@@ -118,7 +118,7 @@ async def test_start_session_issues_tokens_for_incremented_session_version(
         {
             "fn": "issue_access_token",
             "user_id": "u1",
-            "source": "basic",
+            "source": "guest",
             "session_version": 1,
         }
     ]
@@ -191,7 +191,7 @@ async def test_refresh_session_rejects_mismatched_refresh_token_hash(
 
 @pytest.mark.asyncio
 async def test_logout_revokes_auth_session(user_entity_factory):
-    user = user_entity_factory(identifier="u1", name="Ben", source="basic")
+    user = user_entity_factory(identifier="u1", name="Ben", source="guest")
     repo = UserRepoStub(user=user)
     service = AuthSessionService(
         repo=repo,

@@ -150,7 +150,7 @@ def user_entity_factory():
         identifier: str = "u1",
         name: str = "Ben",
         pet_name: str | None = None,
-        source: str = "basic",
+        source: str = "guest",
         email: str | None = None,
         apple_user_identifier: str | None = None,
         favorite_property_ids: list[str] | None = None,

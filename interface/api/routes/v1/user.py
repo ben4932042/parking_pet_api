@@ -32,7 +32,8 @@ from interface.api.schemas.user import (
     FavoritePropertyResponse,
     FavoritePropertyStatusResponse,
     AppleAuthRequest,
-    RegisterBasicUserRequest,
+    AppleLinkRequest,
+    GuestAuthRequest,
     UpdateUserProfileRequest,
     UserProfileResponse,
     UserDeleteResponse,
@@ -94,23 +95,23 @@ async def authenticate_with_apple(
 
 
 @router.post(
-    "/register",
-    name="register_user",
+    "/auth/guest",
+    name="authenticate_guest_user",
     status_code=status.HTTP_200_OK,
     response_model=UserAuthSessionResponse,
-    summary="Register basic user",
+    summary="Authenticate as guest",
     description=(
-        "Creates a basic user account with name and optional pet name, "
+        "Creates a guest user account with name and optional pet name, "
         "then immediately starts an authenticated bearer-token session."
     ),
 )
-async def register_basic_user(
+async def authenticate_guest_user(
     request: Request,
-    payload: RegisterBasicUserRequest,
+    payload: GuestAuthRequest,
     service: UserService = Depends(get_user_service),
     auth_session_service: AuthSessionService = Depends(get_auth_session_service),
 ):
-    user = await service.register_basic_user(
+    user = await service.register_guest_user(
         name=payload.name,
         pet_name=payload.pet_name,
     )
@@ -126,6 +127,55 @@ async def register_basic_user(
         refresh_token=session.refresh_token,
         user=UserDetailResponse.model_validate(session.user),
     )
+
+
+@router.post(
+    "/auth/apple/link",
+    name="link_guest_user_with_apple",
+    status_code=status.HTTP_200_OK,
+    response_model=UserAuthSessionResponse,
+    summary="Link guest account with Apple",
+    description=(
+        "Verifies the Apple identity token, upgrades the authenticated guest user to "
+        "an Apple-linked account, and returns a fresh bearer-token session."
+    ),
+)
+async def link_guest_user_with_apple(
+    request: Request,
+    payload: AppleLinkRequest,
+    service: AppleAuthService = Depends(get_apple_auth_service),
+    auth_session_service: AuthSessionService = Depends(get_auth_session_service),
+    current_user=Depends(get_current_user),
+):
+    try:
+        user = await service.link_guest_user(
+            current_user=current_user,
+            identity_token=payload.identity_token,
+            authorization_code=payload.authorization_code,
+            user_identifier=payload.user_identifier,
+            email=payload.email,
+        )
+        session = await auth_session_service.start_session(user=user)
+        log_api_event(
+            "auth_link_succeeded",
+            request=request,
+            extra={"provider": "apple"},
+            user_id=str(session.user.id),
+        )
+        return UserAuthSessionResponse(
+            access_token=session.access_token,
+            refresh_token=session.refresh_token,
+            user=UserDetailResponse.model_validate(session.user),
+        )
+    except ApplicationError as exc:
+        log_api_event(
+            "auth_link_failed",
+            request=request,
+            level=logging.WARNING,
+            extra={"provider": "apple", "reason": exc.message},
+            user_id=str(current_user.id),
+        )
+        raise from_application_error(exc)
 
 
 @router.post(

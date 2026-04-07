@@ -45,7 +45,7 @@ class UserRepositoryStub:
         return self.user
 
 
-def _issue_auth_token(override_api_dep, *, user_id: str, source: str = "basic") -> str:
+def _issue_auth_token(override_api_dep, *, user_id: str, source: str = "guest") -> str:
     token_service = override_api_dep(
         get_auth_token_service,
         AuthTokenService(

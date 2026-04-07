@@ -19,8 +19,9 @@ Read `docs/user/workflow-account-lifecycle.md` when you need execution rules, li
 
 ## Entry Points
 
-- Basic registration: `POST /api/v1/user/register`
+- Guest auth: `POST /api/v1/user/auth/guest`
 - Apple login: `POST /api/v1/user/auth/apple`
+- Apple account linking for guest users: `POST /api/v1/user/auth/apple/link`
 - Refresh auth session: `POST /api/v1/user/auth/refresh`
 - Logout current session: `POST /api/v1/user/auth/logout`
 - Current user auth status: `GET /api/v1/user/me`
@@ -35,7 +36,7 @@ Read `docs/user/workflow-account-lifecycle.md` when you need execution rules, li
 
 ### Application Layer
 
-- Own user registration, Apple-login business flow, and session lifecycle decisions.
+- Own guest-account creation, Apple-login business flow, Apple-linking flow, and session lifecycle decisions.
 - Decide how persisted user state participates in authentication validity.
 - Keep user and auth policy out of transport-specific layers.
 
@@ -61,8 +62,9 @@ Read `docs/user/workflow-account-lifecycle.md` when you need execution rules, li
 
 ### Identity Sources
 
-- `basic` users are created by `POST /api/v1/user/register`.
+- `guest` users are created by `POST /api/v1/user/auth/guest`.
 - `apple` users are resolved or created by `POST /api/v1/user/auth/apple`.
+- Guest users may be upgraded in-place to Apple-linked users by `POST /api/v1/user/auth/apple/link`.
 - After login or registration succeeds, normal authenticated traffic must use backend-issued bearer tokens, not the original login credential.
 
 ### Apple Identity Verification
@@ -73,7 +75,7 @@ Read `docs/user/workflow-account-lifecycle.md` when you need execution rules, li
 
 ### Backend Auth Session
 
-- After registration or Apple login, the backend starts its own auth session and returns `access_token`, `refresh_token`, and the latest user snapshot.
+- After guest auth, Apple login, or Apple linking succeeds, the backend starts its own auth session and returns `access_token`, `refresh_token`, and the latest user snapshot.
 - Access and refresh tokens are backend-signed with different TTLs and carry user identity plus session-version claims.
 - The token format is an implementation detail of `infrastructure/auth/tokens.py`, but session semantics are an application concern.
 

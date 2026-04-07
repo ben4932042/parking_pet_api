@@ -9,9 +9,9 @@ class UserRepoStub(IUserRepository):
         self.user = user
         self.calls = []
 
-    async def register_basic_user(self, name: str, pet_name: str | None = None):
+    async def register_guest_user(self, name: str, pet_name: str | None = None):
         self.calls.append(
-            {"fn": "register_basic_user", "name": name, "pet_name": pet_name}
+            {"fn": "register_guest_user", "name": name, "pet_name": pet_name}
         )
         return self.user
 
@@ -43,6 +43,23 @@ class UserRepoStub(IUserRepository):
             {
                 "fn": "get_user_by_apple_user_identifier",
                 "apple_user_identifier": apple_user_identifier,
+            }
+        )
+        return self.user
+
+    async def link_guest_user_to_apple(
+        self,
+        *,
+        user_id: str,
+        apple_user_identifier: str,
+        email: str | None = None,
+    ):
+        self.calls.append(
+            {
+                "fn": "link_guest_user_to_apple",
+                "user_id": user_id,
+                "apple_user_identifier": apple_user_identifier,
+                "email": email,
             }
         )
         return self.user
@@ -162,16 +179,16 @@ class UserRepoStub(IUserRepository):
 
 
 @pytest.mark.asyncio
-async def test_register_basic_user_delegates_to_repo(user_entity_factory):
+async def test_register_guest_user_delegates_to_repo(user_entity_factory):
     user = user_entity_factory(identifier="u1", name="Ben")
     repo = UserRepoStub(user=user)
     service = UserService(repo=repo)
 
-    result = await service.register_basic_user(name="Ben", pet_name="Mochi")
+    result = await service.register_guest_user(name="Ben", pet_name="Mochi")
 
     assert result == user
     assert repo.calls == [
-        {"fn": "register_basic_user", "name": "Ben", "pet_name": "Mochi"}
+        {"fn": "register_guest_user", "name": "Ben", "pet_name": "Mochi"}
     ]
 
 
