@@ -137,6 +137,13 @@ class PropertySearchResultDto(BaseModel):
     results: list[PropertyOverviewDto] = Field(default_factory=list)
 
 
+class ReviewDto(BaseModel):
+    author: str | None = None
+    rating: float | None = None
+    text: str | None = None
+    time: str | None = None
+
+
 class PropertyDetailDto(BaseModel):
     id: str
     name: str
@@ -152,6 +159,8 @@ class PropertyDetailDto(BaseModel):
     ai_analysis: AIAnalysisDto
     manual_overrides: PropertyManualOverridesDto | None = None
     effective_pet_features: PetFeaturesDto | None = None
+    source_user_rating_count: int | None = None
+    source_reviews: list[ReviewDto] = Field(default_factory=list)
     created_by: ActorDto | None = None
     updated_by: ActorDto | None = None
     created_at: datetime

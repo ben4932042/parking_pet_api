@@ -4,6 +4,7 @@ from application.property import PropertyService
 from application.exceptions import ConflictError, NotFoundError
 from domain.entities.audit import PropertyAuditAction
 from domain.entities.enrichment import AnalysisSource, Review
+from domain.entities.parking import NearbyParkingCandidate
 from domain.entities.property import (
     PetRulesOverride,
     PetFeaturesOverride,
@@ -12,6 +13,7 @@ from domain.entities.property import (
     PropertyManualOverrides,
 )
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
+from domain.repositories.parking import IParkingRepository
 from domain.repositories.property import IPropertyRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.services.property_enrichment import IEnrichmentProvider
@@ -92,13 +94,26 @@ class DummyRawDataRepo(IPlaceRawDataRepository):
 
 
 class SyncEnrichmentProvider(IEnrichmentProvider):
-    def __init__(self, source: AnalysisSource, synced_property: PropertyEntity):
+    def __init__(
+        self,
+        source: AnalysisSource,
+        synced_property: PropertyEntity,
+        nearby_parking: list[NearbyParkingCandidate] | None = None,
+        parking_error: Exception | None = None,
+    ):
         self.source = source
         self.synced_property = synced_property
         self.generate_calls: list[AnalysisSource] = []
         self.details_calls: list[AnalysisSource] = []
+        self.basic_calls: list[str] = []
+        self.nearby_parking = nearby_parking or []
+        self.parking_error = parking_error
 
     def create_property_by_name(self, property_name: str) -> AnalysisSource:
+        return self.source
+
+    def renew_property_from_basic(self, place_id: str) -> AnalysisSource:
+        self.basic_calls.append(place_id)
         return self.source
 
     def renew_property_from_details(self, source: AnalysisSource) -> AnalysisSource:
@@ -114,6 +129,27 @@ class SyncEnrichmentProvider(IEnrichmentProvider):
 
     async def geocode_landmark(self, landmark_name: str):
         return landmark_name, None
+
+    def search_nearby_parking(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        radius: float = 2000.0,
+        max_result_count: int = 20,
+    ) -> list[NearbyParkingCandidate]:
+        if self.parking_error is not None:
+            raise self.parking_error
+        return list(self.nearby_parking)
+
+
+class InMemoryParkingRepo(IParkingRepository):
+    def __init__(self):
+        self.saved = []
+
+    async def save(self, parking):
+        self.saved.append(parking)
+        return parking
 
 
 def build_source(place_id: str) -> AnalysisSource:
@@ -325,6 +361,73 @@ async def test_create_property_new_record_writes_create_audit_and_actor(
 
 
 @pytest.mark.asyncio
+async def test_create_property_syncs_nearby_parking_into_parking_repo(
+    property_entity_factory, actor_factory
+):
+    created = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(None)
+    audit_repo = InMemoryAuditRepo()
+    raw_repo = DummyRawDataRepo()
+    parking_repo = InMemoryParkingRepo()
+    provider = SyncEnrichmentProvider(
+        build_source("place-1"),
+        created,
+        nearby_parking=[
+            NearbyParkingCandidate(
+                place_id="parking-1",
+                name="中園停車場",
+                latitude=25.031,
+                longitude=121.561,
+                address="桃園市中壢區",
+                primary_type="parking",
+                types=["parking"],
+            )
+        ],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+        parking_repo=parking_repo,
+    )
+
+    await service.create_property(name="test", actor=actor_factory())
+
+    assert len(parking_repo.saved) == 1
+    assert parking_repo.saved[0].id == "parking-1"
+    assert parking_repo.saved[0].name == "中園停車場"
+    assert parking_repo.saved[0].location.coordinates == [121.561, 25.031]
+
+
+@pytest.mark.asyncio
+async def test_create_property_does_not_fail_when_nearby_parking_sync_errors(
+    property_entity_factory, actor_factory
+):
+    created = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(None)
+    audit_repo = InMemoryAuditRepo()
+    raw_repo = DummyRawDataRepo()
+    parking_repo = InMemoryParkingRepo()
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=SyncEnrichmentProvider(
+            build_source("place-1"),
+            created,
+            parking_error=RuntimeError("parking upstream failed"),
+        ),
+        parking_repo=parking_repo,
+    )
+
+    saved = await service.create_property(name="test", actor=actor_factory())
+
+    assert saved.id == "place-1"
+    assert parking_repo.saved == []
+
+
+@pytest.mark.asyncio
 async def test_create_property_result_marks_duplicate_as_unchanged(
     property_entity_factory, actor_factory
 ):
@@ -518,31 +621,99 @@ async def test_renew_property_in_details_mode_uses_existing_raw_source(
 
 
 @pytest.mark.asyncio
-async def test_renew_property_in_basic_mode_rejects_place_id_mismatch(
+async def test_renew_property_in_basic_mode_uses_place_id_and_syncs_nearby_parking(
     property_entity_factory, actor_factory
 ):
     existing = property_entity_factory(identifier="p1", place_id="place-1", name="old")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
     repo = InMemoryPropertyRepo(existing)
     raw_data_repo = DummyRawDataRepo(
         existing=build_source("place-1").model_copy(
             update={"origin_search_name": "old"}
         )
     )
-    mismatched_source = build_source("place-2")
-    provider = SyncEnrichmentProvider(mismatched_source, existing)
+    parking_repo = InMemoryParkingRepo()
+    provider = SyncEnrichmentProvider(
+        build_source("place-1").model_copy(
+            update={"user_rating_count": 11, "reviews": [build_review("alice", 5, "new")]}
+        ),
+        synced,
+        nearby_parking=[
+            NearbyParkingCandidate(
+                place_id="parking-1",
+                name="中園停車場",
+                latitude=25.031,
+                longitude=121.561,
+                address="桃園市中壢區",
+                primary_type="parking",
+                types=["parking"],
+            )
+        ],
+    )
     service = PropertyService(
         repo=repo,
         raw_data_repo=raw_data_repo,
         audit_repo=InMemoryAuditRepo(),
         enrichment_provider=provider,
+        parking_repo=parking_repo,
     )
 
-    with pytest.raises(ConflictError, match="different place_id"):
-        await service.renew_property(
-            property_id="p1",
-            mode="basic",
-            actor=actor_factory(),
-        )
+    await service.renew_property(
+        property_id="p1",
+        mode="basic",
+        actor=actor_factory(),
+    )
+
+    assert provider.basic_calls == ["place-1"]
+    assert len(parking_repo.saved) == 1
+    assert parking_repo.saved[0].id == "parking-1"
+
+
+@pytest.mark.asyncio
+async def test_renew_property_in_details_mode_does_not_sync_nearby_parking(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    previous_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "old")]}
+    )
+    renewed_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 11, "reviews": [build_review("alice", 5, "new")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=previous_source)
+    parking_repo = InMemoryParkingRepo()
+    provider = SyncEnrichmentProvider(
+        renewed_source,
+        synced,
+        nearby_parking=[
+            NearbyParkingCandidate(
+                place_id="parking-1",
+                name="中園停車場",
+                latitude=25.031,
+                longitude=121.561,
+                address="桃園市中壢區",
+                primary_type="parking",
+                types=["parking"],
+            )
+        ],
+    )
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=InMemoryAuditRepo(),
+        enrichment_provider=provider,
+        parking_repo=parking_repo,
+    )
+
+    await service.renew_property(
+        property_id="p1",
+        mode="details",
+        actor=actor_factory(),
+    )
+
+    assert parking_repo.saved == []
 
 
 @pytest.mark.asyncio

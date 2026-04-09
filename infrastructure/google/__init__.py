@@ -7,13 +7,16 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 
 from domain.entities.enrichment import AnalysisSource
 from domain.entities.landmark_cache import LandmarkCacheEntity
+from domain.entities.parking import NearbyParkingCandidate
 from domain.entities.property import PropertyEntity
 from domain.repositories.landmark_cache import ILandmarkCacheRepository
 from domain.services.property_enrichment import IEnrichmentProvider
 from infrastructure.config import settings
 from infrastructure.google.place_api import (
     geocode_landmark_by_name,
+    get_basic_information_by_place_id,
     get_place_details,
+    search_nearby_parking,
     search_basic_information_by_name,
 )
 from infrastructure.search.pipeline import extract_search_plan
@@ -59,6 +62,11 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
         insight_info = get_place_details(basic_info)
         return AnalysisSource.from_parts(basic_info, insight_info)
 
+    def renew_property_from_basic(self, place_id: str) -> AnalysisSource:
+        basic_info = get_basic_information_by_place_id(place_id)
+        insight_info = get_place_details(basic_info)
+        return AnalysisSource.from_parts(basic_info, insight_info)
+
     def renew_property_from_details(self, source: AnalysisSource) -> AnalysisSource:
         insight_info = get_place_details(source)
         return AnalysisSource.from_parts(source, insight_info)
@@ -98,3 +106,18 @@ class GoogleEnrichmentProvider(IEnrichmentProvider):
             )
 
         return display_name, coordinates
+
+    def search_nearby_parking(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        radius: float = 2000.0,
+        max_result_count: int = 20,
+    ) -> list[NearbyParkingCandidate]:
+        return search_nearby_parking(
+            lat=lat,
+            lng=lng,
+            radius=radius,
+            max_result_count=max_result_count,
+        )

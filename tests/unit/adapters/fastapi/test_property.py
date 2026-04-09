@@ -97,6 +97,15 @@ def _detail_payload(item):
             else None
         ),
         "effective_pet_features": _pet_features_payload(item.effective_pet_features),
+        "source_user_rating_count": 42,
+        "source_reviews": [
+            {
+                "author": "Alice",
+                "rating": 5,
+                "text": "friendly",
+                "time": "3 days ago",
+            }
+        ],
         "created_by": _actor_payload(item.created_by),
         "updated_by": _actor_payload(item.updated_by),
         "created_at": item.created_at,
@@ -1041,6 +1050,8 @@ def test_get_detail_logs_property_viewed(
         response = client.get("/api/v1/property/p1")
 
     assert response.status_code == 200
+    assert response.json()["source_user_rating_count"] == 42
+    assert response.json()["source_reviews"][0]["author"] == "Alice"
     record = next(
         record for record in caplog.records if record.event == "property_viewed"
     )

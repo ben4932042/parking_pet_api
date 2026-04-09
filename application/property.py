@@ -28,6 +28,7 @@ from application.dto.property import (
     PropertyOverviewDto,
     PropertyPetFeaturesDto,
     PropertySearchResultDto,
+    ReviewDto,
     TimePointDto,
 )
 from application.exceptions import ConflictError, NotFoundError
@@ -44,6 +45,7 @@ from application.property_search.ranking import rank_search_results
 from domain.entities.audit import ActorInfo, PropertyAuditAction, PropertyAuditLog
 from domain.entities import PyObjectId
 from domain.entities.enrichment import AnalysisSource, Review
+from domain.entities.parking import ParkingEntity
 from domain.entities.property import (
     PetEnvironmentOverride,
     PetFeaturesOverride,
@@ -56,6 +58,7 @@ from domain.entities.property_category import PropertyCategoryKey
 from domain.entities.property_category import get_primary_types_by_category_key
 from domain.entities.user import UserEntity
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
+from domain.repositories.parking import IParkingRepository
 from domain.repositories.property_audit import IPropertyAuditRepository
 from domain.repositories.property import IPropertyRepository
 from domain.services.property_enrichment import IEnrichmentProvider
@@ -87,11 +90,13 @@ class PropertyService:
         raw_data_repo: IPlaceRawDataRepository,
         audit_repo: IPropertyAuditRepository,
         enrichment_provider: IEnrichmentProvider,
+        parking_repo: IParkingRepository | None = None,
     ):
         self.repo = repo
         self.raw_data_repo = raw_data_repo
         self.audit_repo = audit_repo
         self.enrichment_provider = enrichment_provider
+        self.parking_repo = parking_repo
 
     async def search_nearby(
         self,
@@ -609,7 +614,8 @@ class PropertyService:
         output: PropertyEntity = await self.repo.get_property_by_id(property_id)
         if output is None:
             return None
-        return self._to_detail_dto(output)
+        raw_source = await self.raw_data_repo.get_by_place_id(output.place_id)
+        return self._to_detail_dto(output, raw_source=raw_source)
 
     async def create_property(self, name: str, actor: Optional[ActorInfo] = None):
         return (await self.create_property_result(name=name, actor=actor)).property
@@ -627,6 +633,7 @@ class PropertyService:
             allow_create=True,
             update_outcome="synced",
         )
+        await self._sync_nearby_parking_for_property(result.property)
         return PropertyCreateResultEnvelope(
             property=result.property,
             result=PropertyCreateResultDto(
@@ -665,19 +672,11 @@ class PropertyService:
                 previous_source_data
             )
         elif mode == "basic":
-            renew_search_name = self._resolve_renew_search_name(
-                existing=existing,
-                previous_source=previous_source_data,
-            )
-            source_data = self.enrichment_provider.create_property_by_name(
-                renew_search_name
+            source_data = self.enrichment_provider.renew_property_from_basic(
+                existing.place_id
             )
             if source_data is None:
                 raise ValueError("Failed to renew property from the upstream provider.")
-            if source_data.place_id != existing.place_id:
-                raise ConflictError(
-                    "Renew resolved to a different place_id than the target property."
-                )
         else:
             raise ValueError("Unsupported renew mode.")
 
@@ -691,6 +690,8 @@ class PropertyService:
             allow_create=False,
             update_outcome="renewed",
         )
+        if mode == "basic":
+            await self._sync_nearby_parking_for_property(result.property)
         return result.property, result.changed
 
     async def renew_property_result(
@@ -761,6 +762,27 @@ class PropertyService:
             previous=previous_source_data,
             latest=source_data,
         )
+        logger.info(
+            "Resolved property source update state",
+            extra={
+                "place_id": source_data.place_id,
+                "previous_review_count": (
+                    len(previous_source_data.reviews)
+                    if previous_source_data is not None
+                    else 0
+                ),
+                "latest_review_count": len(source_data.reviews),
+                "merged_review_count": len(merged_source_data.reviews),
+                "previous_user_rating_count": (
+                    previous_source_data.user_rating_count
+                    if previous_source_data is not None
+                    else None
+                ),
+                "latest_user_rating_count": source_data.user_rating_count,
+                "reviews_changed": reviews_changed,
+                "user_rating_count_changed": user_rating_count_changed,
+            },
+        )
         await self.raw_data_repo.save(merged_source_data)
         existing = await self.repo.get_property_by_place_id(
             source_data.place_id, include_deleted=True
@@ -774,6 +796,16 @@ class PropertyService:
 
         if existing:
             if user_rating_count_changed or reviews_changed:
+                logger.info(
+                    "Property sync requires AI regeneration",
+                    extra={
+                        "property_id": existing.id,
+                        "place_id": source_data.place_id,
+                        "reviews_changed": reviews_changed,
+                        "user_rating_count_changed": user_rating_count_changed,
+                        "merged_review_count": len(merged_source_data.reviews),
+                    },
+                )
                 ai_result = self.enrichment_provider.generate_ai_analysis(
                     merged_source_data
                 )
@@ -785,6 +817,25 @@ class PropertyService:
                 action = PropertyAuditAction.SYNC
                 before = existing
             else:
+                logger.info(
+                    "Property sync skipped because upstream review signals are unchanged",
+                    extra={
+                        "property_id": existing.id,
+                        "place_id": source_data.place_id,
+                        "previous_review_count": (
+                            len(previous_source_data.reviews)
+                            if previous_source_data is not None
+                            else 0
+                        ),
+                        "merged_review_count": len(merged_source_data.reviews),
+                        "previous_user_rating_count": (
+                            previous_source_data.user_rating_count
+                            if previous_source_data is not None
+                            else None
+                        ),
+                        "latest_user_rating_count": source_data.user_rating_count,
+                    },
+                )
                 return PropertyUpsertResult(
                     property=existing,
                     changed=False,
@@ -835,6 +886,53 @@ class PropertyService:
             existing_before=existing is not None,
             outcome=update_outcome if existing else "created",
         )
+
+    async def _sync_nearby_parking_for_property(self, property_entity: PropertyEntity):
+        if self.parking_repo is None:
+            logger.info(
+                "Skipping nearby parking sync because parking repository is unavailable",
+                extra={
+                    "property_id": property_entity.id,
+                    "place_id": property_entity.place_id,
+                },
+            )
+            return
+
+        try:
+            logger.info(
+                "Starting nearby parking sync for property",
+                extra={
+                    "property_id": property_entity.id,
+                    "place_id": property_entity.place_id,
+                    "lat": property_entity.latitude,
+                    "lng": property_entity.longitude,
+                },
+            )
+            candidates = self.enrichment_provider.search_nearby_parking(
+                lat=property_entity.latitude,
+                lng=property_entity.longitude,
+            )
+            saved_count = 0
+            for candidate in candidates:
+                await self.parking_repo.save(ParkingEntity.from_candidate(candidate))
+                saved_count += 1
+            logger.info(
+                "Nearby parking sync completed for property",
+                extra={
+                    "property_id": property_entity.id,
+                    "place_id": property_entity.place_id,
+                    "candidate_count": len(candidates),
+                    "saved_count": saved_count,
+                },
+            )
+        except Exception:
+            logger.exception(
+                "Failed to sync nearby parking for property",
+                extra={
+                    "property_id": property_entity.id,
+                    "place_id": property_entity.place_id,
+                },
+            )
 
     async def update_aliases(
         self,
@@ -1308,7 +1406,21 @@ class PropertyService:
         )
 
     @classmethod
-    def _to_detail_dto(cls, output: PropertyEntity) -> PropertyDetailDto:
+    def _to_review_dto(cls, review: Review) -> ReviewDto:
+        return ReviewDto(
+            author=review.author,
+            rating=review.rating,
+            text=review.text,
+            time=review.time,
+        )
+
+    @classmethod
+    def _to_detail_dto(
+        cls,
+        output: PropertyEntity,
+        *,
+        raw_source: AnalysisSource | None = None,
+    ) -> PropertyDetailDto:
         return PropertyDetailDto(
             id=output.id,
             name=output.name,
@@ -1332,6 +1444,14 @@ class PropertyService:
             manual_overrides=cls._to_manual_overrides_dto(output.manual_overrides),
             effective_pet_features=cls._to_pet_features_dto(
                 output.effective_pet_features
+            ),
+            source_user_rating_count=(
+                raw_source.user_rating_count if raw_source is not None else None
+            ),
+            source_reviews=(
+                [cls._to_review_dto(review) for review in raw_source.reviews]
+                if raw_source is not None
+                else []
             ),
             created_by=cls._to_actor_dto(output.created_by),
             updated_by=cls._to_actor_dto(output.updated_by),

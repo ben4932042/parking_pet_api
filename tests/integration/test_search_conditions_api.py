@@ -82,6 +82,9 @@ class LangGraphEnrichmentProvider(IEnrichmentProvider):
     def create_property_by_name(self, property_name: str):
         raise NotImplementedError
 
+    def renew_property_from_basic(self, place_id: str):
+        raise NotImplementedError
+
     def renew_property_from_details(self, source):
         raise NotImplementedError
 

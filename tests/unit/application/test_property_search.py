@@ -15,6 +15,9 @@ class DummyEnrichmentProvider(IEnrichmentProvider):
     def create_property_by_name(self, property_name: str):
         raise NotImplementedError
 
+    def renew_property_from_basic(self, place_id: str):
+        raise NotImplementedError
+
     def renew_property_from_details(self, source):
         raise NotImplementedError
 
@@ -26,6 +29,16 @@ class DummyEnrichmentProvider(IEnrichmentProvider):
 
     async def geocode_landmark(self, landmark_name: str):
         return self.geocode_result
+
+    def search_nearby_parking(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        radius: float = 2000.0,
+        max_result_count: int = 20,
+    ):
+        return []
 
 
 class DummyRepo(IPropertyRepository):

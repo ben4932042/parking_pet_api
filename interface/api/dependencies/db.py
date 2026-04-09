@@ -2,6 +2,7 @@ from fastapi import Depends
 
 from infrastructure.mongo import MongoDBClient, get_mongodb_client
 from infrastructure.mongo.landmark_cache import LandmarkCacheRepository
+from infrastructure.mongo.parking import ParkingRepository
 from infrastructure.mongo.place_raw_data import PlaceRawDataRepository
 from infrastructure.mongo.property_audit import PropertyAuditRepository
 from infrastructure.mongo.property import PropertyRepository
@@ -24,6 +25,12 @@ def get_place_raw_data_repository(
     client: MongoDBClient = Depends(get_db_client),
 ) -> PlaceRawDataRepository:
     return PlaceRawDataRepository(client=client, collection_name="place_raw_data")
+
+
+def get_parking_repository(
+    client: MongoDBClient = Depends(get_db_client),
+) -> ParkingRepository:
+    return ParkingRepository(client=client, collection_name="parking")
 
 
 def get_property_audit_repository(

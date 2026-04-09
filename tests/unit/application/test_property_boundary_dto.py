@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from application.property import PropertyService
+from domain.entities.enrichment import AnalysisSource, Review
 from domain.entities.property_note import PropertyNoteEntity
 from domain.entities.search import PropertyFilterCondition, SearchPlan
 from domain.repositories.place_raw_data import IPlaceRawDataRepository
@@ -53,6 +54,9 @@ class BoundaryRepo(IPropertyRepository):
 
 
 class BoundaryRawRepo(IPlaceRawDataRepository):
+    def __init__(self, items=None):
+        self.items = items or {}
+
     async def create(self, source):
         raise NotImplementedError
 
@@ -60,7 +64,7 @@ class BoundaryRawRepo(IPlaceRawDataRepository):
         raise NotImplementedError
 
     async def get_by_place_id(self, place_id: str):
-        raise NotImplementedError
+        return self.items.get(place_id)
 
 
 class BoundaryAuditRepo(IPropertyAuditRepository):
@@ -78,6 +82,9 @@ class BoundaryEnrichmentProvider(IEnrichmentProvider):
     def create_property_by_name(self, property_name: str):
         raise NotImplementedError
 
+    def renew_property_from_basic(self, place_id: str):
+        raise NotImplementedError
+
     def renew_property_from_details(self, source):
         raise NotImplementedError
 
@@ -89,6 +96,16 @@ class BoundaryEnrichmentProvider(IEnrichmentProvider):
 
     async def geocode_landmark(self, landmark_name: str):
         return landmark_name, None
+
+    def search_nearby_parking(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        radius: float = 2000.0,
+        max_result_count: int = 20,
+    ):
+        return []
 
 
 @pytest.mark.asyncio
@@ -185,9 +202,26 @@ async def test_get_overviews_by_ids_can_sort_noted_items_first(
 @pytest.mark.asyncio
 async def test_get_details_returns_property_detail_dto(property_entity_factory):
     item = property_entity_factory(identifier="p1", free_water=True, pet_menu=True)
+    raw_source = AnalysisSource(
+        _id=item.place_id,
+        id=item.place_id,
+        origin_search_name=item.name,
+        display_name=item.name,
+        place_id=item.place_id,
+        latitude=item.latitude,
+        longitude=item.longitude,
+        address=item.address,
+        primary_type=item.primary_type,
+        types=item.types,
+        user_rating_count=42,
+        reviews=[
+            Review(author="Alice", rating=5, text="friendly", time="3 days ago")
+        ],
+        regular_opening_hours=[],
+    )
     service = PropertyService(
         repo=BoundaryRepo([item]),
-        raw_data_repo=BoundaryRawRepo(),
+        raw_data_repo=BoundaryRawRepo({item.place_id: raw_source}),
         audit_repo=BoundaryAuditRepo(),
         enrichment_provider=BoundaryEnrichmentProvider(
             SearchPlan(execution_modes=["keyword"])
@@ -200,6 +234,10 @@ async def test_get_details_returns_property_detail_dto(property_entity_factory):
     assert detail.id == "p1"
     assert detail.ai_analysis.rating == item.ai_analysis.ai_rating
     assert detail.effective_pet_features.services.free_water is True
+    assert detail.source_user_rating_count == 42
+    assert [(review.author, review.text) for review in detail.source_reviews] == [
+        ("Alice", "friendly")
+    ]
 
 
 @pytest.mark.asyncio

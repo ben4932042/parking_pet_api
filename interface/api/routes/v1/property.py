@@ -433,7 +433,7 @@ async def renew_property(
     mode: str = Query(
         ...,
         description=(
-            "`basic` refreshes from Places Text Search Enterprise + Atmosphere and then Places Details Enterprise + Atmosphere. "
+            "`basic` refreshes basic fields and details directly from the existing place_id, then syncs nearby parking. "
             "`details` refreshes only the detail fields from Places Details Enterprise + Atmosphere using the existing raw source snapshot."
         ),
     ),
@@ -475,8 +475,6 @@ async def renew_property(
                 if "not found" in exc.message.lower()
                 else "rejected_soft_deleted"
                 if "soft-deleted" in exc.message
-                else "rejected_place_id_mismatch"
-                if "different place_id" in exc.message
                 else "failed_application",
                 "reason": exc.message,
             },

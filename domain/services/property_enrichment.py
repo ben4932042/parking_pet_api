@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple
 
 from domain.entities.enrichment import AnalysisSource
+from domain.entities.parking import NearbyParkingCandidate
 from domain.entities.property import PropertyEntity
 from domain.entities.search import PropertyFilterCondition, SearchPlan
 
@@ -9,6 +10,9 @@ from domain.entities.search import PropertyFilterCondition, SearchPlan
 class IEnrichmentProvider(ABC):
     @abstractmethod
     def create_property_by_name(self, property_name: str) -> AnalysisSource: ...
+
+    @abstractmethod
+    def renew_property_from_basic(self, place_id: str) -> AnalysisSource: ...
 
     @abstractmethod
     def renew_property_from_details(self, source: AnalysisSource) -> AnalysisSource: ...
@@ -23,6 +27,16 @@ class IEnrichmentProvider(ABC):
     async def geocode_landmark(
         self, landmark_name: str
     ) -> Tuple[str, Optional[Tuple[float, float]]]: ...
+
+    @abstractmethod
+    def search_nearby_parking(
+        self,
+        lat: float,
+        lng: float,
+        *,
+        radius: float = 2000.0,
+        max_result_count: int = 20,
+    ) -> list[NearbyParkingCandidate]: ...
 
     @staticmethod
     def _normalize_coordinates(

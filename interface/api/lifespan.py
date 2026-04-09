@@ -19,6 +19,9 @@ async def lifespan(app: FastAPI):
     await mongodb_client.get_collection("search_plan_cache").create_index(
         "cache_key", unique=True
     )
+    await mongodb_client.get_collection("parking").create_index(
+        [("location", "2dsphere")]
+    )
     logger.debug("Successfully connected to MongoDB")
 
     yield
