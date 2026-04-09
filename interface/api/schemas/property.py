@@ -4,7 +4,6 @@ from application.dto.property import (
     PropertyAliasesDto,
     PropertyAuditLogDto,
     PropertyDetailDto,
-    PropertyMapBboxDto,
     PropertyMapResultDto,
     PropertyMutationDto,
     PropertyOverviewDto,
@@ -86,10 +85,6 @@ class PropertyAliasesPatchRequest(BaseModel):
 
 
 class PropertyOverviewResponse(PropertyOverviewDto):
-    model_config = {"from_attributes": True}
-
-
-class PropertyMapBboxResponse(PropertyMapBboxDto):
     model_config = {"from_attributes": True}
 
 

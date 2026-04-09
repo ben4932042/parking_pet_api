@@ -22,13 +22,6 @@ class OpeningPeriodDto(BaseModel):
     close: TimePointDto | None = None
 
 
-class ReviewDto(BaseModel):
-    author: str | None = None
-    rating: float | None = None
-    text: str | None = None
-    time: str | None = None
-
-
 class PetRulesDto(BaseModel):
     leash_required: bool
     stroller_required: bool

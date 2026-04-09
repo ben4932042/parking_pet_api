@@ -173,13 +173,6 @@ def get_categories_by_primary_type(primary_type: str) -> list[PropertyCategoryEn
     ]
 
 
-def get_primary_category_label(primary_type: str) -> str | None:
-    matched = get_categories_by_primary_type(primary_type)
-    if not matched:
-        return None
-    return matched[0].label
-
-
 def get_primary_category_key(primary_type: str) -> str | None:
     matched = get_categories_by_primary_type(primary_type)
     if not matched:

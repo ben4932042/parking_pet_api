@@ -49,16 +49,6 @@ class ForbiddenError(AppError):
     http_status = 403
 
 
-class RateLimitedError(AppError):
-    code = ErrorCode.RATE_LIMITED
-    http_status = 429
-
-
-class ExternalTimeoutError(AppError):
-    code = ErrorCode.EXTERNAL_TIMEOUT
-    http_status = 504
-
-
 def from_application_error(exc: ApplicationError) -> AppError:
     if isinstance(exc, ApplicationNotFoundError):
         return NotFoundError(

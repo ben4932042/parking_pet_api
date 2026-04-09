@@ -1,6 +1,5 @@
 from application.property_search.planning import (
     apply_confidence_gate,
-    build_keyword_plan,
     build_search_plan,
 )
 from domain.entities.search import (
@@ -40,13 +39,3 @@ def confidence_gate_node(state: SearchGraphState) -> dict:
         distance_intent=state.get("distance_intent", DistanceIntent()),
     )
     return {"plan": plan}
-
-
-def keyword_plan_node(state: SearchGraphState) -> dict:
-    decision = state["route_decision"]
-    return {
-        "plan": build_keyword_plan(
-            route_reason=decision.reason,
-            route_confidence=decision.confidence,
-        )
-    }
