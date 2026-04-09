@@ -751,6 +751,85 @@ async def test_renew_property_returns_unchanged_when_reviews_and_rating_count_ma
 
 
 @pytest.mark.asyncio
+async def test_renew_property_force_true_reruns_ai_when_review_signals_are_unchanged(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
+    repo = InMemoryPropertyRepo(existing)
+    audit_repo = InMemoryAuditRepo()
+    previous_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    renewed_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "same")]}
+    )
+    raw_data_repo = DummyRawDataRepo(existing=previous_source)
+    provider = SyncEnrichmentProvider(renewed_source, synced)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=audit_repo,
+        enrichment_provider=provider,
+    )
+
+    saved, changed = await service.renew_property(
+        property_id="p1",
+        mode="details",
+        force=True,
+        actor=actor_factory(),
+    )
+
+    assert changed is True
+    assert saved.id == existing.id
+    assert provider.generate_calls == [raw_data_repo.saved[-1]]
+    assert audit_repo.logs[-1].action == PropertyAuditAction.SYNC
+
+
+@pytest.mark.asyncio
+async def test_renew_property_persists_whitelisted_fields_only(
+    property_entity_factory, actor_factory
+):
+    existing = property_entity_factory(identifier="p1", place_id="place-1")
+    synced = property_entity_factory(identifier="place-1", place_id="place-1")
+    synced = synced.model_copy(
+        update={
+            "types": ["cafe", "bakery"],
+            "is_open": True,
+        }
+    )
+    repo = InMemoryPropertyRepo(existing)
+    raw_data_repo = DummyRawDataRepo(
+        existing=build_source("place-1").model_copy(
+            update={"user_rating_count": 10, "reviews": [build_review("alice", 5, "old")]}
+        )
+    )
+    renewed_source = build_source("place-1").model_copy(
+        update={"user_rating_count": 11, "reviews": [build_review("alice", 5, "new")]}
+    )
+    provider = SyncEnrichmentProvider(renewed_source, synced)
+    service = PropertyService(
+        repo=repo,
+        raw_data_repo=raw_data_repo,
+        audit_repo=InMemoryAuditRepo(),
+        enrichment_provider=provider,
+    )
+
+    saved, changed = await service.renew_property(
+        property_id="p1",
+        mode="details",
+        actor=actor_factory(),
+    )
+
+    assert changed is True
+    assert saved.category == "cafe"
+    assert saved.op_segments == synced.op_segments
+    assert saved.types == [saved.primary_type]
+    assert saved.is_open in {True, False, None}
+    assert repo.property_entity.types == [repo.property_entity.primary_type]
+
+
+@pytest.mark.asyncio
 async def test_renew_property_result_with_outcome_marks_unchanged(
     property_entity_factory, actor_factory
 ):

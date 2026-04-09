@@ -24,7 +24,7 @@ vertexai.init(
 )
 
 
-model = GenerativeModel("gemini-2.5-flash-lite")
+model = GenerativeModel("gemini-2.5-pro")
 
 
 def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
@@ -34,55 +34,51 @@ def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
     data_json = source.model_dump_json(indent=2)
 
     prompt = f"""
-    你現在是一位資深的「寵物空間分析專家」。請根據提供的 JSON 資料產出結構化報告。
-
-    【核心策略：資料補全與推斷】：
-    1. **處理 null (None)**：`null` 代表 Google 資料庫缺少標記，**絕對不等於 False**。
-    2. **推斷順序**：
-       - **優先：評論內容**。若評論提到「提供水碗」、「店狗熱情」、「好停車」、「環境擠」，請強制更新對應的特徵布林值。
-       - **次之：產業分類**。`primary_type` 為 'pet_care' 時，`allows_dogs` 預設為 True。
-       - **再次：環境語境**。若評論提到「甜點、提拉米蘇」，即使 types 沒寫，也請在總結中指出其具備「複合式咖啡廳」屬性。
-    3. **處理衝突**：若 API 標註 `allows_dogs: null` 但評論說「禁止大型犬進入」，請在 `ai_summary` 提醒家長特定限制，並將 `allows_dogs` 設為 False（以評論為準）。
-    【核心策略：場域特化分析】：
-     1. **場域判定 (Crucial)**：
-        - 若 `primary_type` 或評論顯示為 **「專業服務」**(如：美容、醫療、住宿)，請以「專業度、細心度、安全性」為分析核心。
-        - 若顯示為 **「餐飲/休閒」**(如：咖啡廳、餐廳、公園)，請以「舒適度、餐點、落地規則」為核心。
-
-     2. **排除非必要警告 (Noise Reduction)**：
-        - **禁止「跨行業比對」**：若判定為「專業美容沙龍」，不要在 `warnings` 提到「沒有寵物餐」或「不能上座位」，因為這不符合該業態的常規。
-        - **警告必須具備「負面價值」**：只有當該店明顯低於同行標準（如：沙龍環境髒亂、餐廳極度擁擠、階梯過多導致推車完全無法進入）時，才列入 `warnings`。
-    【ai_rating 評分邏輯 (重點)】：
-    請根據你填寫的 **PetFeatures** 內容，計算出 0.0 - 5.0 的綜合評分：
-
-    - **基礎設施分 (PetEnvironment & PetService)**：
-        - 擁有 `indoor_ac`(冷氣)、`spacious`(寬敞)、`pet_friendly_floor`(友善地板) 為加分項。
-        - 提供 `pet_menu`(寵物餐)、`free_water`(水碗)、`pet_seating`(可上座) 是極高加分項。
-
-    - **規則友善度 (PetRules)**：
-        - `allow_on_floor`(可落地) 權重最高。若需 `stroller_required`(強迫推車) 或禁止落地，評分應適度下修。
-
-    - **服務與氛圍 (從評論推斷)**：
-        - 美容師或店員的耐心程度、環境有無異味（清潔度）。
-   - **友善度**：店家對寵物的包容心（是否可上座、是否提供水碗、店員態度）。
-
-    - **扣分與參考**：
-        - 若有 `stairs`(階梯) 且無電梯（推車不便）需扣分。
-        - 參考 Google 的原始 `rating` 作為服務品質基底，但「寵物友善程度」由上述特徵決定。
-    - **邏輯一致性檢查**：`ai_rating` 必須與 `PetFeatures` 的布林值正相關。若多項服務為 False，評分不得高於 4.0。
-
-    【任務要求】：
-    - **ai_summary**：200字內，毛爸媽視角。嚴禁提及「星等」、「評論數」、「排名」但盡可能正面表述。
-    - **風格定位**：判斷其為「專業美容沙龍」、「寵物友善餐飲」或「複合式空間」。
-    - **細節挖掘**：從評論中找尋「清潔味」、「細心度」、「空間是否擁擠」。
-    - **highlights/warnings**：根據 PetFeatures 的優缺點挑選 3 個最重要的項目。
-    - **ai_rating**：基於上述特徵連動計算出的 0.0 - 5.0 分數。
-    - **分析一致性**：確保 `highlights` 提到的優點在 `PetFeatures` 中對應為 True。
-
-    【輸入數據】:
+    # Role: Senior Pet Space Analysis Expert
+    
+    You are a professional consultant specializing in pet-friendly environments. Your task is to generate a structured report **IN TRADITIONAL CHINESE** based on the provided JSON data.
+    ---
+    ### 【Strategy 1: Segment-Specific Analysis (Logic)】
+    Identify the **Segment** of the venue and apply the corresponding criteria for internal evaluation:
+    
+    #### 1. Professional Medical & Grooming (專業醫療與美容)
+    * **Core Focus:** Expertise, hygiene (odor control), pet handling gentleness, and price transparency.
+    * **Exclusion Clause:** **DO NOT** list "No pet menu" or "Pets not allowed on sofas" as warnings. These are irrelevant to this segment.
+    
+    #### 2. Outdoor & Recreation (戶外休閒與公園)
+    * **Core Focus:** Grass maintenance, safety fencing, water/waste bin availability, and space.
+    * **Exclusion Clause:** **DO NOT** list "No air conditioning" or "No pet food" as warnings.
+    
+    #### 3. Dining & Hospitality (寵物友善餐飲與旅宿)
+    * **Core Focus:** Ground rules (leash/stroller/on-seat), pet menus, and stroller accessibility.
+    * **Warning Trigger:** If pets must remain strictly in crates/bags at all times, note it as a limitation.
+    
+    ---
+    
+    ### 【Strategy 2: Data Inference & Rating】
+    1.  **Handling Nulls:** `null` is missing data, not "False". Use reviews to infer the truth.
+    2.  **AI Rating (0.0 - 5.0):** * Rating must be segment-weighted (e.g., Hygiene is 50% of the score for Hospitals).
+        * **Logic Lock:** If serious issues like "medical injury" or "extreme filth" are mentioned, the rating **must be below 2.0**.
+    
+    ---
+    
+    ### 【Task Requirements (Output in Traditional Chinese)】
+    
+    請依照以下格式輸出繁體中文報告：
+    
+    1.  **業態定位 (Venue Positioning)**：明確標註（例如：專業醫療美容、戶外休閒、寵物友善餐飲）。
+    2.  **AI 綜合總結 (AI Summary)**：200字內，以「毛爸媽視角」出發。嚴禁提及「五星好評」、「評論數」等字眼，專注於描述空間體感、專業度與氛圍。
+    3.  **亮點與警示 (Highlights & Warnings)**：
+        * **亮點 (Highlights)**：根據業態挑選 3 個最重要的優點。
+        * **警示 (Warnings)**：必須是「具備負面價值」的項目。嚴禁跨行業要求（例如：不要抱怨公園沒有寵物餐）。
+    4.  **寵物友善評分 (AI Rating)**：基於業態權重計算出的 0.0 - 5.0 分數。
+    
+    ---
+    
+    ### 【Input Data】:
     {data_json}
     """
 
-    # --- 2. Vertex AI 強大功能：設定 JSON 輸出模式 ---
     generation_config = GenerationConfig(
         response_mime_type="application/json",
         response_schema=AIAnalysis.model_json_schema(),

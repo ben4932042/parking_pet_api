@@ -84,6 +84,33 @@ class PropertyCreateResultEnvelope:
 
 
 class PropertyService:
+    PERSISTED_PROPERTY_FIELDS = {
+        "_id",
+        "name",
+        "place_id",
+        "aliases",
+        "manual_aliases",
+        "latitude",
+        "longitude",
+        "regular_opening_hours",
+        "address",
+        "ai_analysis",
+        "manual_overrides",
+        "effective_pet_features",
+        "created_by",
+        "updated_by",
+        "deleted_by",
+        "deleted_at",
+        "is_deleted",
+        "created_at",
+        "updated_at",
+        "op_segments",
+        "location",
+        "primary_type",
+        "rating",
+        "category",
+    }
+
     def __init__(
         self,
         repo: IPropertyRepository,
@@ -649,6 +676,7 @@ class PropertyService:
         self,
         property_id: PyObjectId,
         mode: str,
+        force: bool = False,
         actor: Optional[ActorInfo] = None,
         reason: Optional[str] = None,
     ) -> tuple[PropertyEntity, bool]:
@@ -689,6 +717,7 @@ class PropertyService:
             reason=reason,
             allow_create=False,
             update_outcome="renewed",
+            force_ai_refresh=force,
         )
         if mode == "basic":
             await self._sync_nearby_parking_for_property(result.property)
@@ -698,6 +727,7 @@ class PropertyService:
         self,
         property_id: PyObjectId,
         mode: str,
+        force: bool = False,
         actor: Optional[ActorInfo] = None,
         reason: Optional[str] = None,
     ) -> PropertyMutationDto:
@@ -705,6 +735,7 @@ class PropertyService:
             await self.renew_property_result_with_outcome(
                 property_id=property_id,
                 mode=mode,
+                force=force,
                 actor=actor,
                 reason=reason,
             )
@@ -714,12 +745,14 @@ class PropertyService:
         self,
         property_id: PyObjectId,
         mode: str,
+        force: bool = False,
         actor: Optional[ActorInfo] = None,
         reason: Optional[str] = None,
     ) -> PropertyMutationResultDto:
         renewed_property, changed = await self.renew_property(
             property_id=property_id,
             mode=mode,
+            force=force,
             actor=actor,
             reason=reason,
         )
@@ -746,6 +779,7 @@ class PropertyService:
         reason: Optional[str] = None,
         allow_create: bool,
         update_outcome: str,
+        force_ai_refresh: bool = False,
     ) -> "PropertyUpsertResult":
         previous_source_data = await self.raw_data_repo.get_by_place_id(
             source_data.place_id
@@ -781,6 +815,7 @@ class PropertyService:
                 "latest_user_rating_count": source_data.user_rating_count,
                 "reviews_changed": reviews_changed,
                 "user_rating_count_changed": user_rating_count_changed,
+                "force_ai_refresh": force_ai_refresh,
             },
         )
         await self.raw_data_repo.save(merged_source_data)
@@ -795,7 +830,7 @@ class PropertyService:
             )
 
         if existing:
-            if user_rating_count_changed or reviews_changed:
+            if force_ai_refresh or user_rating_count_changed or reviews_changed:
                 logger.info(
                     "Property sync requires AI regeneration",
                     extra={
@@ -803,6 +838,7 @@ class PropertyService:
                         "place_id": source_data.place_id,
                         "reviews_changed": reviews_changed,
                         "user_rating_count_changed": user_rating_count_changed,
+                        "force_ai_refresh": force_ai_refresh,
                         "merged_review_count": len(merged_source_data.reviews),
                     },
                 )
@@ -1158,7 +1194,13 @@ class PropertyService:
                 ),
             }
         )
-        return PropertyEntity(**payload)
+        return PropertyEntity(
+            **{
+                key: value
+                for key, value in payload.items()
+                if key in PropertyService.PERSISTED_PROPERTY_FIELDS
+            }
+        )
 
     @staticmethod
     def _merge_pet_feature_overrides(

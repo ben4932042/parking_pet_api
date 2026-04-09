@@ -46,9 +46,9 @@ Read `docs/property/architecture.md` when you need the broader property-layer st
 ### Renew
 
 - Renew targets an existing property by `property_id`.
-- `basic` mode refreshes from Places Text Search Enterprise and Atmosphere and then Places Details Enterprise and Atmosphere.
+- `basic` mode refreshes basic fields and details directly from the existing `place_id`, then syncs nearby parking.
 - `details` mode refreshes only from Places Details Enterprise and Atmosphere using the existing raw source snapshot.
-- Renew must not silently switch the property to a different resolved `place_id`.
+- `force=true` must bypass the unchanged-review short circuit and force AI regeneration for the existing property.
 - Renew should preserve manual overrides through the sync path.
 - Renew uses the same sync audit behavior when a property entity is actually refreshed.
 

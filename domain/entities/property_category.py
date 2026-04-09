@@ -76,6 +76,8 @@ PROPERTY_CATEGORIES: list[PropertyCategoryEntity] = [
             "vegetarian_restaurant",
             "vietnamese_restaurant",
             "noodle_shop",
+            "tex_mex_restaurant",
+            "taiwanese_restaurant",
         ],
     ),
     PropertyCategoryEntity(

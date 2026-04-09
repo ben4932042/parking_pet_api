@@ -437,6 +437,10 @@ async def renew_property(
             "`details` refreshes only the detail fields from Places Details Enterprise + Atmosphere using the existing raw source snapshot."
         ),
     ),
+    force: bool = Query(
+        default=False,
+        description="When true, force AI regeneration even if upstream review signals have not changed.",
+    ),
     service: PropertyService = Depends(get_property_service),
     actor: ActorInfo = Depends(get_request_actor),
 ):
@@ -444,6 +448,7 @@ async def renew_property(
         result = await service.renew_property_result_with_outcome(
             property_id=property_id,
             mode=mode,
+            force=force,
             actor=actor,
         )
         log_api_event(
@@ -456,6 +461,7 @@ async def renew_property(
                 "property_id": _read_result_field(result.mutation, "property_id"),
                 "resolved_place_id": result.place_id,
                 "mode": result.mode,
+                "force": force,
                 "changed": result.changed,
                 "existing_before": result.existing_before,
             },
@@ -471,6 +477,7 @@ async def renew_property(
                 "operation": "renew",
                 "requested_property_id": str(property_id),
                 "mode": mode,
+                "force": force,
                 "outcome": "rejected_not_found"
                 if "not found" in exc.message.lower()
                 else "rejected_soft_deleted"
