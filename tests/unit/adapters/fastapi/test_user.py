@@ -73,7 +73,9 @@ class FavoritePropertyServiceStub:
             else set()
         )
         favorite_property_ids = (
-            set(current_user.favorite_property_ids) if current_user is not None else set()
+            set(current_user.favorite_property_ids)
+            if current_user is not None
+            else set()
         )
         items = [
             PropertyOverviewDto(
@@ -223,7 +225,9 @@ def test_guest_auth_returns_user_detail(
     assert service.calls == [
         {"fn": "register_guest_user", "name": "Ben", "pet_name": "Mochi"}
     ]
-    record = next(record for record in caplog.records if record.event == "auth_registered")
+    record = next(
+        record for record in caplog.records if record.event == "auth_registered"
+    )
     assert record.user_id == "u1"
     assert record.source == "guest"
     assert auth_session_service.calls == [
@@ -290,9 +294,7 @@ def test_apple_auth_returns_existing_user(
     ]
 
 
-def test_apple_link_upgrades_guest_user(
-    client, override_api_dep, user_entity_factory
-):
+def test_apple_link_upgrades_guest_user(client, override_api_dep, user_entity_factory):
     current_user = user_entity_factory(identifier="u1", name="Ben", source="guest")
     linked_user = current_user.model_copy(
         update={

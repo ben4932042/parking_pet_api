@@ -13,7 +13,6 @@ from application.property_search.rules import (
     is_obviously_non_search_query,
     normalize_llm_execution_modes,
     normalize_text_for_match,
-    should_run_keyword_with_semantic,
     should_use_current_location_context,
 )
 
@@ -44,9 +43,9 @@ def route_decision_by_rule(
     if is_probable_proper_name_lookup(query):
         return (
             SearchRouteDecision(
-                execution_modes=["keyword"],
+                execution_modes=["semantic", "keyword"],
                 confidence=0.96,
-                reason="查詢較像完整地點名稱，優先使用關鍵字查找",
+                reason="查詢較像完整地點名稱，使用 hybrid 搜尋",
             ),
             None,
         )
@@ -62,9 +61,9 @@ def route_decision_by_rule(
     if rule_based_address and normalized_query == rule_based_address:
         return (
             SearchRouteDecision(
-                execution_modes=["semantic"],
+                execution_modes=["semantic", "keyword"],
                 confidence=0.98,
-                reason="查詢本身就是行政區或地址條件",
+                reason="查詢本身就是行政區或地址條件，使用 hybrid 搜尋",
             ),
             None,
         )
@@ -72,9 +71,9 @@ def route_decision_by_rule(
     if rule_based_address and rule_based_category:
         return (
             SearchRouteDecision(
-                execution_modes=["semantic"],
+                execution_modes=["semantic", "keyword"],
                 confidence=0.98,
-                reason="包含地點和分類條件",
+                reason="包含地點和分類條件，使用 hybrid 搜尋",
             ),
             None,
         )
@@ -83,9 +82,9 @@ def route_decision_by_rule(
     if rule_based_landmark:
         return (
             SearchRouteDecision(
-                execution_modes=["semantic"],
+                execution_modes=["semantic", "keyword"],
                 confidence=0.98,
-                reason="查詢本身就是地標條件",
+                reason="查詢本身就是地標條件，使用 hybrid 搜尋",
             ),
             LocationIntent(
                 kind="landmark",
@@ -103,14 +102,11 @@ def route_decision_by_rule(
         or rule_based_distance
         or should_use_current_location_context(query)
     ):
-        execution_modes = ["semantic"]
-        if should_run_keyword_with_semantic(query):
-            execution_modes.append("keyword")
         return (
             SearchRouteDecision(
-                execution_modes=execution_modes,
+                execution_modes=["semantic", "keyword"],
                 confidence=0.95,
-                reason="查詢包含分類或偏好條件",
+                reason="查詢包含分類或偏好條件，使用 hybrid 搜尋",
             ),
             None,
         )

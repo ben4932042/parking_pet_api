@@ -35,6 +35,7 @@ class InMemorySearchPlanCacheRepository:
         self.items[cache_key] = updated
         return updated
 
+
 @pytest.mark.asyncio
 async def test_search_plan_workflow_returns_cached_plan_without_running_planner():
     cache_repo = InMemorySearchPlanCacheRepository()

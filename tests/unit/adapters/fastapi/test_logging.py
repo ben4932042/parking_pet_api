@@ -16,9 +16,7 @@ def test_logging_middleware_logs_http_access_with_cloudflare_request_id(caplog):
 
     client = TestClient(app)
 
-    with caplog.at_level(
-        logging.DEBUG, logger="interface.api.middlewares.logging"
-    ):
+    with caplog.at_level(logging.DEBUG, logger="interface.api.middlewares.logging"):
         response = client.get(
             "/ping?limit=10",
             headers={
@@ -66,9 +64,7 @@ def test_logging_middleware_generates_request_id_when_cloudflare_header_missing(
 
     client = TestClient(app)
 
-    with caplog.at_level(
-        logging.DEBUG, logger="interface.api.middlewares.logging"
-    ):
+    with caplog.at_level(logging.DEBUG, logger="interface.api.middlewares.logging"):
         response = client.post("/echo", json={"content": "hello", "value": 1})
 
     assert response.status_code == 200
@@ -95,9 +91,7 @@ def test_logging_middleware_sets_500_status_when_exception_bubbles(caplog):
 
     client = TestClient(app, raise_server_exceptions=False)
 
-    with caplog.at_level(
-        logging.DEBUG, logger="interface.api.middlewares.logging"
-    ):
+    with caplog.at_level(logging.DEBUG, logger="interface.api.middlewares.logging"):
         response = client.get("/boom")
 
     assert response.status_code == 500
@@ -119,9 +113,7 @@ def test_logging_middleware_skips_excluded_paths(caplog):
 
     client = TestClient(app)
 
-    with caplog.at_level(
-        logging.DEBUG, logger="interface.api.middlewares.logging"
-    ):
+    with caplog.at_level(logging.DEBUG, logger="interface.api.middlewares.logging"):
         response = client.get("/metrics")
 
     assert response.status_code == 200

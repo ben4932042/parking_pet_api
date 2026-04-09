@@ -149,7 +149,9 @@ class CapturePropertyService:
             else set()
         )
         favorite_property_ids = (
-            set(current_user.favorite_property_ids) if current_user is not None else set()
+            set(current_user.favorite_property_ids)
+            if current_user is not None
+            else set()
         )
         results = [
             _overview_payload(
@@ -168,7 +170,8 @@ class CapturePropertyService:
             "hybrid_search"
             if set(self.execution_modes or [self.route]) == {"semantic", "keyword"}
             else "keyword_search"
-            if (self.execution_modes or [self.route]) == ["keyword"] or self.used_fallback
+            if (self.execution_modes or [self.route]) == ["keyword"]
+            or self.used_fallback
             else "semantic_search"
         )
         return {
@@ -199,7 +202,9 @@ class CapturePropertyService:
             else set()
         )
         favorite_property_ids = (
-            set(current_user.favorite_property_ids) if current_user is not None else set()
+            set(current_user.favorite_property_ids)
+            if current_user is not None
+            else set()
         )
         return (
             [
@@ -243,7 +248,9 @@ class CapturePropertyService:
             else set()
         )
         favorite_property_ids = (
-            set(current_user.favorite_property_ids) if current_user is not None else set()
+            set(current_user.favorite_property_ids)
+            if current_user is not None
+            else set()
         )
         items = [
             _overview_payload(
@@ -1034,7 +1041,9 @@ def test_get_detail_logs_property_viewed(
         response = client.get("/api/v1/property/p1")
 
     assert response.status_code == 200
-    record = next(record for record in caplog.records if record.event == "property_viewed")
+    record = next(
+        record for record in caplog.records if record.event == "property_viewed"
+    )
     assert record.user_id == "u1"
     assert record.resource == {"type": "property", "id": "p1"}
 

@@ -214,7 +214,9 @@ class PropertyEntity(BaseModel):
 
     @model_validator(mode="after")
     def generate_effective_pet_features(self) -> "PropertyEntity":
-        overrides = self.manual_overrides.pet_features if self.manual_overrides else None
+        overrides = (
+            self.manual_overrides.pet_features if self.manual_overrides else None
+        )
         self.effective_pet_features = (
             overrides.merge_into(self.ai_analysis.pet_features)
             if overrides
@@ -249,4 +251,3 @@ class PropertyEntity(BaseModel):
         self.types = [self.primary_type] if self.primary_type else []
         self.category = get_primary_category_key(self.primary_type)
         return self
-

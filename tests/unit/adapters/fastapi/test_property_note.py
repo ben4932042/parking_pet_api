@@ -116,7 +116,9 @@ class PropertyOverviewServiceStub:
             else set()
         )
         favorite_property_ids = (
-            set(current_user.favorite_property_ids) if current_user is not None else set()
+            set(current_user.favorite_property_ids)
+            if current_user is not None
+            else set()
         )
         return [
             PropertyOverviewDto(

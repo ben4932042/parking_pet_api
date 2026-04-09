@@ -182,9 +182,7 @@ class PropertyRepository(IPropertyRepository):
     ) -> Tuple[List[PropertyEntity], int]:
         filters: dict = {
             "location": {
-                "$geoWithin": {
-                    "$box": [[min_lng, min_lat], [max_lng, max_lat]]
-                }
+                "$geoWithin": {"$box": [[min_lng, min_lat], [max_lng, max_lat]]}
             }
         }
 

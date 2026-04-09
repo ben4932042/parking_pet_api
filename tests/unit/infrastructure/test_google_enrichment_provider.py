@@ -53,7 +53,9 @@ def _build_provider(cache_repo, search_plan_cache_repo=None):
     provider.landmark_cache_repo = cache_repo
     provider.search_plan_workflow = (
         SearchPlanWorkflow(
-            planner=lambda query: SearchPlan(execution_modes=["keyword"], route_reason=query),
+            planner=lambda query: SearchPlan(
+                execution_modes=["keyword"], route_reason=query
+            ),
             version="test-v1",
             cache_repo=search_plan_cache_repo,
         )
@@ -62,6 +64,7 @@ def _build_provider(cache_repo, search_plan_cache_repo=None):
     )
     provider.llm = object()
     return provider
+
 
 @pytest.mark.asyncio
 async def test_geocode_landmark_returns_cached_coordinates_without_calling_google(
@@ -135,7 +138,9 @@ async def test_geocode_landmark_caches_negative_lookup(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_extract_search_plan_returns_cached_plan_without_running_pipeline(monkeypatch):
+async def test_extract_search_plan_returns_cached_plan_without_running_pipeline(
+    monkeypatch,
+):
     cache_repo = InMemorySearchPlanCacheRepository()
     provider = _build_provider(
         cache_repo=None,

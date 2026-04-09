@@ -221,9 +221,7 @@ async def test_get_in_bbox_applies_geo_keyword_and_category_filters():
         "$and": [
             {"is_deleted": {"$ne": True}},
             {
-                "location": {
-                    "$geoWithin": {"$box": [[121.5, 25.0], [121.6, 25.1]]}
-                },
+                "location": {"$geoWithin": {"$box": [[121.5, 25.0], [121.6, 25.1]]}},
                 "primary_type": {"$in": ["cafe", "bakery"]},
                 "$or": [
                     {"name": {"$regex": "[台臺]北", "$options": "i"}},
@@ -267,10 +265,6 @@ async def test_get_in_bbox_omits_optional_filters_when_not_provided():
     assert collection.find.call_args.args[0] == {
         "$and": [
             {"is_deleted": {"$ne": True}},
-            {
-                "location": {
-                    "$geoWithin": {"$box": [[121.5, 25.0], [121.6, 25.1]]}
-                }
-            },
+            {"location": {"$geoWithin": {"$box": [[121.5, 25.0], [121.6, 25.1]]}}},
         ]
     }

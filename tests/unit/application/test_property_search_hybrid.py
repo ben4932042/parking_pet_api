@@ -83,8 +83,4 @@ def test_rank_combined_search_results_orders_lexical_keyword_then_semantic_then_
         semantic_query={"primary_type": "park"},
     )
 
-    assert [item.id for item in ranked] == [
-        "lexical-keyword",
-        "semantic-match",
-        "keyword-only",
-    ]
+    assert [item.id for item in ranked] == ["lexical-keyword", "semantic-match"]

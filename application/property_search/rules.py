@@ -125,6 +125,12 @@ TIME_OF_DAY_WINDOWS = {
     "傍晚": (17, 0, 18, 59),
     "晚上": (18, 0, 22, 59),
 }
+FULL_WEEK_OPEN_PHRASES = (
+    "24小時",
+    "24 小時",
+    "二十四小時",
+    "全天候",
+)
 
 PROPER_NAME_LOOKUP_SUFFIXES = (
     "森林公園",
@@ -251,24 +257,15 @@ def normalize_llm_execution_modes(
     execution_modes: list[str],
 ) -> list[str]:
     normalized_modes = list(dict.fromkeys(execution_modes))
-    if set(normalized_modes) != {"semantic", "keyword"}:
-        return normalized_modes
-
-    # Hybrid mode is allowed only through exhaustive rule-based gating.
-    if should_run_keyword_with_semantic(query):
+    if "semantic" in normalized_modes:
         return ["semantic", "keyword"]
-
-    normalized_query = normalize_text_for_match(query)
-    if any(phrase in query for phrase in SEMANTIC_SEARCH_INTENT_PHRASES):
-        return ["semantic"]
-
-    if normalized_query and len(normalized_query) <= 8:
-        return ["keyword"]
-
-    return ["semantic"]
+    return normalized_modes
 
 
 def has_time_hints(query: str) -> bool:
+    if any(phrase in query for phrase in FULL_WEEK_OPEN_PHRASES):
+        return True
+
     return any(
         keyword in query
         for keywords in WEEKDAY_KEYWORDS.values()
@@ -339,9 +336,7 @@ def extract_address_by_rule(query: str) -> str | None:
         value = match.group("value")
         if value in TRANSPORT_PHRASES:
             return None
-        if normalize_text_for_match(value).endswith(
-            normalize_text_for_match("園區")
-        ):
+        if normalize_text_for_match(value).endswith(normalize_text_for_match("園區")):
             return None
         return value
 
@@ -509,6 +504,21 @@ def _window_to_minutes(
 
 
 def extract_time_by_rule(query: str) -> TimeIntent | None:
+    matched_full_week_phrase = next(
+        (phrase for phrase in FULL_WEEK_OPEN_PHRASES if phrase in query),
+        None,
+    )
+    if matched_full_week_phrase:
+        return TimeIntent(
+            open_window_start_minutes=0,
+            open_window_end_minutes=(7 * 1440) - 1,
+            label="24小時營業",
+            confidence=0.99,
+            evidence=(
+                f"matched always-open time window by rule: {matched_full_week_phrase}"
+            ),
+        )
+
     weekday = _detect_weekday(query)
     time_of_day = _detect_time_of_day(query)
 

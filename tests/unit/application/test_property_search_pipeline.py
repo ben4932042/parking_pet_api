@@ -120,7 +120,9 @@ async def test_search_by_keyword_filters_final_results_by_category_without_chang
     )
     repo = CaptureRepo(
         query_items=[
-            property_entity_factory(identifier="semantic-hit", primary_type="restaurant")
+            property_entity_factory(
+                identifier="semantic-hit", primary_type="restaurant"
+            )
         ],
         keyword_items=[keyword_item],
     )
@@ -128,20 +130,20 @@ async def test_search_by_keyword_filters_final_results_by_category_without_chang
         repo=repo,
         raw_data_repo=DummyRawDataRepo(),
         audit_repo=DummyAuditRepo(),
-            enrichment_provider=DummyEnrichmentProvider(
-                SearchPlan(
-                    execution_modes=["semantic", "keyword"],
-                    filter_condition=PropertyFilterCondition(),
-                )
-            ),
-        )
+        enrichment_provider=DummyEnrichmentProvider(
+            SearchPlan(
+                execution_modes=["semantic", "keyword"],
+                filter_condition=PropertyFilterCondition(),
+            )
+        ),
+    )
 
     results, plan = await service.search_by_keyword(
         "寵物公園",
         category=PropertyCategoryKey.RESTAURANT,
     )
 
-    assert [item.id for item in results] == ["keyword-hit", "semantic-hit"]
+    assert [item.id for item in results] == ["semantic-hit"]
     assert plan.execution_modes == ["semantic", "keyword"]
     assert repo.calls == [
         ("get_by_keyword", "寵物公園"),
@@ -247,7 +249,7 @@ async def test_search_by_keyword_combines_hybrid_execution_modes(
 
     results, plan = await service.search_by_keyword("寵物公園")
 
-    assert [item.id for item in results] == ["keyword-partial", "semantic-park"]
+    assert [item.id for item in results] == ["semantic-park"]
     assert plan.execution_modes == ["semantic", "keyword"]
     assert repo.calls == [
         ("get_by_keyword", "寵物公園"),
@@ -863,8 +865,11 @@ def test_route_node_treats_pure_address_query_as_semantic():
 
     result = route_node(llm=None, state={"raw_query": "台北"})
 
-    assert result["route_decision"].route == "semantic"
-    assert result["route_decision"].reason == "查詢本身就是行政區或地址條件"
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert (
+        result["route_decision"].reason
+        == "查詢本身就是行政區或地址條件，使用 hybrid 搜尋"
+    )
 
 
 def test_route_node_treats_obviously_non_search_query_as_keyword():
@@ -897,7 +902,7 @@ def test_route_node_enables_hybrid_execution_for_ambiguous_short_category_query(
     result = route_node(llm=None, state={"raw_query": "寵物公園"})
 
     assert result["route_decision"].execution_modes == ["semantic", "keyword"]
-    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件，使用 hybrid 搜尋"
 
 
 def test_route_node_prefers_keyword_for_probable_proper_name_lookup():
@@ -905,8 +910,8 @@ def test_route_node_prefers_keyword_for_probable_proper_name_lookup():
 
     result = route_node(llm=None, state={"raw_query": "中正狗狗運動園區"})
 
-    assert result["route_decision"].execution_modes == ["keyword"]
-    assert result["route_decision"].reason == "查詢較像完整地點名稱，優先使用關鍵字查找"
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢較像完整地點名稱，使用 hybrid 搜尋"
 
 
 def test_route_node_prefers_keyword_for_full_named_park_lookup():
@@ -914,8 +919,8 @@ def test_route_node_prefers_keyword_for_full_named_park_lookup():
 
     result = route_node(llm=None, state={"raw_query": "大安森林公園"})
 
-    assert result["route_decision"].execution_modes == ["keyword"]
-    assert result["route_decision"].reason == "查詢較像完整地點名稱，優先使用關鍵字查找"
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢較像完整地點名稱，使用 hybrid 搜尋"
 
 
 def test_route_node_does_not_treat_generic_pet_park_phrase_as_keyword_only_named_lookup():
@@ -924,7 +929,7 @@ def test_route_node_does_not_treat_generic_pet_park_phrase_as_keyword_only_named
     result = route_node(llm=None, state={"raw_query": "狗狗運動公園"})
 
     assert result["route_decision"].execution_modes == ["semantic", "keyword"]
-    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件，使用 hybrid 搜尋"
 
 
 def test_route_node_does_not_treat_generic_family_park_phrase_as_keyword_only_named_lookup():
@@ -933,7 +938,7 @@ def test_route_node_does_not_treat_generic_family_park_phrase_as_keyword_only_na
     result = route_node(llm=None, state={"raw_query": "親子公園"})
 
     assert result["route_decision"].execution_modes == ["semantic", "keyword"]
-    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件，使用 hybrid 搜尋"
 
 
 def test_route_node_keeps_generic_nearby_park_search_semantic():
@@ -941,8 +946,8 @@ def test_route_node_keeps_generic_nearby_park_search_semantic():
 
     result = route_node(llm=None, state={"raw_query": "附近的狗狗運動公園"})
 
-    assert result["route_decision"].execution_modes == ["semantic"]
-    assert result["route_decision"].reason == "查詢包含分類或偏好條件"
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件，使用 hybrid 搜尋"
 
 
 def test_should_run_keyword_with_semantic_supports_exact_hybrid_whitelist():
@@ -951,7 +956,16 @@ def test_should_run_keyword_with_semantic_supports_exact_hybrid_whitelist():
     assert should_run_keyword_with_semantic("寵物公園") is True
 
 
-def test_route_node_normalizes_llm_hybrid_decision_back_to_single_mode(monkeypatch):
+def test_route_node_treats_24_hour_pet_hospital_as_semantic_search():
+    from infrastructure.search.pipeline import route_node
+
+    result = route_node(llm=None, state={"raw_query": "24小時寵物醫院"})
+
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢包含分類或偏好條件，使用 hybrid 搜尋"
+
+
+def test_route_node_keeps_llm_search_decisions_in_hybrid_mode(monkeypatch):
     from domain.entities.search import LocationIntent, SearchRouteDecision
     from infrastructure.search import pipeline
 
@@ -980,8 +994,14 @@ def test_route_node_normalizes_llm_hybrid_decision_back_to_single_mode(monkeypat
         state={"raw_query": "我想找寵物友善的店"},
     )
 
-    assert short_lookup_result["route_decision"].execution_modes == ["keyword"]
-    assert semantic_query_result["route_decision"].execution_modes == ["semantic"]
+    assert short_lookup_result["route_decision"].execution_modes == [
+        "semantic",
+        "keyword",
+    ]
+    assert semantic_query_result["route_decision"].execution_modes == [
+        "semantic",
+        "keyword",
+    ]
 
 
 def test_rule_based_landmark_parser_recognizes_sun_moon_lake():
@@ -1131,6 +1151,16 @@ def test_time_node_extracts_current_day_afternoon_window():
     assert result["time_intent"].label == "下午"
     assert result["time_intent"].open_window_start_minutes == (3 * 1440) + (12 * 60)
     assert result["time_intent"].open_window_end_minutes == (3 * 1440) + (17 * 60) + 59
+
+
+def test_time_node_extracts_24_hour_window():
+    from infrastructure.search.pipeline import time_node
+
+    result = time_node(state={"raw_query": "24小時寵物醫院"})
+
+    assert result["time_intent"].label == "24小時營業"
+    assert result["time_intent"].open_window_start_minutes == 0
+    assert result["time_intent"].open_window_end_minutes == (7 * 1440) - 1
 
 
 def test_quality_only_semantic_query_is_allowed_without_fallback():
@@ -1394,8 +1424,8 @@ def test_route_node_treats_rule_based_landmark_query_as_semantic():
 
     result = route_node(llm=None, state={"raw_query": "日月潭"})
 
-    assert result["route_decision"].route == "semantic"
-    assert result["route_decision"].reason == "查詢本身就是地標條件"
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢本身就是地標條件，使用 hybrid 搜尋"
     assert result["location_intent"].kind == "landmark"
     assert result["location_intent"].value == "日月潭"
 
@@ -1426,8 +1456,8 @@ def test_route_node_treats_pure_landmark_query_as_semantic(monkeypatch):
 
     result = pipeline_module.route_node(llm=object(), state={"raw_query": "日月潭"})
 
-    assert result["route_decision"].route == "semantic"
-    assert result["route_decision"].reason == "查詢本身就是地標條件"
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢本身就是地標條件，使用 hybrid 搜尋"
     assert result["location_intent"].kind == "landmark"
     assert result["location_intent"].value == "日月潭"
 
@@ -1442,8 +1472,8 @@ def test_route_node_prefers_rule_based_landmark_before_llm(monkeypatch):
 
     result = pipeline_module.route_node(llm=object(), state={"raw_query": "日月潭"})
 
-    assert result["route_decision"].route == "semantic"
-    assert result["route_decision"].reason == "查詢本身就是地標條件"
+    assert result["route_decision"].execution_modes == ["semantic", "keyword"]
+    assert result["route_decision"].reason == "查詢本身就是地標條件，使用 hybrid 搜尋"
     assert result["location_intent"].kind == "landmark"
     assert result["location_intent"].value == "日月潭"
 
@@ -1465,6 +1495,16 @@ def test_rule_based_category_parser_recognizes_park_as_primary_type():
 
     assert intent is not None
     assert intent.primary_type == "park"
+    assert intent.matched_from == "primary_type"
+
+
+def test_rule_based_category_parser_recognizes_pet_hospital_as_primary_type():
+    from application.property_search.rules import extract_category_by_rule
+
+    intent = extract_category_by_rule("24小時寵物醫院")
+
+    assert intent is not None
+    assert intent.primary_type == "veterinary_care"
     assert intent.matched_from == "primary_type"
 
 
@@ -1540,6 +1580,65 @@ def test_category_match_expands_to_primary_type_list():
     assert plan.filter_condition.preferences == [
         {"key": "category_preference", "label": "restaurant"}
     ]
+
+
+def test_merge_node_builds_pet_hospital_24_hour_search_plan():
+    from domain.entities.search import (
+        CategoryIntent,
+        DistanceIntent,
+        LocationIntent,
+        PetFeatureIntent,
+        QualityIntent,
+        SearchRouteDecision,
+        TimeIntent,
+    )
+    from infrastructure.search.merge import merge_plan_node
+
+    result = merge_plan_node(
+        {
+            "route_decision": SearchRouteDecision(
+                execution_modes=["semantic"],
+                confidence=0.95,
+                reason="查詢包含分類或偏好條件",
+            ),
+            "location_intent": LocationIntent(),
+            "category_intent": CategoryIntent(
+                primary_type="veterinary_care",
+                matched_from="primary_type",
+                confidence=0.95,
+            ),
+            "feature_intent": PetFeatureIntent(features={}, confidence=0.0),
+            "quality_intent": QualityIntent(),
+            "time_intent": TimeIntent(
+                open_window_start_minutes=0,
+                open_window_end_minutes=(7 * 1440) - 1,
+                label="24小時營業",
+                confidence=0.99,
+            ),
+            "distance_intent": DistanceIntent(),
+        }
+    )
+
+    plan = result["plan"]
+    assert plan.filter_condition.mongo_query == {
+        "primary_type": "veterinary_care",
+        "op_segments": {
+            "$elemMatch": {
+                "s": {"$lte": (7 * 1440) - 1},
+                "e": {"$gte": 0},
+            }
+        },
+    }
+    assert plan.filter_condition.preferences == [
+        {"key": "primary_type_preference", "label": "veterinary_care"},
+        {"key": "opening_time_preference", "label": "24小時營業"},
+    ]
+    assert plan.semantic_extraction == {
+        "category": "veterinary_care",
+        "open_window_start_minutes": 0,
+        "open_window_end_minutes": (7 * 1440) - 1,
+        "opening_time": "24小時營業",
+    }
 
 
 def test_category_prompt_uses_dynamic_property_categories_variable():

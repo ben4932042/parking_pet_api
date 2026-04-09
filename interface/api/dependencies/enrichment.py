@@ -6,7 +6,10 @@ from infrastructure.mongo.landmark_cache import LandmarkCacheRepository
 from infrastructure.mongo.search_plan_cache import SearchPlanCacheRepository
 from infrastructure.config import settings
 from infrastructure.search.pipeline import extract_search_plan
-from interface.api.dependencies.db import get_landmark_cache_repository, get_search_plan_cache_repository
+from interface.api.dependencies.db import (
+    get_landmark_cache_repository,
+    get_search_plan_cache_repository,
+)
 
 
 def get_enrichment_provider(

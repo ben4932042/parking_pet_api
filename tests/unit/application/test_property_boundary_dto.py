@@ -111,7 +111,9 @@ async def test_search_properties_returns_personalized_dto(
             SearchPlan(
                 execution_modes=["semantic", "keyword"],
                 filter_condition=PropertyFilterCondition(
-                    preferences=[{"key": "pet_menu_preference", "label": "pet_menu=True"}]
+                    preferences=[
+                        {"key": "pet_menu_preference", "label": "pet_menu=True"}
+                    ]
                 ),
             )
         ),

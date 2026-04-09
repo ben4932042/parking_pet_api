@@ -53,6 +53,4 @@ def get_landmark_cache_repository(
 def get_search_plan_cache_repository(
     client: MongoDBClient = Depends(get_db_client),
 ) -> SearchPlanCacheRepository:
-    return SearchPlanCacheRepository(
-        client=client, collection_name="search_plan_cache"
-    )
+    return SearchPlanCacheRepository(client=client, collection_name="search_plan_cache")

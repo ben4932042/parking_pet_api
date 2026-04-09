@@ -36,6 +36,8 @@ RULE_BASED_PRIMARY_TYPE_KEYWORDS = [
     ("拉麵", "ramen_restaurant"),
     ("早午餐", "brunch_restaurant"),
     ("餐酒館", "bistro"),
+    ("寵物醫院", "veterinary_care"),
+    ("動物醫院", "veterinary_care"),
     ("獸醫", "veterinary_care"),
     ("看醫生", "veterinary_care"),
     ("寵物美容", "pet_care"),

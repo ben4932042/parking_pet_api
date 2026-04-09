@@ -36,7 +36,7 @@ from application.property_search.constants import (
     PROMPT_INJECTION_ROUTE_REASON,
 )
 from application.property_search.hybrid import (
-    is_exact_lexical_match,
+    collect_exact_keyword_matches,
     rank_combined_search_results,
 )
 from application.property_search.projection import build_property_alias_fields
@@ -265,6 +265,14 @@ class PropertyService:
                     keyword_items,
                     lexical_keyword_items,
                 ) = await self._search_keyword_hybrid_with_metadata(q)
+                keyword_items = collect_exact_keyword_matches(
+                    query_text=q,
+                    items=keyword_items,
+                )
+                lexical_keyword_items = collect_exact_keyword_matches(
+                    query_text=q,
+                    items=lexical_keyword_items,
+                )
                 if self._should_use_nearest_keyword_hybrid_result(
                     search_plan, map_coords=map_coords
                 ):
@@ -278,34 +286,6 @@ class PropertyService:
                         map_coords=map_coords,
                         radius_meters=HYBRID_KEYWORD_NEAREST_RADIUS_METERS,
                     )
-                else:
-                    exact_lexical_keyword_items = [
-                        item
-                        for item in lexical_keyword_items
-                        if is_exact_lexical_match(query_text=q, item=item)
-                    ]
-                    if generate_query:
-                        keyword_items = self._filter_keyword_items_by_semantic_query(
-                            keyword_items,
-                            generate_query,
-                            open_at_minutes=open_at_minutes,
-                        )
-                        lexical_keyword_items = (
-                            self._filter_keyword_items_by_semantic_query(
-                                lexical_keyword_items,
-                                generate_query,
-                                open_at_minutes=open_at_minutes,
-                            )
-                        )
-                        if exact_lexical_keyword_items:
-                            keyword_items = self._merge_unique_items(
-                                exact_lexical_keyword_items,
-                                keyword_items,
-                            )
-                            lexical_keyword_items = self._merge_unique_items(
-                                exact_lexical_keyword_items,
-                                lexical_keyword_items,
-                            )
             else:
                 keyword_items = await self._search_keyword(q)
                 lexical_keyword_items = keyword_items
@@ -625,9 +605,7 @@ class PropertyService:
         lexical_items = await self.repo.get_by_keyword(q)
         return lexical_items, lexical_items
 
-    async def get_details(
-        self, property_id: PyObjectId
-    ) -> Optional[PropertyDetailDto]:
+    async def get_details(self, property_id: PyObjectId) -> Optional[PropertyDetailDto]:
         output: PropertyEntity = await self.repo.get_property_by_id(property_id)
         if output is None:
             return None
@@ -1343,7 +1321,10 @@ class PropertyService:
             rating=output.ai_analysis.ai_rating,
             tags=output.ai_analysis.highlights,
             regular_opening_hours=(
-                [cls._to_opening_period_dto(period) for period in output.regular_opening_hours]
+                [
+                    cls._to_opening_period_dto(period)
+                    for period in output.regular_opening_hours
+                ]
                 if output.regular_opening_hours
                 else None
             ),
@@ -1378,7 +1359,9 @@ class PropertyService:
     def _to_audit_log_dto(cls, log: PropertyAuditLog) -> PropertyAuditLogDto:
         return PropertyAuditLogDto(
             property_id=log.property_id,
-            action=log.action.value if hasattr(log.action, "value") else str(log.action),
+            action=log.action.value
+            if hasattr(log.action, "value")
+            else str(log.action),
             actor=cls._to_actor_dto(log.actor),
             reason=log.reason,
             source=log.source,

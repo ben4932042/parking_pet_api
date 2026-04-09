@@ -53,9 +53,10 @@ def test_build_search_plan_creates_filter_condition_from_intents():
 
     assert plan.filter_condition.landmark_context == "日月潭"
     assert plan.filter_condition.mongo_query["primary_type"] == "cafe"
-    assert plan.filter_condition.mongo_query[
-        "effective_pet_features.services.free_water"
-    ] is True
+    assert (
+        plan.filter_condition.mongo_query["effective_pet_features.services.free_water"]
+        is True
+    )
     assert plan.filter_condition.min_rating == 4.5
     assert plan.semantic_extraction["landmark"] == "日月潭"
     assert plan.semantic_extraction["category"] == "cafe"

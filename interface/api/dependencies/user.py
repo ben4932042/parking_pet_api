@@ -23,6 +23,7 @@ from domain.entities.user import UserEntity
 bearer_auth_optional = HTTPBearer(auto_error=False)
 bearer_auth_required = HTTPBearer(auto_error=False)
 
+
 def get_user_service(repo=Depends(get_user_repository)) -> UserService:
     return UserService(repo=repo)
 
