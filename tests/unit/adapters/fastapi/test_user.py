@@ -804,7 +804,7 @@ def test_get_user_search_history_returns_recent_items(
     )
     override_api_dep(get_current_user, current_user)
 
-    response = client.get("/api/v1/user/search-history", params={"limit": 10})
+    response = client.get("/api/v1/user/search-history", params={"limit": 1})
 
     assert response.status_code == 200
     assert response.json() == [
@@ -813,3 +813,24 @@ def test_get_user_search_history_returns_recent_items(
             "searched_at": "2026-01-02T00:00:00Z",
         }
     ]
+
+
+def test_get_user_search_history_rejects_limit_above_five(
+    client, override_api_dep, user_entity_factory
+):
+    current_user = user_entity_factory(
+        identifier="u1",
+        name="Ben",
+        recent_searches=[
+            {
+                "query": f"query-{index}",
+                "searched_at": datetime(2026, 1, index + 1, tzinfo=timezone.utc),
+            }
+            for index in range(6)
+        ],
+    )
+    override_api_dep(get_current_user, current_user)
+
+    response = client.get("/api/v1/user/search-history", params={"limit": 6})
+
+    assert response.status_code == 422

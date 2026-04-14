@@ -408,7 +408,7 @@ async def get_user_favorite_properties(
     ),
 )
 async def get_user_search_history(
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=5, ge=1, le=5),
     current_user=Depends(get_current_user),
 ):
     items = current_user.recent_searches[:limit]

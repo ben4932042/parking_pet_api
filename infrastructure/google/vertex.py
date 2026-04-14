@@ -24,7 +24,7 @@ vertexai.init(
 )
 
 
-model = GenerativeModel("gemini-2.5-pro")
+model = GenerativeModel("gemini-2.5-flash-lite")
 
 
 def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
