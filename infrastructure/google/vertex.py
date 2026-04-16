@@ -24,7 +24,7 @@ vertexai.init(
 )
 
 
-model = GenerativeModel("gemini-2.5-flash-lite")
+model = GenerativeModel("gemini-2.5-flash")
 
 
 def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
@@ -89,8 +89,6 @@ def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
         response = model.generate_content(prompt, generation_config=generation_config)
         ai_analysis = AIAnalysis.model_validate_json(response.text)
 
-        # 建立 PropertyEntity
-        # 這裡利用了 Pydantic 的自動校驗，會觸發你寫的 model_validator
         entity = PropertyEntity(
             _id=source.place_id,
             name=source.display_name,
@@ -105,7 +103,7 @@ def distill_property_insights(source: AnalysisSource) -> PropertyEntity:
         return entity
 
     except Exception as e:
-        print(f"Vertex AI 分析失敗: {e}")
+        logger.error(f"Error generating AI analysis: {e}")
         raise e
 
 
