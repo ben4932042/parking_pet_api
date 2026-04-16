@@ -1,7 +1,11 @@
+"""Abstract token contracts shared by application auth workflows."""
+
 from abc import ABC, abstractmethod
 
 
 class AuthTokenClaims(ABC):
+    """Minimal claim set required by application session validation."""
+
     @property
     @abstractmethod
     def user_id(self) -> str: ...
@@ -20,6 +24,8 @@ class AuthTokenClaims(ABC):
 
 
 class IAuthTokenService(ABC):
+    """Issues and verifies backend auth tokens for one token class."""
+
     @abstractmethod
     def issue_access_token(
         self, *, user_id: str, source: str, session_version: int

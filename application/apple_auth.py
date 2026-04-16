@@ -1,3 +1,5 @@
+"""Application-layer Apple sign-in and account-linking workflows."""
+
 from abc import ABC, abstractmethod
 
 from application.exceptions import (
@@ -10,6 +12,8 @@ from domain.repositories.user import IUserRepository
 
 
 class VerifiedAppleIdentity(ABC):
+    """Minimal verified Apple identity exposed to application services."""
+
     @property
     @abstractmethod
     def subject(self) -> str: ...
@@ -20,6 +24,8 @@ class VerifiedAppleIdentity(ABC):
 
 
 class IAppleIdentityVerifier(ABC):
+    """Contract for infrastructure that validates Apple identity tokens."""
+
     @abstractmethod
     async def verify_identity_token(
         self,
@@ -30,6 +36,8 @@ class IAppleIdentityVerifier(ABC):
 
 
 class AppleAuthService:
+    """Coordinates Apple login and guest-account linking decisions."""
+
     def __init__(
         self,
         repo: IUserRepository,
@@ -48,6 +56,7 @@ class AppleAuthService:
         name: str | None = None,
         pet_name: str | None = None,
     ) -> UserEntity:
+        """Authenticate or register an Apple-backed user from verified identity data."""
         if not authorization_code.strip():
             raise AuthenticationError("Apple authorization code is required")
 
@@ -86,6 +95,7 @@ class AppleAuthService:
         user_identifier: str,
         email: str | None = None,
     ) -> UserEntity:
+        """Upgrade a guest account by linking it to a verified Apple identity."""
         if current_user.source != "guest":
             raise ValidationDomainError("Only guest users can link an Apple account")
         if not authorization_code.strip():
@@ -116,6 +126,7 @@ class AppleAuthService:
 
     @staticmethod
     def _require_display_name(*, name: str | None) -> str:
+        """Return a trimmed display name or raise when account creation lacks one."""
         if name is not None and name.strip():
             return name.strip()
         raise ValidationDomainError("Name is required to create an Apple user")

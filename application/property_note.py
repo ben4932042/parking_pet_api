@@ -1,3 +1,5 @@
+"""Application service for user-private property note workflows."""
+
 from application.exceptions import NotFoundError, ValidationDomainError
 from application.dto.property import PropertyOverviewDto
 from application.dto.property_note import (
@@ -11,6 +13,8 @@ from domain.entities.user import UserEntity
 
 
 class PropertyNoteService:
+    """Owns note validation and note-to-property overview composition."""
+
     def __init__(
         self,
         user_repo: IUserRepository,
@@ -22,12 +26,14 @@ class PropertyNoteService:
     async def get_note(
         self, user_id: str, property_id: str
     ) -> PropertyNoteEntity | None:
+        """Return the current user's note after confirming the property exists."""
         await self._ensure_property_exists(property_id)
         return await self.user_repo.get_property_note(user_id, property_id)
 
     async def save_note(
         self, user_id: str, property_id: str, content: str
     ) -> PropertyNoteEntity:
+        """Validate and upsert a note for a property the user can reference."""
         normalized_content = content.strip()
         if not normalized_content:
             raise ValidationDomainError("Note content cannot be empty.")
@@ -44,12 +50,14 @@ class PropertyNoteService:
         )
 
     async def delete_note(self, user_id: str, property_id: str) -> bool:
+        """Delete a note only when the referenced property still exists."""
         await self._ensure_property_exists(property_id)
         return await self.user_repo.delete_property_note(user_id, property_id)
 
     async def list_notes(
         self, user_id: str, page: int, size: int, query: str | None = None
     ) -> tuple[list[PropertyNoteEntity], int]:
+        """List paginated raw note entities for a user."""
         return await self.user_repo.list_property_notes(
             user_id=user_id, page=page, size=size, query=query
         )
@@ -64,6 +72,7 @@ class PropertyNoteService:
         size: int,
         property_overviews: list[PropertyOverviewDto],
     ) -> UserPropertyNoteListPageDto:
+        """Join note entities with property overviews and favorite-aware ordering."""
         property_map = {
             property_item.id: property_item for property_item in property_overviews
         }
@@ -89,6 +98,7 @@ class PropertyNoteService:
         )
 
     async def _ensure_property_exists(self, property_id: str) -> None:
+        """Raise a not-found error when note operations target a missing property."""
         existing = await self.property_repo.get_property_by_id(property_id)
         if existing is None:
             raise NotFoundError("Property not found")

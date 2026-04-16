@@ -30,6 +30,7 @@ Repository-wide instructions for coding agents working in this project.
 - Keep `AGENTS.md` minimal. Detailed workflows and conventions should live in `docs/`.
 - Use `docs/README.md` as the documentation index.
 - For documentation structure and naming conventions, read `docs/documentation/architecture.md`.
+- For docstring expectations and documentation scope in code, read `docs/development/workflow-docstrings.md`.
 - For tooling and command invocation in this repository, read `docs/development/workflow-tooling.md`.
 - When working with user feedback during development, read `docs/development/workflow-user-feedback.md`.
 - Before changing development workflow, tooling behavior, or documentation structure, read the relevant development docs first.

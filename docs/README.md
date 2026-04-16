@@ -15,6 +15,7 @@ Agent Docs:
 Use these documents for repository-wide development rules, tooling workflows, and documentation conventions.
 
 - `docs/documentation/architecture.md`
+- `docs/development/workflow-docstrings.md`
 - `docs/development/workflow-external-service-costs.md`
 - `docs/development/workflow-logging.md`
 - `docs/development/workflow-tooling.md`

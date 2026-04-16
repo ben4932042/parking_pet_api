@@ -1,3 +1,5 @@
+"""Workflow wrapper for extracting and caching search plans."""
+
 import hashlib
 from collections.abc import Callable
 
@@ -11,6 +13,8 @@ from domain.repositories.search_plan_cache import ISearchPlanCacheRepository
 
 
 class SearchPlanWorkflow:
+    """Builds search plans and optionally caches reusable planner output."""
+
     def __init__(
         self,
         *,
@@ -24,10 +28,12 @@ class SearchPlanWorkflow:
 
     @staticmethod
     def build_cache_key(version: str, normalized_query: str) -> str:
+        """Generate a stable cache key for a planner version and normalized query."""
         payload = f"{version}\n{normalized_query}".encode("utf-8")
         return hashlib.sha256(payload).hexdigest()
 
     async def extract(self, query: str) -> SearchPlan:
+        """Return a search plan, preferring cached output when policy allows it."""
         normalized_query = normalize_search_query(query)
         cache_key = self.build_cache_key(self.version, normalized_query)
 
